@@ -131,7 +131,7 @@ void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachB
 
         const double multiple = ((1 << (wordLength - 1)) - 1);
         for (const double val : scaledBlocks[i].Values) {
-            const int tmp = val * multiple;
+            const int tmp = round(val * multiple);
             const int testwl = bitsPerEachBlock[i] ? (bitsPerEachBlock[i] - 1) : 0;
             const int a = !!testwl + testwl;
             if (a != wordLength) {
