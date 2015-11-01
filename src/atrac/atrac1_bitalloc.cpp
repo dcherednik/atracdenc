@@ -71,7 +71,12 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
             bitsUsed += SpecsPerBlock[i] * tmpAlloc[i];
         }
 
+        //std::cout << spread << " bitsUsed: " << bitsUsed << " min " << minBits << " max " << maxBits << endl;
         if (bitsUsed < minBits) {
+            if (maxShift - minShift < 0.1) {
+                bitsPerEachBlock = tmpAlloc;
+                break;
+            }
             maxShift = shift;
             shift -= (shift - minShift) / 2;
         } else if (bitsUsed > maxBits) {
