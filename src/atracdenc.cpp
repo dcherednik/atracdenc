@@ -117,6 +117,7 @@ void TAtrac1Processor::IMdct(double Specs[512], const TBlockSize& mode, double* 
         uint32_t start = 0;
 
         double* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
+        const double gainMul = (band == 2) ? 256.0 : 128.0;
 
 
         vector<double> invBuf;
@@ -136,7 +137,7 @@ void TAtrac1Processor::IMdct(double Specs[512], const TBlockSize& mode, double* 
             vector<double> inv = midct(&Specs[pos], blockSize);
             for (int i = 0; i < (inv.size()/2); i++) {
 
-                invBuf[start+i] = ((blockSize == 32) ? 32.0 : 128.0) * inv[i + inv.size()/4];
+                invBuf[start+i] = ((blockSize == 32) ? 32.0 : gainMul) * inv[i + inv.size()/4];
             }
 
             vector_fmul_window(dstBuf + start, prevBuf, &invBuf[start], &TAtrac1Data::SineWindow[0], 16);
