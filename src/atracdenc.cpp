@@ -11,9 +11,12 @@ namespace NAtracDEnc {
 using namespace std;
 using namespace NBitStream;
 using namespace NAtrac1;
+using namespace NMDCT;
 TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, bool mono)
     : MixChannel(mono)
     , Aea(std::move(aea))
+    , Mdct512(2)
+    , Mdct256(1)
 {
 }
 
@@ -36,18 +39,6 @@ static void vector_fmul_window(double *dst, const double *src0,
     }
 }
 
-vector<double> mdct(double* x, int N) {
-    vector<double> res;
-    for (int k = 0; k < N; k++) {
-        double sum = 0;
-        for (int n = 0; n < 2 * N; n++) {
-            sum += x[n]* cos((M_PI/N) * ((double)n + 0.5 + N/2) * ((double)k + 0.5));
-        }
-        res.push_back(sum);
-    }
-    return res;
-}
-	
 vector<double> midct(double* x, int N) {
     vector<double> res;
     for (int n = 0; n < 2 * N; n++) {
@@ -61,28 +52,21 @@ vector<double> midct(double* x, int N) {
     return res;
 }
 
-
 void TAtrac1Processor::Mdct(double Specs[512], double* low, double* mid, double* hi) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < QMF_BANDS; band++) {
         double* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
         uint32_t bufSz = (band == 2) ? 256 : 128; 
-        uint32_t xxx = (band == 2) ? 112 : 48; 
-        double tmp[512];
-        //if (band == 2) {
-        //    for (uint32_t i = 0; i < bufSz; i++) {
-        //        srcBuf[i] = srcBuf[i] * 2;
-        //    }
-        //}
-        for (uint32_t i = 0; i < 512; i++)
-            tmp[i] = 0;
-        memcpy(&tmp[xxx], &srcBuf[bufSz], 32 * sizeof(double));
+        uint32_t winStart = (band == 2) ? 112 : 48; 
+        vector<double> tmp(512);
+
+        memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(double));
         for (int i = 0; i < 32; i++) {
             srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[bufSz - 32 + i];
             srcBuf[bufSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[bufSz - 32 + i];
         }
-        memcpy(&tmp[xxx+32], &srcBuf[0], bufSz * sizeof(double));
-        const vector<double>&  sp = mdct(&tmp[0], bufSz);
+        memcpy(&tmp[winStart+32], &srcBuf[0], bufSz * sizeof(double));
+        const vector<double>&  sp = (band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0]);
         if (band) {
             for (uint32_t j = 0; j < sp.size()/2; j++) {
                 Specs[pos+j] = sp[bufSz - 1 -j];
@@ -200,7 +184,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
             vector<double> specs;
             specs.resize(512);
             for (int i = 0; i < NumSamples; ++i) {
-                src[i] = data[i][channel] / 256.0;
+                src[i] = data[i][channel];
             }
             SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
