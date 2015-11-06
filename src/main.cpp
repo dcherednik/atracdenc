@@ -24,6 +24,14 @@ static void printUsage(const char* myName) {
     cout << "-d decode mode (ATRAC -> PCM), -i aea file, -o wav file" << endl;
 }
 
+static void printProgress(int percent) {
+    static uint32_t counter;
+    counter++;
+    const char symbols[4] = {'-', '\\', '|', '/'};
+    cout << symbols[counter % 4]<< "  "<< percent <<"% done\r";
+    fflush(stdout);
+}
+
 int main(int argc, char* const* argv) {
     const char* myName = argv[0];
     static struct option longopts[] = {
@@ -111,8 +119,9 @@ int main(int argc, char* const* argv) {
     try {
         while (totalSamples/4 > (processed = pcmEngine->ApplyProcess(512, atracLambda)))
         {
-            cout << "pos: " << processed << "   "  << totalSamples/4 << endl;
+            printProgress(processed*100/(totalSamples/4));
         }
+        cout << "\nDone" << endl;
     }
     catch (TAeaIOError err) {
         cerr << "Aea IO fatal error: " << err.what() << endl;
