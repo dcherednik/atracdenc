@@ -89,9 +89,9 @@ int main(int argc, char* const* argv) {
         wavIO = TWavPtr(new TWav(inFile));
         const TWavHeader& wavHeader = wavIO->GetWavHeader();
         const int numChannels = wavHeader.NumOfChan;
-        aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels));
-        pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
         totalSamples = wavHeader.ChunkSize;
+        aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, totalSamples / 2 / 512));
+        pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
         cout << "Input file: " << inFile << "Channels: " << numChannels << "SampleRate: " << wavHeader.SamplesPerSec << "TotalSamples: " << totalSamples << endl;
     } else if (mode == E_DECODE) {
         aeaIO = TAeaPtr(new TAea(inFile));

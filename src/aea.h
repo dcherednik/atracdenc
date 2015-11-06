@@ -30,11 +30,12 @@ class TAea {
         std::array<char, AeaMetaSize> AeaHeader;
     } Meta;
     static TAea::TMeta ReadMeta(const std::string& filename);
-    static TAea::TMeta CreateMeta(const std::string& filename, const std::string& title, int numChannel);
+    static TAea::TMeta CreateMeta(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
+    bool FirstWrite = true;
 public:
         typedef std::array<char, 212> TFrame;
 		TAea(const std::string& filename);
-        TAea(const std::string& filename, const std::string& title, int numChannel);
+        TAea(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
 		~TAea();
         std::unique_ptr<TFrame> ReadFrame(); 
 //        void WriteFrame(std::unique_ptr<TAea::TFrame>&& frame);
