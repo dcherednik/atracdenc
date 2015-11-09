@@ -46,7 +46,7 @@ vector<double> midct(double* x, int N) {
         for (int k = 0; k < N; k++) {
             sum += (x[k] * cos((M_PI/N) * ((double)n + 0.5 + N/2) * ((double)k + 0.5)));
         }
-        sum = sum / N;
+
         res.push_back(sum);
     }
     return res;
@@ -101,7 +101,6 @@ void TAtrac1Processor::IMdct(double Specs[512], const TBlockSize& mode, double* 
         uint32_t start = 0;
 
         double* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
-        const double gainMul = (band == 2) ? 256.0 : 128.0;
 
 
         vector<double> invBuf;
@@ -118,10 +117,10 @@ void TAtrac1Processor::IMdct(double Specs[512], const TBlockSize& mode, double* 
                     Specs[pos + blockSize - 1 -j] = tmp;
                 }
             }
-            vector<double> inv = midct(&Specs[pos], blockSize);
+            vector<double> inv = (blockSize == 32) ? midct(&Specs[pos], blockSize) : (blockSize == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
             for (int i = 0; i < (inv.size()/2); i++) {
 
-                invBuf[start+i] = ((blockSize == 32) ? 32.0 : gainMul) * inv[i + inv.size()/4];
+                invBuf[start+i] = inv[i + inv.size()/4];
             }
 
             vector_fmul_window(dstBuf + start, prevBuf, &invBuf[start], &TAtrac1Data::SineWindow[0], 16);

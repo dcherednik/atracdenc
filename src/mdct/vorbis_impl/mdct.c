@@ -448,3 +448,96 @@ mdct(MDCTContext *mdct, FLOAT *out, FLOAT *in)
     }
 }
 
+void
+midct(MDCTContext *mdct, FLOAT *out, FLOAT *in)
+{
+    int n = mdct->n;
+    int n2 = n>>1;
+    int n4 = n>>2;
+
+    FLOAT *iX = in+n2-7;
+    FLOAT *oX = out+n2+n4;
+    FLOAT *T  = mdct->trig+n4;
+    do {
+        oX -= 4;
+        oX[0] = (-iX[2] * T[3] - iX[0]  * T[2]);
+        oX[1] = (iX[0] * T[3] - iX[2]  * T[2]);
+        oX[2] = (-iX[6] * T[1] - iX[4]  * T[0]);
+        oX[3] = (iX[4] * T[1] - iX[6]  * T[0]);
+        iX -= 8;
+        T += 4;
+    } while (iX >= in);
+
+    iX = in+n2-8;
+    oX = out+n2+n4;
+    T = mdct->trig+n4;
+
+    do {
+        T -= 4;
+        oX[0] = (iX[4] * T[3] + iX[6] * T[2]);
+        oX[1] = (iX[4] * T[2] - iX[6] * T[3]);
+        oX[2] = (iX[0] * T[1] + iX[2] * T[0]);
+        oX[3] = (iX[0] * T[0] - iX[2] * T[1]);
+        iX -= 8;
+        oX += 4;
+    } while (iX >= in);
+
+    mdct_butterflies(mdct, out+n2, n2);
+    mdct_bitreverse(mdct, out);
+
+    /* roatate + window */
+
+    {
+        FLOAT *oX1= out + n2 + n4;
+        FLOAT *oX2= out + n2 + n4;
+        FLOAT *iX = out;
+        T = mdct->trig + n2;
+
+        do {
+            oX1-=4;
+            oX1[3] = (iX[0] * T[1] - iX[1] * T[0]);
+            oX2[0] = -(iX[0] * T[0] + iX[1] * T[1]);
+
+            oX1[2] = (iX[2] * T[3] - iX[3] * T[2]);
+            oX2[1] = -(iX[2] * T[2] + iX[3] * T[3]);
+
+            oX1[1] = (iX[4] * T[5] - iX[5] * T[4]);
+            oX2[2] = -(iX[4] * T[4] + iX[5] * T[5]);
+
+            oX1[0] = (iX[6] * T[7] - iX[7] * T[6]);
+            oX2[3] = -(iX[6] * T[6] + iX[7] * T[7]);
+
+            oX2 += 4;
+            iX += 8;
+            T += 8;
+        } while (iX < oX1);
+
+        iX = out + n2 + n4;
+        oX1 = out + n4;
+        oX2 = oX1;
+
+        do{
+            oX1-=4;
+            iX-=4;
+            oX2[0] = -(oX1[3] = iX[3]);
+            oX2[1] = -(oX1[2] = iX[2]);
+            oX2[2] = -(oX1[1] = iX[1]);
+            oX2[3] = -(oX1[0] = iX[0]);
+            oX2+=4;
+        } while (oX2 < iX);
+
+        iX=out+n2+n4;
+        oX1=out+n2+n4;
+        oX2=out+n2;
+
+        do{
+            oX1-=4;
+            oX1[0]= iX[3];
+            oX1[1]= iX[2];
+            oX1[2]= iX[1];
+            oX1[3]= iX[0];
+            iX+=4;
+        } while (oX1 > oX2);
+    }
+
+}

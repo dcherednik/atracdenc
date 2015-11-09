@@ -29,6 +29,19 @@ public:
         mdct(&Ctx, &Buf[0], in);
         return Buf;
     }
+};
 
+template<int N>
+class TMIDCT : public TMDCTBase {
+    std::vector<double> Buf;
+public:
+    TMIDCT(float scale = 1.0)
+        : Buf(N)
+        , TMDCTBase(N, scale)
+    {}
+    const std::vector<double>& operator()(double* in) {
+        midct(&Ctx, &Buf[0], in);
+        return Buf;
+    }
 };
 } //namespace NMDCT

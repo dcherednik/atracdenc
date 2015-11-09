@@ -25,6 +25,9 @@ class TAtrac1Processor : public TAtrac1Data {
     Atrac1SplitFilterBank<double> SplitFilterBank[2];
     NMDCT::TMDCT<512> Mdct512;
     NMDCT::TMDCT<256> Mdct256;
+    NMDCT::TMIDCT<512> Midct512;
+    NMDCT::TMIDCT<256> Midct256;
+ 
     void IMdct(double specs[512], const TBlockSize& mode, double* low, double* mid, double* hi);
     void Mdct(double specs[512], double* low, double* mid, double* hi);
     NAtrac1::TScaler Scaler;

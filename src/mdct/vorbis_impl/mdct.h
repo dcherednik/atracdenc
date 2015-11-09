@@ -87,6 +87,7 @@ extern "C" {
 void mdct_ctx_init(MDCTContext *mdct, int n, FLOAT scale);
 void mdct_ctx_close(MDCTContext *mdct);
 void mdct(MDCTContext *mdct, FLOAT *out, FLOAT *in);
+void midct(MDCTContext *mdct, FLOAT *out, FLOAT *in);
 #ifdef __cplusplus
 }
 
