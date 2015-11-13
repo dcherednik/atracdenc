@@ -40,7 +40,7 @@ vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TSc
     vector<uint32_t> bitsPerEachBlock;
     bitsPerEachBlock.resize(scaledBlocks.size());
     for (int i = 0; i < scaledBlocks.size(); ++i) {
-        int tmp = spread * ( (double)scaledBlocks[i].ScaleFactorIndex/5.2) + (1.0 - spread) * (FixedBitAllocTableLong[i] + 1) - shift;
+        int tmp = spread * ( (double)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * (FixedBitAllocTableLong[i]) - shift;
         if (tmp > 16) {
             bitsPerEachBlock[i] = 16;
         } else if (tmp < 2) {
@@ -58,7 +58,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
     double spread = AnalizeSpread(scaledBlocks);
     bitsPerEachBlock.resize(scaledBlocks.size());
     const uint32_t bitsAvaliablePerBfus =  SoundUnitSize * 8 - BitsPerBfuAmountTabIdx - 32 - 2 - 3 - bitsPerEachBlock.size() * (BitsPerIDWL + BitsPerIDSF);
-    double maxShift = 4;
+    double maxShift = 6;
     double minShift = -2;
     double shift = 3.0;
     const uint32_t maxBits = bitsAvaliablePerBfus;
