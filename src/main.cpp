@@ -14,6 +14,7 @@ using std::endl;
 using std::string;
 using std::unique_ptr;
 using std::move;
+using std::stoi;
 
 using namespace NAtracDEnc;
 
@@ -22,6 +23,8 @@ static void printUsage(const char* myName) {
     cout << "\tusage: " << myName << " <-e|-d> <-i input> <-o output>\n" << endl;
     cout << "-e encode mode (PCM -> ATRAC), -i wav file, -o aea file" << endl;
     cout << "-d decode mode (ATRAC -> PCM), -i aea file, -o wav file" << endl;
+    cout << "-h get help" << endl;
+
 }
 
 static void printProgress(int percent) {
@@ -32,12 +35,23 @@ static void printProgress(int percent) {
     fflush(stdout);
 }
 
+static string GetHelp() {
+    return "\n--encode -i \t - encode mode"
+        "\n--decode -d \t - decode mode"
+        "\n -i input file"
+        "\n -o output file"
+        "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU. WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
+        "\n --bfuidxfast\t enable fast search of BFU amount";
+}
+
 int main(int argc, char* const* argv) {
     const char* myName = argv[0];
     static struct option longopts[] = {
         { "encode", no_argument, NULL, 'e' },
         { "decode", no_argument, NULL, 'd' },
-        { "numbfus", required_argument, NULL, 1},
+        { "help", no_argument, NULL, 'h' },
+        { "bfuidxconst", required_argument, NULL, 1},
+        { "bfuidxfast", no_argument, NULL, 2},
         { "mono", no_argument, NULL, 'm'},
         { NULL, 0, NULL, 0}
     };
@@ -46,8 +60,10 @@ int main(int argc, char* const* argv) {
     string inFile;
     string outFile;
     uint32_t mode = 0;
+    uint32_t bfuIdxConst = 0; //0 - auto, no const
+    bool fastBfuNumSearch = false;
     bool mono = false;
-    while ((ch = getopt_long(argc, argv, "edi:o:m", longopts, NULL)) != -1) {
+    while ((ch = getopt_long(argc, argv, "edhi:o:m", longopts, NULL)) != -1) {
         switch (ch) {
             case 'e':
                 cout << "encode " << endl;
@@ -68,8 +84,20 @@ int main(int argc, char* const* argv) {
             case 'm':
                 mono = true;
                 break;
+            case 'h':
+                cout << GetHelp() << endl;
+                return 0;
+                break;
             case 1:
-                cout << "numbfus" << optarg << endl;
+                try {
+                    bfuIdxConst = stoi(optarg);
+                } catch (std::invalid_argument&) {
+                    cerr << "Wrong arg: " << optarg << " should be (0, 8]" << endl;
+                    return -1;
+                }
+                break;
+            case 2:
+                fastBfuNumSearch = true;
                 break;
 
 			default:
@@ -81,11 +109,15 @@ int main(int argc, char* const* argv) {
     argv += optind;
 
     if (inFile.empty()) {
-        cout << "No input file" << endl;
+        cerr << "No input file" << endl;
         return 1;
     }
     if (outFile.empty()) {
-        cout << "No out file" << endl;
+        cerr << "No out file" << endl;
+        return 1;
+    }
+    if (bfuIdxConst > 8) {
+        cerr << "Wrong bfuidxconst value ("<< bfuIdxConst << "). This is advanced options, use --help to get more information" << endl;
         return 1;
     }
 
@@ -114,7 +146,7 @@ int main(int argc, char* const* argv) {
     }
 
     TAtrac1Processor atrac1Processor(move(aeaIO), mono);
-    auto atracLambda = (mode == E_DECODE) ? atrac1Processor.GetDecodeLambda() : atrac1Processor.GetEncodeLambda();
+    auto atracLambda = (mode == E_DECODE) ? atrac1Processor.GetDecodeLambda() : atrac1Processor.GetEncodeLambda(bfuIdxConst, fastBfuNumSearch);
     uint64_t processed = 0;
     try {
         while (totalSamples/4 > (processed = pcmEngine->ApplyProcess(512, atracLambda)))

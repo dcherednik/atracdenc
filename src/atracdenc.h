@@ -36,6 +36,6 @@ public:
     TAtrac1Processor(TAeaPtr&& aea, bool mono = false);
     TPCMEngine<double>::TProcessLambda GetDecodeLambda();
 
-    TPCMEngine<double>::TProcessLambda GetEncodeLambda();
+    TPCMEngine<double>::TProcessLambda GetEncodeLambda(uint32_t bfuIdxConst, bool fastBfuNumSearch);
 };
 }
