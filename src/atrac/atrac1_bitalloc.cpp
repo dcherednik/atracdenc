@@ -94,7 +94,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
     for (;;) {
         bitsPerEachBlock.resize(BfuAmountTab[bfuIdx]);
         const uint32_t bitsAvaliablePerBfus =  SoundUnitSize * 8 - BitsPerBfuAmountTabIdx - 32 - 2 - 3 - bitsPerEachBlock.size() * (BitsPerIDWL + BitsPerIDSF);
-        double maxShift = 6;
+        double maxShift = 9;
         double minShift = -2;
         double shift = 3.0;
         const uint32_t maxBits = bitsAvaliablePerBfus;
