@@ -3,6 +3,7 @@
 #include <cerrno>
 
 #include <sys/stat.h>
+#include <string.h>
 
 #include "wav.h"
 #include "pcmengin.h"

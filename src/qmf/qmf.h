@@ -1,5 +1,5 @@
 #pragma once
-
+#include <string.h>
 
 template<class TPCM, int nIn>
 class TQmf {

@@ -1,5 +1,5 @@
 #include "atrac1_dequantiser.h"
-
+#include <string.h>
 
 namespace NAtrac1 {
 using namespace NBitStream;
