@@ -17,5 +17,3 @@ Limitations:
 Other problems:
  - Unfortunately software using ffmpeg library often incorrectly detects AEA file.
  Be careful, the noise in case of wrong detection can be extremely high.
- - acording to http://atracdenc.mastervirt.ru/alias_fixes.html and https://yadi.sk/i/r-95jZkKkSnbu (ffmpeg decoded https://samples.ffmpeg.org/A-codecs/ATRAC1/Test%20tones%20disc%20-%20Chirp.aea)
- ffmpeg uses wrong delay so quality of decoding by ffmpeg is not perfect)
