@@ -9,11 +9,18 @@ namespace NAtrac1 {
 using std::vector;
 using std::cerr;
 using std::endl;
+using std::pair;
 
 static const uint32_t FixedBitAllocTableLong[MAX_BFUS] = {
     7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 6,
     6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4,
     4, 4, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 1, 0, 0, 0
+};
+
+static const uint32_t BitBoostMask[MAX_BFUS] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 //returns 1 for tone-like, 0 - noise-like
@@ -36,6 +43,58 @@ static double AnalizeSpread(const std::vector<TScaledBlock>& scaledBlocks) {
         sigma = 14.0;
     return sigma/14.0;
 }
+
+TBitsBooster::TBitsBooster() {
+    for (uint32_t i = 0; i < MAX_BFUS; ++i) {
+        if (BitBoostMask[i] == 0)
+            continue;
+        const uint32_t nBits = SpecsPerBlock[i];
+        BitsBoostMap.insert(pair<uint32_t, uint32_t>(nBits, i));
+    }
+    MaxBitsPerIteration = BitsBoostMap.size() ? (--BitsBoostMap.end())->first : 0;
+    MinKey = BitsBoostMap.begin()->first;
+}
+
+uint32_t TBitsBooster::ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target) {
+    uint32_t surplus = target - cur;
+    uint32_t key = (surplus > MaxBitsPerIteration) ? MaxBitsPerIteration : surplus;
+    std::multimap<uint32_t, uint32_t>::iterator maxIt = BitsBoostMap.upper_bound(key);
+    //the key too low
+    if (maxIt == BitsBoostMap.begin())
+        return surplus;
+    //std::cout << "key: " << key << " min key: " << MinKey << " it pos: " << maxIt->first << endl;
+
+    while (surplus >= MinKey) {
+        bool done = true;
+        for (std::multimap<uint32_t, uint32_t>::iterator it = BitsBoostMap.begin(); it != maxIt; ++it) {
+            const uint32_t curBits = it->first;
+            const uint32_t curPos = it->second;
+
+            //std::cout << "key: " << key << " curBits: " << curBits << endl;
+            assert(key >= curBits);
+            if (curPos >= bitsPerEachBlock->size())
+                break;
+            if ((*bitsPerEachBlock)[curPos] == 16u)
+                continue;
+            const uint32_t nBitsPerSpec = (*bitsPerEachBlock)[curPos] ? 1 : 2;
+            if ((*bitsPerEachBlock)[curPos] == 0u && curBits * 2 > surplus)
+                continue;
+            if (curBits * nBitsPerSpec > surplus)
+                continue;
+            (*bitsPerEachBlock)[curPos] += nBitsPerSpec;
+            surplus -= curBits * nBitsPerSpec;
+
+            //std::cout << "added: " << curPos << " " << nBitsPerSpec << " got: " << (*bitsPerEachBlock)[curPos] << endl; 
+            done = false;
+        }
+        if (done)
+            break;
+    }
+
+    //std::cout << "boost: " << surplus << " was " << target - cur << endl;
+    return surplus;
+}
+
 
 vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
@@ -76,8 +135,8 @@ uint32_t TAtrac1SimpleBitAlloc::GetMaxUsedBfuId(const vector<uint32_t>& bitsPerE
     }
     return idx;
 }
-uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed, uint32_t curBfuId, const vector<uint32_t>& bitsPerEachBlock)
-{
+
+uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed, uint32_t curBfuId, const vector<uint32_t>& bitsPerEachBlock) {
     uint32_t usedBfuId = GetMaxUsedBfuId(bitsPerEachBlock);
     if (usedBfuId < curBfuId) {
         *changed = true;
@@ -91,6 +150,8 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
     double spread = AnalizeSpread(scaledBlocks);
 
     vector<uint32_t> bitsPerEachBlock(BfuAmountTab[bfuIdx]);
+    uint32_t targetBitsPerBfus;
+    uint32_t curBitsPerBfus;
     for (;;) {
         bitsPerEachBlock.resize(BfuAmountTab[bfuIdx]);
         const uint32_t bitsAvaliablePerBfus =  SoundUnitSize * 8 - BitsPerBfuAmountTabIdx - 32 - 2 - 3 - bitsPerEachBlock.size() * (BitsPerIDWL + BitsPerIDSF);
@@ -117,6 +178,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
                     if (!bfuNumChanged) {
                         bitsPerEachBlock = tmpAlloc;
                     }
+                    curBitsPerBfus = bitsUsed;
                     break;
                 }
                 maxShift = shift;
@@ -131,12 +193,16 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
                 if (!bfuNumChanged) {
                     bitsPerEachBlock = tmpAlloc;
                 }
+                curBitsPerBfus = bitsUsed;
                 break;
             }
         }
-        if (!bfuNumChanged)
+        if (!bfuNumChanged) {
+            targetBitsPerBfus = bitsAvaliablePerBfus;
             break;
+        }
     }
+    ApplyBoost(&bitsPerEachBlock, curBitsPerBfus, targetBitsPerBfus);
     WriteBitStream(bitsPerEachBlock, scaledBlocks, bfuIdx);
     return BfuAmountTab[bfuIdx];
 }

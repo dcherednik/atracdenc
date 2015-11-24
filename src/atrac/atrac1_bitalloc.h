@@ -4,6 +4,7 @@
 #include "../aea.h"
 #include "../atrac/atrac1.h"
 #include <vector>
+#include <map>
 #include <cstdint>
 
 namespace NAtrac1 {
@@ -15,7 +16,16 @@ public:
     virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks) = 0;
 };
 
-class TAtrac1BitStreamWriter : public TAtrac1Data {
+class TBitsBooster : public virtual TAtrac1Data {
+    std::multimap<uint32_t, uint32_t> BitsBoostMap; //bits needed -> position
+    uint32_t MaxBitsPerIteration;
+    uint32_t MinKey;
+public:
+    TBitsBooster();
+    uint32_t ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target);
+};
+
+class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
     TAea* Container;
 public:
     explicit TAtrac1BitStreamWriter(TAea* container)
@@ -24,7 +34,7 @@ public:
     void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx);
 };
 
-class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public IAtrac1BitAlloc {
+class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
