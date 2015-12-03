@@ -146,7 +146,7 @@ int main(int argc, char* const* argv) {
     }
 
     TAtrac1Processor atrac1Processor(move(aeaIO), mono);
-    auto atracLambda = (mode == E_DECODE) ? atrac1Processor.GetDecodeLambda() : atrac1Processor.GetEncodeLambda(bfuIdxConst, fastBfuNumSearch);
+    auto atracLambda = (mode == E_DECODE) ? atrac1Processor.GetDecodeLambda() : atrac1Processor.GetEncodeLambda(TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, TAtrac1EncodeSettings::EWindowMode::EWM_LONG_ONLY));
     uint64_t processed = 0;
     try {
         while (totalSamples/4 > (processed = pcmEngine->ApplyProcess(512, atracLambda)))

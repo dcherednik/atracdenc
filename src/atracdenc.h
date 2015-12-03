@@ -1,6 +1,7 @@
 #pragma once
 #include "pcmengin.h"
 #include "aea.h"
+#include "atrac_encode_settings.h"
 #include "atrac/atrac1.h"
 #include "atrac/atrac1_qmf.h"
 #include "atrac/atrac1_scale.h"
@@ -36,6 +37,6 @@ public:
     TAtrac1Processor(TAeaPtr&& aea, bool mono = false);
     TPCMEngine<double>::TProcessLambda GetDecodeLambda();
 
-    TPCMEngine<double>::TProcessLambda GetEncodeLambda(uint32_t bfuIdxConst, bool fastBfuNumSearch);
+    TPCMEngine<double>::TProcessLambda GetEncodeLambda(const TAtrac1EncodeSettings& settings);
 };
 }

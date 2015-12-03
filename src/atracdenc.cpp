@@ -164,7 +164,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 }
 
 
-TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(uint32_t bfuIdxConst, bool fastBfuNumSearch) {
+TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtrac1EncodeSettings& settings) {
     const uint32_t srcChannels = Aea->GetChannelNum();
     //TODO: should not be here
     //vector<char> dummy;
@@ -173,7 +173,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(uint32_t bf
     //cout << "Encode, channels: " << srcChannels << endl;
     vector<IAtrac1BitAlloc*> bitAlloc;
     for (int i = 0; i < srcChannels; i++)
-        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), bfuIdxConst, fastBfuNumSearch));
+        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), settings.GetBfuIdxConst(), settings.GetFastBfuNumSearch()));
         //bitAlloc.push_back(new TAtrac1PsyBitAlloc(Aea.get()));
 
     return [this, srcChannels, bitAlloc](vector<double>* data) {
