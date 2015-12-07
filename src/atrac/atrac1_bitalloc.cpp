@@ -144,7 +144,7 @@ uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed, uint32_t curBfuId, 
     }
     return curBfuId;
 }
-uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks) {
+uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) {
     uint32_t bfuIdx = BfuIdxConst ? BfuIdxConst - 1 : 7;
     bool autoBfu = !BfuIdxConst;
     double spread = AnalizeSpread(scaledBlocks);
@@ -155,8 +155,8 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
     for (;;) {
         bitsPerEachBlock.resize(BfuAmountTab[bfuIdx]);
         const uint32_t bitsAvaliablePerBfus =  SoundUnitSize * 8 - BitsPerBfuAmountTabIdx - 32 - 2 - 3 - bitsPerEachBlock.size() * (BitsPerIDWL + BitsPerIDSF);
-        double maxShift = 9;
-        double minShift = -2;
+        double maxShift = 15;
+        double minShift = -3;
         double shift = 3.0;
         const uint32_t maxBits = bitsAvaliablePerBfus;
         const uint32_t minBits = bitsAvaliablePerBfus - 110;
@@ -169,7 +169,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
                 bitsUsed += SpecsPerBlock[i] * tmpAlloc[i];
             }
 
-            //std::cout << spread << " bitsUsed: " << bitsUsed << " min " << minBits << " max " << maxBits << endl;
+            //std::cout << spread << " bitsUsed: " << bitsUsed << " min " << minBits << " max " << maxBits << " " << maxShift << "  " << minShift << " " << endl;
             if (bitsUsed < minBits) {
                 if (maxShift - minShift < 0.1) {
                     if (autoBfu) {
@@ -203,24 +203,24 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
         }
     }
     ApplyBoost(&bitsPerEachBlock, curBitsPerBfus, targetBitsPerBfus);
-    WriteBitStream(bitsPerEachBlock, scaledBlocks, bfuIdx);
+    WriteBitStream(bitsPerEachBlock, scaledBlocks, bfuIdx, blockSize);
     return BfuAmountTab[bfuIdx];
 }
 
-void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx) {
+void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx, const TBlockSize& blockSize) {
     NBitStream::TBitStream bitStream;
     int bitUsed = 0;
     if (bfuAmountIdx >= (1 << BitsPerBfuAmountTabIdx)) {
         cerr << "Wrong bfuAmountIdx (" << bfuAmountIdx << "), frame skiped" << endl;
         return;
     }
-    bitStream.Write(0x2, 2);
+    bitStream.Write(0x2 - blockSize.LogCount[0], 2);
     bitUsed+=2;
 
-    bitStream.Write(0x2, 2);
+    bitStream.Write(0x2 - blockSize.LogCount[1], 2);
     bitUsed+=2;
 
-    bitStream.Write(0x3, 2);
+    bitStream.Write(0x3 - blockSize.LogCount[2], 2);
     bitStream.Write(0, 2);
     bitUsed+=4;
 

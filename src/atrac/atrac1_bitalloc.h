@@ -13,7 +13,7 @@ class IAtrac1BitAlloc {
 public:
     IAtrac1BitAlloc() {};
     virtual ~IAtrac1BitAlloc() {};
-    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks) = 0;
+    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) = 0;
 };
 
 class TBitsBooster : public virtual TAtrac1Data {
@@ -31,7 +31,7 @@ public:
     explicit TAtrac1BitStreamWriter(TAea* container)
         : Container(container)
     {};
-    void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx);
+    void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx, const TBlockSize& blockSize);
 };
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
@@ -47,7 +47,7 @@ public:
         , FastBfuNumSearch(fastBfuNumSearch)
     {}
     ~TAtrac1SimpleBitAlloc() {};
-     uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks) override;
+     uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
 };
 
 }

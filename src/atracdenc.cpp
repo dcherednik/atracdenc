@@ -15,8 +15,6 @@ using namespace NMDCT;
 TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, bool mono)
     : MixChannel(mono)
     , Aea(std::move(aea))
-    , Mdct512(2)
-    , Mdct256(1)
 {
 }
 
@@ -52,91 +50,85 @@ vector<double> midct(double* x, int N) {
     return res;
 }
 
-void TAtrac1Processor::Mdct(double Specs[512], double* low, double* mid, double* hi) {
+void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, const TBlockSize& blockSize) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < QMF_BANDS; band++) {
+        const uint32_t numMdctBlocks = 1 << blockSize.LogCount[band];
         double* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
         uint32_t bufSz = (band == 2) ? 256 : 128; 
-        uint32_t winStart = (band == 2) ? 112 : 48; 
+        const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
+        uint32_t winStart = (numMdctBlocks == 1) ? ((band == 2) ? 112 : 48) : 0;
+        //compensate level for 3rd band in case of short window
+        const double multiple = (numMdctBlocks != 1 && band == 2) ? 2.0 : 1.0;
         vector<double> tmp(512);
+        uint32_t blockPos = 0;
 
-        memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(double));
-        for (int i = 0; i < 32; i++) {
-            srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[bufSz - 32 + i];
-            srcBuf[bufSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[bufSz - 32 + i];
-        }
-        memcpy(&tmp[winStart+32], &srcBuf[0], bufSz * sizeof(double));
-        const vector<double>&  sp = (band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0]);
-        if (band) {
-            for (uint32_t j = 0; j < sp.size()/2; j++) {
-                Specs[pos+j] = sp[bufSz - 1 -j];
-                Specs[pos + bufSz - 1 -j] = sp[j];
+        for (int k = 0; k < numMdctBlocks; ++k) {
+            memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(double));
+            for (int i = 0; i < 32; i++) {
+                srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[blockPos + blockSz - 32 + i];
+                srcBuf[blockPos + blockSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[blockPos + blockSz - 32 + i];
             }
-        } else {
+            memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(double));
+            const vector<double>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
             for (uint32_t i = 0; i < sp.size(); i++) {
-                Specs[pos + i] = sp[i];
+                Specs[blockPos + pos + i] = sp[i] * multiple;
             }
+            if (band) {
+                for (uint32_t j = 0; j < sp.size() / 2; j++) {
+                    double tmp = Specs[blockPos + pos +j];
+                    Specs[blockPos + pos + j] = Specs[blockPos + pos + sp.size() - 1 -j];
+                    Specs[blockPos + pos + sp.size() - 1 -j] = tmp;
+                }
+            }
+
+            blockPos += 32;
         }
-        /*
-        if (band == 2) {
-            for (int i = 0; i < bufSz * 2; i++) {
-                cout << "tmp " << i << " " << tmp[i] << endl;
-            }
-            for (int i = 0; i < sp.size(); ++i ) {
-                cout << "band2 " << i << "  " << Specs[pos + i] << " " << endl;
-            }
-        }
-        */
         pos += bufSz;
     } 
 }
-void TAtrac1Processor::IMdct(double Specs[512], const TBlockSize& mode, double* low, double* mid, double* hi) {
+void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, double* mid, double* hi) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < QMF_BANDS; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
-        const uint32_t blockSize = (numMdctBlocks == 1) ? ((band == 2) ? 256 : 128) : 32;
-        //if (blockSize == 32) {
-        //    cout << "SHORT: " << numMdctBlocks << " band: " << band << endl;
-        //}
+        const uint32_t bufSz = (band == 2) ? 256 : 128;
+        const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t start = 0;
 
         double* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
 
-
-        vector<double> invBuf;
-        invBuf.resize(512);
-        double* prevBuf = &dstBuf[blockSize*2  - 16];
-        static uint32_t fc;
+        vector<double> invBuf(512);
+        double* prevBuf = &dstBuf[bufSz * 2  - 16];
         for (uint32_t block = 0; block < numMdctBlocks; block++) {
 
-    //        cout << "fc counter: " << fc++ << endl;
             if (band) {
-                for (uint32_t j = 0; j < blockSize/2; j++) {
+                for (uint32_t j = 0; j < blockSz/2; j++) {
                     double tmp = Specs[pos+j];
-                    Specs[pos+j] = Specs[pos + blockSize - 1 -j];
-                    Specs[pos + blockSize - 1 -j] = tmp;
+                    Specs[pos+j] = Specs[pos + blockSz - 1 -j];
+                    Specs[pos + blockSz - 1 -j] = tmp;
                 }
             }
-            vector<double> inv = (blockSize == 32) ? midct(&Specs[pos], blockSize) : (blockSize == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
-            for (int i = 0; i < (inv.size()/2); i++) {
 
+            vector<double> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
+            for (int i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];
             }
 
             vector_fmul_window(dstBuf + start, prevBuf, &invBuf[start], &TAtrac1Data::SineWindow[0], 16);
 
             prevBuf = &invBuf[start+16];
-            start += blockSize;
-            pos += blockSize;
+            start += blockSz;
+            pos += blockSz;
         }
         if (numMdctBlocks == 1)
             memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(double));
 
         for (int j = 0; j < 16; j++) {
-            dstBuf[blockSize*2 - 16  + j] = invBuf[blockSize - 16 + j];
+            dstBuf[bufSz*2 - 16  + j] = invBuf[bufSz - 16 + j];
         }
     }
 }
+
 TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
     return [this](vector<double>* data) {
         double sum[512];
@@ -176,7 +168,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtra
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), settings.GetBfuIdxConst(), settings.GetFastBfuNumSearch()));
         //bitAlloc.push_back(new TAtrac1PsyBitAlloc(Aea.get()));
 
-    return [this, srcChannels, bitAlloc](vector<double>* data) {
+    return [this, srcChannels, bitAlloc, settings](vector<double>* data) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
             double sum[512];
@@ -187,8 +179,11 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtra
             }
             SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
-            Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
-            bitAlloc[channel]->Write(Scaler.Scale(specs));
+            const uint32_t windowMask = (settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_SHORT_ONLY) ? settings.GetWindowMask() : 0;
+            const TBlockSize blockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
+
+            Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSize);
+            bitAlloc[channel]->Write(Scaler.Scale(specs, blockSize), blockSize);
         }
     };
 }

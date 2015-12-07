@@ -22,12 +22,13 @@ TScaler::TScaler() {
     }
 }
 
-vector<TScaledBlock> TScaler::Scale(const vector<double>& specs) {
+vector<TScaledBlock> TScaler::Scale(const vector<double>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
     for (uint8_t bandNum = 0; bandNum < QMF_BANDS; ++bandNum) {
+        const bool shortWinMode = !!blockSize.LogCount[bandNum];
         for (uint8_t blockNum = BlocksPerBand[bandNum]; blockNum < BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = SpecsStartLong[blockNum]; 
-            const uint16_t specNumEnd = SpecsStartLong[blockNum] + SpecsPerBlock[blockNum];
+            const uint16_t specNumStart = shortWinMode ? SpecsStartShort[blockNum] : SpecsStartLong[blockNum];
+            const uint16_t specNumEnd = specNumStart + SpecsPerBlock[blockNum];
             double maxAbsSpec = 0;
             for (uint16_t curSpec = specNumStart; curSpec < specNumEnd; ++curSpec) {
                 const double absSpec = abs(specs[curSpec]);

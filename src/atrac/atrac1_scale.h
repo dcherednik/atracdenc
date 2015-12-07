@@ -17,6 +17,6 @@ class TScaler : public TAtrac1Data {
     static std::map<uint32_t, uint8_t>ScaleIndex;
 public:
     TScaler();
-    std::vector<TScaledBlock> Scale(const std::vector<double>& specs);
+    std::vector<TScaledBlock> Scale(const std::vector<double>& specs, const TBlockSize& blockSize);
 };
 }

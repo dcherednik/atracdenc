@@ -14,7 +14,22 @@ enum EMode {
     E_DECODE = 2
 };
 
-class TAtrac1Processor : public TAtrac1Data {
+class TAtrac1MDCT : public virtual TAtrac1Data {
+    NMDCT::TMDCT<512> Mdct512;
+    NMDCT::TMDCT<256> Mdct256;
+    NMDCT::TMDCT<64> Mdct64;
+    NMDCT::TMIDCT<512> Midct512;
+    NMDCT::TMIDCT<256> Midct256;
+public:
+    void IMdct(double specs[512], const TBlockSize& mode, double* low, double* mid, double* hi);
+    void Mdct(double specs[512], double* low, double* mid, double* hi, const TBlockSize& blockSize);
+    TAtrac1MDCT()
+        : Mdct512(2)
+        , Mdct256(1)
+    {}
+};
+
+class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
     const bool MixChannel;
     TAeaPtr Aea;
 
@@ -24,13 +39,7 @@ class TAtrac1Processor : public TAtrac1Data {
 
     Atrac1SynthesisFilterBank<double> SynthesisFilterBank[2];
     Atrac1SplitFilterBank<double> SplitFilterBank[2];
-    NMDCT::TMDCT<512> Mdct512;
-    NMDCT::TMDCT<256> Mdct256;
-    NMDCT::TMIDCT<512> Midct512;
-    NMDCT::TMIDCT<256> Midct256;
  
-    void IMdct(double specs[512], const TBlockSize& mode, double* low, double* mid, double* hi);
-    void Mdct(double specs[512], double* low, double* mid, double* hi);
     NAtrac1::TScaler Scaler;
 
 public:

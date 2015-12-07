@@ -58,12 +58,22 @@ class TBlockSize {
         stream->Read(2); //skip unused 2 bits
         return tmp;
     }
+    static std::array<int,QMF_BANDS> Create(bool lowShort, bool midShort, bool hiShort) {
+        std::array<int,QMF_BANDS> tmp;
+        tmp[0] = lowShort ? 2 : 0;
+        tmp[1] = midShort ? 2 : 0;
+        tmp[2] = hiShort ? 3 : 0;
+        return tmp;
+    }
 public:
     TBlockSize(NBitStream::TBitStream* stream)
         : LogCount(Parse(stream))
     {}
     TBlockSize()
         : LogCount({0,0,0}) //windows are long
+    {}
+    TBlockSize(bool lowShort, bool midShort, bool hiShort)
+        : LogCount(Create(lowShort, midShort, hiShort))
     {}
     const std::array<int,QMF_BANDS> LogCount;
 };
