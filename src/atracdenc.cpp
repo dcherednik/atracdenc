@@ -12,6 +12,16 @@ using namespace std;
 using namespace NBitStream;
 using namespace NAtrac1;
 using namespace NMDCT;
+
+template<int N>
+static vector<double> invertSpectr(double* in) {
+    vector<double> buf(N);
+    memcpy(&buf[0], in, N * sizeof(double));
+    for (int i = 0; i < N; i+=2)
+        buf[i] *= -1;
+    return buf;
+}
+
 TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, bool mono)
     : MixChannel(mono)
     , Aea(std::move(aea))
@@ -158,30 +168,41 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 
 TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtrac1EncodeSettings& settings) {
     const uint32_t srcChannels = Aea->GetChannelNum();
-    //TODO: should not be here
-    //vector<char> dummy;
-    //dummy.resize(212 * srcChannels);
-    //Aea->WriteFrame(dummy);
-    //cout << "Encode, channels: " << srcChannels << endl;
     vector<IAtrac1BitAlloc*> bitAlloc;
     for (int i = 0; i < srcChannels; i++)
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), settings.GetBfuIdxConst(), settings.GetFastBfuNumSearch()));
-        //bitAlloc.push_back(new TAtrac1PsyBitAlloc(Aea.get()));
 
     return [this, srcChannels, bitAlloc, settings](vector<double>* data) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
-            double sum[512];
-            vector<double> specs;
-            specs.resize(512);
+            vector<double> specs(512);
             for (int i = 0; i < NumSamples; ++i) {
                 src[i] = data[i][channel];
             }
+
             SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
-            const uint32_t windowMask = (settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_SHORT_ONLY) ? settings.GetWindowMask() : 0;
+            uint32_t windowMask = 0;
+            if (settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
+                windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
+
+                const vector<double>& invMid = invertSpectr<128>(&PcmBufMid[channel][0]);
+                windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 1).Detect(&invMid[0]) << 1;
+
+                const vector<double>& invHi = invertSpectr<256>(&PcmBufHi[channel][0]);
+                windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 2).Detect(&invHi[0]) << 2;
+
+                //std::cout << "trans: " << windowMask << std::endl;
+            } else {
+                //no transient detection, use given mask
+                windowMask = settings.GetWindowMask();
+            }
             const TBlockSize blockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
 
+            //for (int i = 0; i < 256; ++i) {
+            //    std::cout << PcmBufHi[channel][i] << std::endl;
+            //}
+            //std::cout<< "============" << std::endl;
             Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSize);
             bitAlloc[channel]->Write(Scaler.Scale(specs, blockSize), blockSize);
         }

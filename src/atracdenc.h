@@ -2,10 +2,14 @@
 #include "pcmengin.h"
 #include "aea.h"
 #include "atrac_encode_settings.h"
+#include "transient_detector.h"
 #include "atrac/atrac1.h"
 #include "atrac/atrac1_qmf.h"
 #include "atrac/atrac1_scale.h"
 #include "mdct/mdct.h"
+
+#include <assert.h>
+#include <vector>
 
 namespace NAtracDEnc {
 
@@ -34,11 +38,41 @@ class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
     TAeaPtr Aea;
 
     double PcmBufLow[2][256 + 16];
+    double PcmBufLowT[2][256 + 16];
     double PcmBufMid[2][256 + 16];
     double PcmBufHi[2][512 + 16];
 
     Atrac1SynthesisFilterBank<double> SynthesisFilterBank[2];
     Atrac1SplitFilterBank<double> SplitFilterBank[2];
+
+    class TTransientDetectors {
+        std::vector<TTransientDetector> transientDetectorLow;
+        std::vector<TTransientDetector> transientDetectorMid;
+        std::vector<TTransientDetector> transientDetectorHi;
+    public:
+        TTransientDetectors()
+            : transientDetectorLow(2, TTransientDetector(16, 128))
+            , transientDetectorMid(2, TTransientDetector(16, 128))
+            , transientDetectorHi(2, TTransientDetector(16, 256))
+        {}
+        TTransientDetector& GetDetector(uint32_t channel, uint32_t band) {
+            switch (band) {
+                case 0:
+                    return transientDetectorLow[channel];
+                break;
+                case 1:
+                    return transientDetectorMid[channel];
+                break;
+                case 2:
+                    return transientDetectorHi[channel];
+                break;
+                default:
+                    assert(false);
+                    return transientDetectorLow[channel];
+            }
+        }
+    };
+    TAtrac1Processor::TTransientDetectors TransientDetectors;
  
     NAtrac1::TScaler Scaler;
 

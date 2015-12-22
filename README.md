@@ -10,7 +10,6 @@ Usage:
 You can use --help option to get help
 
 Limitations:
- - Only long window
  - Bit allocation based on the tonality of the signal (see http://www.minidisc.org/aes_atrac.html)
  - Only 44100 16bit wav input file
  

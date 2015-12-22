@@ -42,7 +42,7 @@ static string GetHelp() {
         "\n -o output file"
         "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU. WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
         "\n --bfuidxfast\t enable fast search of BFU amount"
-        "\n --shortonly[=mask] use short window (32 sample) for all blocks. Mask (specifyed without space) is used to set this option only for given band";
+        "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window";
 }
 
 int main(int argc, char* const* argv) {
@@ -53,7 +53,7 @@ int main(int argc, char* const* argv) {
         { "help", no_argument, NULL, 'h' },
         { "bfuidxconst", required_argument, NULL, 1},
         { "bfuidxfast", no_argument, NULL, 2},
-        { "shortonly", optional_argument, NULL, 3},
+        { "notransient", optional_argument, NULL, 3},
         { "mono", no_argument, NULL, 'm'},
         { NULL, 0, NULL, 0}
     };
@@ -65,8 +65,8 @@ int main(int argc, char* const* argv) {
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
     bool mono = false;
-    TAtrac1EncodeSettings::EWindowMode windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_LONG_ONLY;
-    uint32_t winMask = 7;
+    TAtrac1EncodeSettings::EWindowMode windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
+    uint32_t winMask = 0; //all is long
     while ((ch = getopt_long(argc, argv, "edhi:o:m", longopts, NULL)) != -1) {
         switch (ch) {
             case 'e':
@@ -104,11 +104,11 @@ int main(int argc, char* const* argv) {
                 fastBfuNumSearch = true;
                 break;
             case 3:
-                windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_SHORT_ONLY;
+                windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_NOTRANSIENT;
                 if (optarg) {
                     winMask = stoi(optarg);
                 }
-                cout << "Explicit short window mode specified, bands: low - " <<
+                cout << "Transient detection disabled, bands: low - " <<
                     ((winMask & 1) ? "short": "long") << ", mid - " <<
                     ((winMask & 2) ? "short": "long") << ", hi - " <<
                     ((winMask & 4) ? "short": "long") << endl;

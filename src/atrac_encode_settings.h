@@ -5,14 +5,13 @@ namespace NAtracDEnc {
 class TAtrac1EncodeSettings {
 public:
     enum class EWindowMode {
-        EWM_LONG_ONLY,
-        EWM_SHORT_ONLY,
+        EWM_NOTRANSIENT,
         EWM_AUTO
     };
 private:
     const uint32_t BfuIdxConst = 0;
     const bool FastBfuNumSearch = false;
-    EWindowMode WindowMode = EWindowMode::EWM_LONG_ONLY;
+    EWindowMode WindowMode = EWindowMode::EWM_AUTO;
     const uint32_t WindowMask = 0;
 public:
     TAtrac1EncodeSettings();
