@@ -36,16 +36,23 @@ void TTransientDetector::HPFilter(const double* in, double* out) {
 
 
 bool TTransientDetector::Detect(const double* buf) {
-    double* rmsPerShortBlock = reinterpret_cast<double*>(alloca(sizeof(double) * NShortBlocks));
+    const uint32_t nBlocksToAnalize = NShortBlocks + 1;
+    double* rmsPerShortBlock = reinterpret_cast<double*>(alloca(sizeof(double) * nBlocksToAnalize));
     std::vector<double> filtered(BlockSz);
     HPFilter(buf, filtered.data());
-    for (uint32_t i = 0; i < NShortBlocks; ++i) {
-        rmsPerShortBlock[i] = 19.0 * log10(calculateRMS(&filtered[i * ShortSz], ShortSz));
-        if (i && rmsPerShortBlock[i] - rmsPerShortBlock[i - 1] > 10) {
-            return true;
+    bool trans = false;
+    rmsPerShortBlock[0] = LastEnergy;
+    for (uint32_t i = 1; i < nBlocksToAnalize; ++i) {
+        rmsPerShortBlock[i] = 19.0 * log10(calculateRMS(&filtered[(i - 1) * ShortSz], ShortSz));
+        if (rmsPerShortBlock[i] - rmsPerShortBlock[i - 1] > 16) {
+            trans = true;
+        }
+        if (rmsPerShortBlock[i - 1] - rmsPerShortBlock[i] > 20) {
+            trans = true;
         }
     }
-    return false;
+    LastEnergy = rmsPerShortBlock[NShortBlocks];
+    return trans;
 }
 
 }
