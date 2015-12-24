@@ -11,6 +11,7 @@ class TTransientDetector {
     static const uint32_t prevBufSz = 20;
     void HPFilter(const double* in, double* out);
     std::vector<double> HPFBuffer;
+    double LastEnergy = 0.0;
 public:
     TTransientDetector(uint32_t shortSz, uint32_t blockSz)
         : ShortSz(shortSz)
