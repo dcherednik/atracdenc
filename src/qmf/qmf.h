@@ -23,7 +23,6 @@ public:
 
     void Split(TPCM* in, double* lower, double* upper) {
         double temp;
-        static double last;
         for (int i = 0; i < 46; i++)
             PcmBuffer[i] = PcmBuffer[nIn + i];
 

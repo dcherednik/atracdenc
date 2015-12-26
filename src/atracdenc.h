@@ -34,11 +34,10 @@ public:
 };
 
 class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
-    const bool MixChannel;
+    bool MixChannel;
     TAeaPtr Aea;
 
     double PcmBufLow[2][256 + 16];
-    double PcmBufLowT[2][256 + 16];
     double PcmBufMid[2][256 + 16];
     double PcmBufHi[2][512 + 16];
 

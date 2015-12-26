@@ -26,6 +26,7 @@ TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, bool mono)
     : MixChannel(mono)
     , Aea(std::move(aea))
 {
+    (void)MixChannel; //TODO
 }
 
 static void vector_fmul_window(double *dst, const double *src0,
@@ -156,7 +157,6 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 
             IMdct(&specs[0], mode, &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             SynthesisFilterBank[channel].Synthesis(&sum[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
-            const int numChannel = data[0].size();
             for (int i = 0; i < NumSamples; ++i) {
                 data[i][srcChannels - 1-channel] = sum[i];
             }

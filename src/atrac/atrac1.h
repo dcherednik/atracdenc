@@ -69,9 +69,6 @@ public:
     TBlockSize(NBitStream::TBitStream* stream)
         : LogCount(Parse(stream))
     {}
-    TBlockSize()
-        : LogCount({0,0,0}) //windows are long
-    {}
     TBlockSize(bool lowShort, bool midShort, bool hiShort)
         : LogCount(Create(lowShort, midShort, hiShort))
     {}

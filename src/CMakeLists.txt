@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
-add_definitions( "-O2 -g" )
+add_definitions( "-Wall -O2 -g" )
 set(CMAKE_CXX_STANDARD 11)
 
 project(atracdenc)

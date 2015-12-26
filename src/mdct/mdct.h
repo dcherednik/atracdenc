@@ -22,8 +22,8 @@ class TMDCT : public TMDCTBase {
     std::vector<double> Buf;
 public:
     TMDCT(float scale = 1.0)
-        : Buf(N/2)
-        , TMDCTBase(N, scale)
+        : TMDCTBase(N, scale)
+        , Buf(N/2)
     {}
     const std::vector<double>& operator()(double* in) {
         mdct(&Ctx, &Buf[0], in);
@@ -36,8 +36,8 @@ class TMIDCT : public TMDCTBase {
     std::vector<double> Buf;
 public:
     TMIDCT(float scale = 1.0)
-        : Buf(N)
-        , TMDCTBase(N, scale)
+        : TMDCTBase(N, scale)
+        , Buf(N)
     {}
     const std::vector<double>& operator()(double* in) {
         midct(&Ctx, &Buf[0], in);
