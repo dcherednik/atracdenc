@@ -3,8 +3,14 @@ Implementation of ATRAC1 encoder
 
 Building:
 You need C++11 compiler.
-Currently we do not use cmake, have no install target in Makefile. To build it just  type `make` in `src` dir.
-Likely atracdenc executable file will be builded ))
+cmake > 2.8
+libsndfiles 
+
+`cd src`
+`mkdir build`
+`cd build`
+`cmake ../`
+`make`
 
 Usage:
 You can use --help option to get help

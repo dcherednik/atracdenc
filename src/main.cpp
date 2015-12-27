@@ -140,18 +140,18 @@ int main(int argc, char* const* argv) {
     uint64_t totalSamples = 0;
     if (mode == E_ENCODE) {
         wavIO = TWavPtr(new TWav(inFile));
-        const TWavHeader& wavHeader = wavIO->GetWavHeader();
-        const int numChannels = wavHeader.NumOfChan;
-        totalSamples = wavHeader.ChunkSize;
-        aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, totalSamples / 2 / 512));
+        const int numChannels = wavIO->GetChannelNum();
+        totalSamples = wavIO->GetTotalSamples();
+        //TODO: recheck it
+        aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, numChannels * totalSamples / 512));
         pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
-        cout << "Input file: " << inFile << "Channels: " << numChannels << "SampleRate: " << wavHeader.SamplesPerSec << "TotalSamples: " << totalSamples << endl;
+        cout << "Input file: " << inFile << "\n Channels: " << numChannels << "\n SampleRate: " << wavIO->GetSampleRate() << "\n TotalSamples: " << totalSamples << endl;
     } else if (mode == E_DECODE) {
         aeaIO = TAeaPtr(new TAea(inFile));
-        totalSamples = 4 *  aeaIO->GetLengthInSamples();
+        totalSamples = aeaIO->GetLengthInSamples();
         uint32_t length = aeaIO->GetLengthInSamples();
         cout << "Name: " << aeaIO->GetName() << "\n Channels: " << aeaIO->GetChannelNum() << "\n Length: " << length << endl;
-        wavIO = TWavPtr(new TWav(outFile, TWav::CreateHeader(aeaIO->GetChannelNum(), length)));
+        wavIO = TWavPtr(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
         pcmEngine = new TPCMEngine<double>(4096, aeaIO->GetChannelNum(), TPCMEngine<double>::TWriterPtr(wavIO->GetPCMWriter<double>()));
     } else {
         cout << "Processing mode was not specified" << endl;
@@ -163,9 +163,9 @@ int main(int argc, char* const* argv) {
         atrac1Processor.GetEncodeLambda(TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
     uint64_t processed = 0;
     try {
-        while (totalSamples/4 > (processed = pcmEngine->ApplyProcess(512, atracLambda)))
+        while (totalSamples > (processed = pcmEngine->ApplyProcess(512, atracLambda)))
         {
-            printProgress(processed*100/(totalSamples/4));
+            printProgress(processed*100/totalSamples);
         }
         cout << "\nDone" << endl;
     }
