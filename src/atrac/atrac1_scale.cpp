@@ -7,7 +7,7 @@ using std::vector;
 using std::map;
 
 using namespace std;
-map<uint32_t, uint8_t> TScaler::ScaleIndex;
+map<double, uint8_t> TScaler::ScaleIndex;
 static const uint32_t MAX_SCALE = 65536;
 
 static bool absComp(double a, double b) {
@@ -17,7 +17,7 @@ static bool absComp(double a, double b) {
 TScaler::TScaler() {
     if (ScaleIndex.empty()) {
         for (int i = 0; i < 64; i++) {
-            ScaleIndex[ScaleTable[i] * 256] = i;
+            ScaleIndex[ScaleTable[i]] = i;
         }
     }
 }
@@ -41,12 +41,14 @@ vector<TScaledBlock> TScaler::Scale(const vector<double>& specs, const TBlockSiz
                     }
                 }
             }
-            const map<uint32_t, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec * 256);
-            const double scaleFactor = scaleIter->first / 256.0;
+            const map<double, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
+            const double scaleFactor = scaleIter->first;
             const uint8_t scaleFactorIndex = scaleIter->second;
             scaledBlocks.push_back(TScaledBlock(scaleFactorIndex));
             for (uint16_t specNum = specNumStart; specNum < specNumEnd; ++specNum) {
-            const double scaledValue = specs[specNum] / scaleFactor;
+                const double scaledValue = specs[specNum] / scaleFactor;
+                if (scaledValue > 1.0)
+                    cerr << "got "<< scaledValue << " value - wrong scalling" << endl;
                 scaledBlocks.back().Values.push_back(scaledValue);
 			}
 		}

@@ -41,6 +41,9 @@ class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
     double PcmBufMid[2][256 + 16];
     double PcmBufHi[2][512 + 16];
 
+    int32_t PcmValueMax = 32767;
+    int32_t PcmValueMin = -32767;
+
     Atrac1SynthesisFilterBank<double> SynthesisFilterBank[2];
     Atrac1SplitFilterBank<double> SplitFilterBank[2];
 

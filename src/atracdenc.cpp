@@ -158,6 +158,11 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
             IMdct(&specs[0], mode, &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             SynthesisFilterBank[channel].Synthesis(&sum[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             for (int i = 0; i < NumSamples; ++i) {
+                if (sum[i] > PcmValueMax)
+                    sum[i] = PcmValueMax;
+                if (sum[i] < PcmValueMin)
+                    sum[i] = PcmValueMin;
+
                 data[i][srcChannels - 1-channel] = sum[i];
             }
         }
