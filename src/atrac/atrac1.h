@@ -34,6 +34,13 @@ protected:
 
     static double ScaleTable[64];
     static double SineWindow[32];
+    uint32_t BfuToBand(uint32_t i) {
+        if (i < 20)
+            return 0;
+        if (i < 36)
+            return 1;
+        return 2;
+    }
 public:
     TAtrac1Data() {
         if (ScaleTable[0] == 0) {

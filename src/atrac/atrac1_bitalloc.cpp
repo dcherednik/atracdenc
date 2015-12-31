@@ -17,6 +17,12 @@ static const uint32_t FixedBitAllocTableLong[MAX_BFUS] = {
     4, 4, 3, 3, 3, 3, 3, 3, 2, 2, 2, 1, 1, 0, 0, 0
 };
 
+static const uint32_t FixedBitAllocTableShort[MAX_BFUS] = {
+    6, 6, 6, 6,  6, 6, 6, 6,  6, 6, 6, 6,  6, 6, 6, 6,  6, 6, 6, 6,
+    6, 6, 6, 6,  5, 5, 5, 5,  5, 5, 5, 5,  5, 5, 5, 5,
+    4, 4, 4, 4, 4, 4, 4, 4,   0, 0, 0, 0, 0, 0, 0, 0
+};
+
 static const uint32_t BitBoostMask[MAX_BFUS] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
@@ -96,10 +102,11 @@ uint32_t TBitsBooster::ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint3
 }
 
 
-vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift) {
+vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift, const TBlockSize& blockSize) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (int i = 0; i < bitsPerEachBlock.size(); ++i) {
-        int tmp = spread * ( (double)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * (FixedBitAllocTableLong[i]) - shift;
+        const uint32_t fix = blockSize.LogCount[BfuToBand(i)] ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
+        int tmp = spread * ( (double)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
         if (tmp > 16) {
             bitsPerEachBlock[i] = 16;
         } else if (tmp < 2) {
@@ -163,7 +170,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
 
         bool bfuNumChanged = false;
         for (;;) {
-            const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, BfuAmountTab[bfuIdx], spread, shift);
+            const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, BfuAmountTab[bfuIdx], spread, shift, blockSize);
             uint32_t bitsUsed = 0;
             for (int i = 0; i < tmpAlloc.size(); i++) {
                 bitsUsed += SpecsPerBlock[i] * tmpAlloc[i];
