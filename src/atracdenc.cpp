@@ -163,7 +163,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
                 if (sum[i] < PcmValueMin)
                     sum[i] = PcmValueMin;
 
-                data[i][srcChannels - 1-channel] = sum[i];
+                data[i][channel] = sum[i];
             }
         }
 
