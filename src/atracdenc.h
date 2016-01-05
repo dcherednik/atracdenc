@@ -33,9 +33,9 @@ public:
     {}
 };
 
-class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
-    bool MixChannel;
+class TAtrac1Processor : public IProcessor<double>, public TAtrac1MDCT, public virtual TAtrac1Data {
     TAeaPtr Aea;
+    const TAtrac1EncodeSettings Settings;
 
     double PcmBufLow[2][256 + 16];
     double PcmBufMid[2][256 + 16];
@@ -79,9 +79,9 @@ class TAtrac1Processor : public TAtrac1MDCT, public virtual TAtrac1Data {
     NAtrac1::TScaler Scaler;
 
 public:
-    TAtrac1Processor(TAeaPtr&& aea, bool mono = false);
-    TPCMEngine<double>::TProcessLambda GetDecodeLambda();
+    TAtrac1Processor(TAeaPtr&& aea, TAtrac1EncodeSettings&& settings);
+    TPCMEngine<double>::TProcessLambda GetDecodeLambda() override;
 
-    TPCMEngine<double>::TProcessLambda GetEncodeLambda(const TAtrac1EncodeSettings& settings);
+    TPCMEngine<double>::TProcessLambda GetEncodeLambda() override;
 };
 }

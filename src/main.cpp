@@ -134,33 +134,35 @@ int main(int argc, char* const* argv) {
         return 1;
     }
 
-    TWavPtr wavIO;
-    TAeaPtr aeaIO;
     TPCMEngine<double>* pcmEngine = nullptr;
+    IProcessor<double>* atracProcessor;
     uint64_t totalSamples = 0;
+    TWavPtr wavIO;
     if (mode == E_ENCODE) {
         wavIO = TWavPtr(new TWav(inFile));
         const int numChannels = wavIO->GetChannelNum();
         totalSamples = wavIO->GetTotalSamples();
         //TODO: recheck it
-        aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, numChannels * totalSamples / 512));
+        TAeaPtr aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, numChannels * totalSamples / 512));
         pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
         cout << "Input file: " << inFile << "\n Channels: " << numChannels << "\n SampleRate: " << wavIO->GetSampleRate() << "\n TotalSamples: " << totalSamples << endl;
+        atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
     } else if (mode == E_DECODE) {
-        aeaIO = TAeaPtr(new TAea(inFile));
+        TAeaPtr aeaIO = TAeaPtr(new TAea(inFile));
         totalSamples = aeaIO->GetLengthInSamples();
         uint32_t length = aeaIO->GetLengthInSamples();
         cout << "Name: " << aeaIO->GetName() << "\n Channels: " << aeaIO->GetChannelNum() << "\n Length: " << length << endl;
         wavIO = TWavPtr(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
         pcmEngine = new TPCMEngine<double>(4096, aeaIO->GetChannelNum(), TPCMEngine<double>::TWriterPtr(wavIO->GetPCMWriter<double>()));
+        atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
     } else {
         cout << "Processing mode was not specified" << endl;
         return 1;
     }
 
-    TAtrac1Processor atrac1Processor(move(aeaIO), mono);
-    auto atracLambda = (mode == E_DECODE) ? atrac1Processor.GetDecodeLambda() :
-        atrac1Processor.GetEncodeLambda(TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
+    auto atracLambda = (mode == E_DECODE) ? atracProcessor->GetDecodeLambda() :
+        atracProcessor->GetEncodeLambda();
+
     uint64_t processed = 0;
     try {
         while (totalSamples > (processed = pcmEngine->ApplyProcess(512, atracLambda)))

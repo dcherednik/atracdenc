@@ -22,11 +22,10 @@ static vector<double> invertSpectr(double* in) {
     return buf;
 }
 
-TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, bool mono)
-    : MixChannel(mono)
-    , Aea(std::move(aea))
+TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, TAtrac1EncodeSettings&& settings)
+    : Aea(std::move(aea))
+    , Settings(std::move(settings))
 {
-    (void)MixChannel; //TODO
 }
 
 static void vector_fmul_window(double *dst, const double *src0,
@@ -171,13 +170,17 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 }
 
 
-TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtrac1EncodeSettings& settings) {
+TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
     vector<IAtrac1BitAlloc*> bitAlloc;
-    for (int i = 0; i < srcChannels; i++)
-        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), settings.GetBfuIdxConst(), settings.GetFastBfuNumSearch()));
+    for (int i = 0; i < srcChannels; i++) {
+        TAea* atrac1container = dynamic_cast<TAea*>(Aea.get());
+        if (atrac1container == nullptr)
+            abort();
+        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(atrac1container, Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
+    }
 
-    return [this, srcChannels, bitAlloc, settings](vector<double>* data) {
+    return [this, srcChannels, bitAlloc](vector<double>* data) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
             vector<double> specs(512);
@@ -188,7 +191,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtra
             SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
             uint32_t windowMask = 0;
-            if (settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
+            if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
 
                 const vector<double>& invMid = invertSpectr<128>(&PcmBufMid[channel][0]);
@@ -200,7 +203,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda(const TAtra
                 //std::cout << "trans: " << windowMask << std::endl;
             } else {
                 //no transient detection, use given mask
-                windowMask = settings.GetWindowMask();
+                windowMask = Settings.GetWindowMask();
             }
             const TBlockSize blockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
 

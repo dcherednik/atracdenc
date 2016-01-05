@@ -5,6 +5,7 @@
 #include <array>
 #include <memory>
 
+#include "compressed_io.h"
 
 
 class TAeaIOError : public std::exception {
@@ -25,7 +26,10 @@ public:
 class TAeaFormatError {
 };
 
-class TAea {
+static const int AEA_FRAME_SZ = 212;
+typedef ICompressedIO<AEA_FRAME_SZ> IAtrac1IO;
+
+class TAea : public IAtrac1IO {
     static constexpr uint32_t AeaMetaSize = 2048;
     struct TMeta {
         FILE* AeaFile;
@@ -35,17 +39,15 @@ class TAea {
     static TAea::TMeta CreateMeta(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
     bool FirstWrite = true;
 public:
-        typedef std::array<char, 212> TFrame;
 		TAea(const std::string& filename);
         TAea(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
 		~TAea();
-        std::unique_ptr<TFrame> ReadFrame(); 
-//        void WriteFrame(std::unique_ptr<TAea::TFrame>&& frame);
-        void WriteFrame(std::vector<char> data);
-        std::string GetName() const;
-        int GetChannelNum() const;
-        uint32_t GetLengthInSamples() const;
+        std::unique_ptr<TFrame> ReadFrame() override; 
+        void WriteFrame(std::vector<char> data) override;
+        std::string GetName() const override;
+        int GetChannelNum() const override;
+        long long GetLengthInSamples() const override;
 };
 
-typedef std::unique_ptr<TAea> TAeaPtr;
+typedef std::unique_ptr<IAtrac1IO> TAeaPtr;
 

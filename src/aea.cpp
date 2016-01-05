@@ -106,7 +106,7 @@ void TAea::WriteFrame(std::vector<char> data) {
 int TAea::GetChannelNum() const {
     return Meta.AeaHeader[264];
 }
-uint32_t TAea::GetLengthInSamples() const {
+long long TAea::GetLengthInSamples() const {
     const int fd = fileno(Meta.AeaFile);
     struct stat sb;
     fstat(fd, &sb);
