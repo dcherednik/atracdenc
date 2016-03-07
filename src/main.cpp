@@ -55,6 +55,7 @@ int main(int argc, char* const* argv) {
         { "bfuidxfast", no_argument, NULL, 2},
         { "notransient", optional_argument, NULL, 3},
         { "mono", no_argument, NULL, 'm'},
+        { "nostdout", no_argument, NULL, 4},
         { NULL, 0, NULL, 0}
     };
 
@@ -65,17 +66,15 @@ int main(int argc, char* const* argv) {
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
     bool mono = false;
+    bool nostdout = false;
     TAtrac1EncodeSettings::EWindowMode windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //all is long
     while ((ch = getopt_long(argc, argv, "edhi:o:m", longopts, NULL)) != -1) {
         switch (ch) {
             case 'e':
-                cout << "encode " << endl;
                 mode |= E_ENCODE;
                 break;
             case 'd':
-                cout << "decode" << endl;
-
                 mode |= E_DECODE;
                 break;
             case 'i':
@@ -83,7 +82,8 @@ int main(int argc, char* const* argv) {
                 break;
             case 'o':
                 outFile = optarg;
-                cout << "out: " << outFile<< endl;
+                if (outFile == "-")
+                    nostdout = true;
                 break;
             case 'm':
                 mono = true;
@@ -112,6 +112,9 @@ int main(int argc, char* const* argv) {
                     ((winMask & 1) ? "short": "long") << ", mid - " <<
                     ((winMask & 2) ? "short": "long") << ", hi - " <<
                     ((winMask & 4) ? "short": "long") << endl;
+                break;
+            case 4:
+                nostdout = true;
                 break;
 			default:
                 printUsage(myName);
@@ -145,18 +148,20 @@ int main(int argc, char* const* argv) {
         //TODO: recheck it
         TAeaPtr aeaIO = TAeaPtr(new TAea(outFile, "test", numChannels, numChannels * totalSamples / 512));
         pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
-        cout << "Input file: " << inFile << "\n Channels: " << numChannels << "\n SampleRate: " << wavIO->GetSampleRate() << "\n TotalSamples: " << totalSamples << endl;
+        if (!nostdout)
+            cout << "Input file: " << inFile << "\n Channels: " << numChannels << "\n SampleRate: " << wavIO->GetSampleRate() << "\n TotalSamples: " << totalSamples << endl;
         atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
     } else if (mode == E_DECODE) {
         TAeaPtr aeaIO = TAeaPtr(new TAea(inFile));
         totalSamples = aeaIO->GetLengthInSamples();
         uint32_t length = aeaIO->GetLengthInSamples();
-        cout << "Name: " << aeaIO->GetName() << "\n Channels: " << aeaIO->GetChannelNum() << "\n Length: " << length << endl;
+        if (!nostdout)
+            cout << "Name: " << aeaIO->GetName() << "\n Channels: " << aeaIO->GetChannelNum() << "\n Length: " << length << endl;
         wavIO = TWavPtr(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
         pcmEngine = new TPCMEngine<double>(4096, aeaIO->GetChannelNum(), TPCMEngine<double>::TWriterPtr(wavIO->GetPCMWriter<double>()));
         atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
     } else {
-        cout << "Processing mode was not specified" << endl;
+        cerr << "Processing mode was not specified" << endl;
         return 1;
     }
 
@@ -167,9 +172,11 @@ int main(int argc, char* const* argv) {
     try {
         while (totalSamples > (processed = pcmEngine->ApplyProcess(512, atracLambda)))
         {
-            printProgress(processed*100/totalSamples);
+            if (!nostdout)
+                printProgress(processed*100/totalSamples);
         }
-        cout << "\nDone" << endl;
+        if (!nostdout)
+            cout << "\nDone" << endl;
     }
     catch (TAeaIOError err) {
         cerr << "Aea IO fatal error: " << err.what() << endl;
