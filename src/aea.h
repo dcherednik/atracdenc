@@ -26,8 +26,7 @@ public:
 class TAeaFormatError {
 };
 
-static const int AEA_FRAME_SZ = 212;
-typedef ICompressedIO<AEA_FRAME_SZ> IAtrac1IO;
+typedef ICompressedIO IAtrac1IO;
 
 class TAea : public IAtrac1IO {
     static constexpr uint32_t AeaMetaSize = 2048;

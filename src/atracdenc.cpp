@@ -145,8 +145,8 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             std::unique_ptr<TAea::TFrame> frame(Aea->ReadFrame());
-            TBitStream bitstream(&(*frame.get())[0], frame->size());
-      //      cout << "frame size: " << bitstream.GetBufSize() << endl;
+
+            TBitStream bitstream(frame->Get(), frame->Size());
 
             TBlockSize mode(&bitstream);
             TAtrac1Dequantiser dequantiser;

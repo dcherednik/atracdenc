@@ -3,10 +3,25 @@
 #include <array>
 #include <string>
 
-template<int FRAME_SZ>
 class ICompressedIO {
 public:
-    typedef std::array<char, FRAME_SZ> TFrame;
+    class TFrame {
+        uint64_t Sz;
+        char* Data;
+        TFrame(const TFrame& src) = delete;
+        TFrame() = delete;
+    public:
+        TFrame(uint64_t sz)
+            : Sz(sz)
+        {
+            Data = new char[Sz];
+        }
+        ~TFrame() {
+            delete[] Data;
+        }
+        uint64_t Size() const { return Sz; }
+        char* Get() { return Data; }
+    };
     virtual void WriteFrame(std::vector<char> data) = 0;
     virtual std::unique_ptr<TFrame> ReadFrame() = 0;
     virtual std::string GetName() const = 0;

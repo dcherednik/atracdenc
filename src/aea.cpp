@@ -73,8 +73,8 @@ std::string TAea::GetName() const {
 }
 
 std::unique_ptr<TAea::TFrame> TAea::ReadFrame() {
-    std::unique_ptr<TAea::TFrame>frame(new TFrame);
-    if(fread(frame.get(), frame->size(), 1, Meta.AeaFile) != 1) {
+    std::unique_ptr<TAea::TFrame>frame(new TFrame(212));
+    if(fread(frame->Get(), frame->Size(), 1, Meta.AeaFile) != 1) {
         const int errnum = errno;
         fclose(Meta.AeaFile);
         throw TAeaIOError("Can't read AEA frame", errnum);
