@@ -1,5 +1,5 @@
 #include "atrac1_bitalloc.h"
-#include "atrac1_scale.h"
+#include "atrac_scale.h"
 #include "atrac1.h"
 #include <math.h>
 #include <cassert>

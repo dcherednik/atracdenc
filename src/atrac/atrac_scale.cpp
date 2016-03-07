@@ -1,34 +1,23 @@
-#include "atrac1_scale.h"
+#include "atrac_scale.h"
+#include "atrac1.h"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
-namespace NAtrac1 {
+namespace NAtracDEnc {
 using std::vector;
 using std::map;
 
 using namespace std;
-map<double, uint8_t> TScaler::ScaleIndex;
 static const uint32_t MAX_SCALE = 65536;
 
-static bool absComp(double a, double b) {
-    return abs(a) < abs(b);
-}
-
-TScaler::TScaler() {
-    if (ScaleIndex.empty()) {
-        for (int i = 0; i < 64; i++) {
-            ScaleIndex[ScaleTable[i]] = i;
-        }
-    }
-}
-
-vector<TScaledBlock> TScaler::Scale(const vector<double>& specs, const TBlockSize& blockSize) {
+template<class TBaseData>
+vector<TScaledBlock> TScaler<TBaseData>::Scale(const vector<double>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
-    for (uint8_t bandNum = 0; bandNum < QMF_BANDS; ++bandNum) {
+    for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
         const bool shortWinMode = !!blockSize.LogCount[bandNum];
-        for (uint8_t blockNum = BlocksPerBand[bandNum]; blockNum < BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = shortWinMode ? SpecsStartShort[blockNum] : SpecsStartLong[blockNum];
-            const uint16_t specNumEnd = specNumStart + SpecsPerBlock[blockNum];
+        for (uint8_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {
+            const uint16_t specNumStart = shortWinMode ? this->SpecsStartShort[blockNum] : this->SpecsStartLong[blockNum];
+            const uint16_t specNumEnd = specNumStart + this->SpecsPerBlock[blockNum];
             double maxAbsSpec = 0;
             for (uint16_t curSpec = specNumStart; curSpec < specNumEnd; ++curSpec) {
                 const double absSpec = abs(specs[curSpec]);
@@ -55,4 +44,5 @@ vector<TScaledBlock> TScaler::Scale(const vector<double>& specs, const TBlockSiz
 	}
     return scaledBlocks;
 }
+template class TScaler<TAtrac1Data>;
 }

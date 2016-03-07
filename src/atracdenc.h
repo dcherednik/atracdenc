@@ -5,7 +5,7 @@
 #include "transient_detector.h"
 #include "atrac/atrac1.h"
 #include "atrac/atrac1_qmf.h"
-#include "atrac/atrac1_scale.h"
+#include "atrac/atrac_scale.h"
 #include "mdct/mdct.h"
 
 #include <assert.h>
@@ -76,7 +76,7 @@ class TAtrac1Processor : public IProcessor<double>, public TAtrac1MDCT, public v
     };
     TAtrac1Processor::TTransientDetectors TransientDetectors;
  
-    NAtrac1::TScaler Scaler;
+    TScaler<TAtrac1Data> Scaler;
 
 public:
     TAtrac1Processor(TAeaPtr&& aea, TAtrac1EncodeSettings&& settings);

@@ -31,6 +31,7 @@ protected:
 	static const uint32_t BitsPerIDWL = 4;
 	static const uint32_t BitsPerIDSF = 6;
     static const uint32_t NumSamples = 512;
+    static const uint8_t NumQMF = QMF_BANDS;
 
     static double ScaleTable[64];
     static double SineWindow[32];

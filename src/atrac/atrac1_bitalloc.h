@@ -1,5 +1,5 @@
 #pragma once
-#include "atrac1_scale.h"
+#include "atrac_scale.h"
 #include "../bitstream/bitstream.h"
 #include "../aea.h"
 #include "../atrac/atrac1.h"
@@ -8,6 +8,7 @@
 #include <cstdint>
 
 namespace NAtrac1 {
+using NAtracDEnc::TScaledBlock;
 
 class IAtrac1BitAlloc {
 public:
