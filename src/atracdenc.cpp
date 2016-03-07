@@ -140,7 +140,7 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
 }
 
 TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
-    return [this](vector<double>* data) {
+    return [this](double* data) {
         double sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
@@ -162,7 +162,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
                 if (sum[i] < PcmValueMin)
                     sum[i] = PcmValueMin;
 
-                data[i][channel] = sum[i];
+                data[i * srcChannels + channel] = sum[i];
             }
         }
 
@@ -180,12 +180,12 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(atrac1container, Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
-    return [this, srcChannels, bitAlloc](vector<double>* data) {
+    return [this, srcChannels, bitAlloc](double* data) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
             vector<double> specs(512);
             for (int i = 0; i < NumSamples; ++i) {
-                src[i] = data[i][channel];
+                src[i] = data[i * srcChannels + channel];
             }
 
             SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);

@@ -29,12 +29,12 @@ public:
 template<class T>
 class TWavPcmReader : public IPCMReader<T> {
 public:
-    typedef std::function<void(std::vector<std::vector<T>>& data, const uint32_t size)> TLambda;
+    typedef std::function<void(TPCMBuffer<T>& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmReader(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Read(std::vector<std::vector<T>>& data , const uint32_t size) const override {
+    void Read(TPCMBuffer<T>& data , const uint32_t size) const override {
         Lambda(data, size);
     }
 };
@@ -42,12 +42,12 @@ public:
 template<class T>
 class TWavPcmWriter : public IPCMWriter<T> {
 public:
-    typedef std::function<void(const std::vector<std::vector<T>>& data, const uint32_t size)> TLambda;
+    typedef std::function<void(const TPCMBuffer<T>& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmWriter(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Write(const std::vector<std::vector<T>>& data , const uint32_t size) const override {
+    void Write(const TPCMBuffer<T>& data , const uint32_t size) const override {
         Lambda(data, size);
     }
 };
@@ -76,24 +76,24 @@ typedef std::unique_ptr<TWav> TWavPtr;
 
 template<class T>
 IPCMReader<T>* TWav::GetPCMReader() const {
-    return new TWavPcmReader<T>([this](std::vector<std::vector<T>>& data, const uint32_t size) {
-        if (data[0].size() != File.channels())
+    return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
+        if (data.Channels() != File.channels())
             throw TWrongReadBuffer(); 
-        uint32_t dataRead = 0;
-        for (uint32_t i = 0; i < size; i++) {
-            dataRead += File.readf(&data[i][0], 1);
+        if (size_t read = File.readf(data[0], size) != size) {
+            assert(read < size);
+            //fprintf(stderr, "to zero: %d\n", size-read);
+            data.Zero(read, size - read);
         }
     });
 }
 
 template<class T>
 IPCMWriter<T>* TWav::GetPCMWriter() {
-    return new TWavPcmWriter<T>([this](const std::vector<std::vector<T>>& data, const uint32_t size) {
-        if (data[0].size() != File.channels())
+    return new TWavPcmWriter<T>([this](const TPCMBuffer<T>& data, const uint32_t size) {
+        if (data.Channels() != File.channels())
             throw TWrongReadBuffer();
-        uint32_t dataWrite = 0;
-        for (uint32_t i = 0; i < size; i++) {
-            dataWrite += File.writef(&data[i][0], 1);
+        if (File.writef(data[0], size) != size) {
+            fprintf(stderr, "can't write block\n");
         }
     });
 }

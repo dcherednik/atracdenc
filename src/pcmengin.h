@@ -27,9 +27,43 @@ class TEndOfRead : public std::exception {
 };
 
 template <class T>
+class TPCMBuffer {
+    std::vector<T> Buf_;
+    int32_t NumChannels;
+public:
+    TPCMBuffer(const int32_t bufSize, const int32_t numChannels)
+       : NumChannels(numChannels)
+    {
+        Buf_.resize(bufSize*numChannels);
+    }
+    size_t Size() {
+        return Buf_.size() / NumChannels;
+    }
+    T* operator[](size_t pos) {
+        size_t rpos = pos * NumChannels;
+        if (rpos >= Buf_.size())
+            abort();
+        return &Buf_[rpos];
+    }
+    const T* operator[](size_t pos) const {
+        size_t rpos = pos * NumChannels;
+        if (rpos >= Buf_.size())
+            abort();
+        return &Buf_[rpos];
+    }
+    size_t Channels() const {
+        return NumChannels;
+    }
+    void Zero(size_t pos, size_t len) {
+        assert((pos + len) * NumChannels <= Buf_.size());
+        memset(&Buf_[pos*NumChannels], 0, len*NumChannels);
+    }
+};
+
+template <class T>
 class IPCMWriter {
     public:
-        virtual void Write(const std::vector<std::vector<T>>& data , const uint32_t size) const = 0;
+        virtual void Write(const TPCMBuffer<T>& data , const uint32_t size) const = 0;
         IPCMWriter() {};
         virtual ~IPCMWriter() {};
 };
@@ -37,72 +71,61 @@ class IPCMWriter {
 template <class T>
 class IPCMReader {
     public:
-        virtual void Read(std::vector<std::vector<T>>& data , const uint32_t size) const = 0;
+        virtual void Read(TPCMBuffer<T>& data , const uint32_t size) const = 0;
         IPCMReader() {};
         virtual ~IPCMReader() {};
 };
 
-
-
 template<class T>
 class TPCMEngine {
-    std::vector<std::vector<T>> Buffers;
 public:
     typedef std::unique_ptr<IPCMWriter<T>> TWriterPtr;
     typedef std::unique_ptr<IPCMReader<T>> TReaderPtr;
 private:
+    TPCMBuffer<T> Buffer;
     TWriterPtr Writer;
     TReaderPtr Reader;
     uint64_t Processed = 0;
 public:
-        TPCMEngine(const int32_t bufSize, const int32_t numChannels) {
-            InitBuffers(bufSize, numChannels);
+        TPCMEngine(const int32_t bufSize, const int32_t numChannels)
+           : Buffer(bufSize, numChannels) {
         }
         TPCMEngine(const int32_t bufSize, const int32_t numChannels, TWriterPtr&& writer)
-            : Writer(std::move(writer)) {
-            InitBuffers(bufSize, numChannels);
+            : Buffer(bufSize, numChannels)
+            , Writer(std::move(writer)) {
         }
         TPCMEngine(const int32_t bufSize, const int32_t numChannels, TReaderPtr&& reader)
-            : Reader(std::move(reader)) {
-            InitBuffers(bufSize, numChannels);
+            : Buffer(bufSize, numChannels)
+            , Reader(std::move(reader)) {
         }
         TPCMEngine(const int32_t bufSize, const int32_t numChannels, TWriterPtr&& writer, TReaderPtr&& reader)
-            : Writer(std::move(writer))
+            : Buffer(bufSize, numChannels)
+            , Writer(std::move(writer))
             , Reader(std::move(reader)) {
-            InitBuffers(bufSize, numChannels);
         }
-        typedef std::function<void(std::vector<T>* data)> TProcessLambda; 
+        typedef std::function<void(T* data)> TProcessLambda; 
 
         uint64_t ApplyProcess(int step, TProcessLambda lambda) {
-            if (step > Buffers.size()) {
+            if (step > Buffer.Size()) {
                 throw TPCMBufferTooSmall();
             }
             if (Reader) {
-                const uint32_t sizeToRead = Buffers.size();
-                Reader->Read(Buffers, sizeToRead);
+                const uint32_t sizeToRead = Buffer.Size();
+                Reader->Read(Buffer, sizeToRead);
             }
             int32_t lastPos = 0;
-            for (int i = 0; i + step <= Buffers.size(); i+=step) {
-                lambda(&Buffers[i]);
+            for (int i = 0; i + step <= Buffer.Size(); i+=step) {
+                lambda(Buffer[i]);
                 lastPos = i + step;
             }
-            assert(lastPos == Buffers.size());
+            assert(lastPos == Buffer.Size());
             if (Writer) {
-                Writer->Write(Buffers, lastPos);
+                Writer->Write(Buffer, lastPos);
             }
             Processed += lastPos;
             return Processed;
 
         }
-
-
-private:
-    void InitBuffers(const int32_t bufSize, const int32_t numChannels) {
-        Buffers.resize(bufSize);
-        for (std::vector<T>& channel : Buffers) {
-            channel.resize(numChannels);
-        }
-    }
 };
 
 template<class T>
