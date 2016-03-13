@@ -6,6 +6,7 @@
 #include "../atrac/atrac1.h"
 #include "atrac_scale.h"
 #include <vector>
+#include <utility>
 
 static const uint32_t MAXSPECPERBLOCK = 128;
 
@@ -13,8 +14,9 @@ class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
     TOma* Container;
     const TContainerParams Params;
     std::vector<char> OutBuffer;
-    void CLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream);
-    void VLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream);
+    uint32_t CLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream);
+    uint32_t VLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream);
+    std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const std::vector<NAtracDEnc::TScaledBlock>& scaledBlocks, const std::vector<uint32_t>& precisionPerEachBlocks, int* mantisas);
     void EncodeSpecs(const std::vector<NAtracDEnc::TScaledBlock>& scaledBlocks, const std::vector<uint32_t>& bitsPerEachBlock, NBitStream::TBitStream* bitStream);
 public:
     TAtrac3BitStreamWriter(TOma* container, const TContainerParams& params) //no mono mode for atrac3
