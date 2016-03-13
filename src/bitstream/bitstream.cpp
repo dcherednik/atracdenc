@@ -11,7 +11,6 @@ TBitStream::TBitStream(const char* buf, int size)
 {}
 TBitStream::TBitStream()
 {}
-
 void TBitStream::Write(unsigned long long val, int n) {
 	if (n > 23 || n < 0)
 		abort();
@@ -29,10 +28,30 @@ void TBitStream::Write(unsigned long long val, int n) {
 
 	for (int i = 0; i < n/8 + (overlap ? 2 : 1); ++i) {
 		Buf[bytesPos+i] |= t.bytes[7-i];
+
+  //      std::cout << "bufPos: "<< bytesPos+i << " buf: " << (int)Buf[bytesPos+i] << std::endl;
 	}
 
     BitsUsed += n;
 }
+/*
+void TBitStream::Write(unsigned long long val, int n) {
+    if (n > 23 || n < 0)
+        abort();
+    const int bitsLeft = Buf.size() * 8 - BitsUsed;
+    const int bitsReq = n - bitsLeft;
+    const int bytesPos = BitsUsed / 8;
+    const int overlap = BitsUsed % 8;
+
+    if (overlap || bitsReq >= 0) {
+        Buf.resize(Buf.size() + (bitsReq / 8 + (overlap ? 2 : 1 )), 0);
+    }
+    TMix t;
+    t.ull   = (val << (64 - n)) >> overlap;
+    *(unsigned long long*)&Buf[bytesPos-8] |= t.ull;
+    BitsUsed += n;
+}
+*/
 unsigned long long TBitStream::Read(int n) {
 	if (n >23 || n < 0)
 		abort();

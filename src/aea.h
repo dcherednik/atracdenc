@@ -48,5 +48,4 @@ public:
         long long GetLengthInSamples() const override;
 };
 
-typedef std::unique_ptr<IAtrac1IO> TAeaPtr;
 

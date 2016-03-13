@@ -2,19 +2,33 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cmath>
+#include <cassert>
+#include <iostream>
 namespace NAtracDEnc {
 
-static double calculateRMS(const double* in, uint32_t n) {
-    double s = 0;
+using std::vector;
+static TFloat calculateRMS(const TFloat* in, uint32_t n) {
+    TFloat s = 0;
     for (uint32_t i = 0; i < n; i++) {
-        s += in[i] * in[i];
+        s += (in[i] * in[i]);
     }
     s /= n;
     return sqrt(s);
 }
 
-void TTransientDetector::HPFilter(const double* in, double* out) {
-    static const double fircoef[] = {
+static TFloat calculatePeak(const TFloat* in, uint32_t n) {
+    TFloat s = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        TFloat absVal = std::abs(in[i]);
+        if (absVal > s)
+            s = absVal;
+    }
+        return s;
+}
+
+void TTransientDetector::HPFilter(const TFloat* in, TFloat* out) {
+    static const TFloat fircoef[] = {
         -8.65163e-18 * 2.0, -0.00851586 * 2.0, -6.74764e-18 * 2.0, 0.0209036 * 2.0,
         -3.36639e-17 * 2.0, -0.0438162 * 2.0, -1.54175e-17 * 2.0, 0.0931738 * 2.0,
         -5.52212e-17 * 2.0, -0.313819 * 2.0
@@ -34,10 +48,10 @@ void TTransientDetector::HPFilter(const double* in, double* out) {
 }
 
 
-bool TTransientDetector::Detect(const double* buf) {
+bool TTransientDetector::Detect(const TFloat* buf) {
     const uint32_t nBlocksToAnalize = NShortBlocks + 1;
-    double* rmsPerShortBlock = reinterpret_cast<double*>(alloca(sizeof(double) * nBlocksToAnalize));
-    std::vector<double> filtered(BlockSz);
+    TFloat* rmsPerShortBlock = reinterpret_cast<TFloat*>(alloca(sizeof(TFloat) * nBlocksToAnalize));
+    std::vector<TFloat> filtered(BlockSz);
     HPFilter(buf, filtered.data());
     bool trans = false;
     rmsPerShortBlock[0] = LastEnergy;
@@ -45,13 +59,25 @@ bool TTransientDetector::Detect(const double* buf) {
         rmsPerShortBlock[i] = 19.0 * log10(calculateRMS(&filtered[(i - 1) * ShortSz], ShortSz));
         if (rmsPerShortBlock[i] - rmsPerShortBlock[i - 1] > 16) {
             trans = true;
+            LastTransientPos = i;
         }
         if (rmsPerShortBlock[i - 1] - rmsPerShortBlock[i] > 20) {
             trans = true;
+            LastTransientPos = i;
         }
     }
     LastEnergy = rmsPerShortBlock[NShortBlocks];
     return trans;
 }
 
+std::vector<TFloat> AnalyzeGain(const TFloat* in, const uint32_t len, const uint32_t maxPoints, bool useRms) {
+    vector<TFloat> res;
+    const uint32_t step = len / maxPoints;
+    for (uint32_t pos = 0; pos < len; pos += step) {
+        TFloat rms = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
+        res.emplace_back(rms);
+    }
+    return res;
 }
+
+} //namespace NAtracDEnc

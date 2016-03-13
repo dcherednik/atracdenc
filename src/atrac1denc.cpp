@@ -1,35 +1,27 @@
 #include <vector>
 
-#include "atracdenc.h"
+#include "atrac1denc.h"
 #include "bitstream/bitstream.h"
 #include "atrac/atrac1.h"
 #include "atrac/atrac1_dequantiser.h"
 #include "atrac/atrac1_qmf.h"
 #include "atrac/atrac1_bitalloc.h"
+#include "util.h"
 
 namespace NAtracDEnc {
-using namespace std;
 using namespace NBitStream;
 using namespace NAtrac1;
 using namespace NMDCT;
+using std::vector;
 
-template<int N>
-static vector<double> invertSpectr(double* in) {
-    vector<double> buf(N);
-    memcpy(&buf[0], in, N * sizeof(double));
-    for (int i = 0; i < N; i+=2)
-        buf[i] *= -1;
-    return buf;
-}
-
-TAtrac1Processor::TAtrac1Processor(TAeaPtr&& aea, TAtrac1EncodeSettings&& settings)
+TAtrac1Processor::TAtrac1Processor(TCompressedIOPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
 {
 }
 
-static void vector_fmul_window(double *dst, const double *src0,
-                                const double *src1, const double *win, int len)
+static void vector_fmul_window(TFloat *dst, const TFloat *src0,
+                                const TFloat *src1, const TFloat *win, int len)
 {
     int i, j;
 
@@ -38,21 +30,21 @@ static void vector_fmul_window(double *dst, const double *src0,
     src0 += len;
 
     for (i = -len, j = len - 1; i < 0; i++, j--) {
-        double s0 = src0[i];
-        double s1 = src1[j];
-        double wi = win[i];
-        double wj = win[j];
+        TFloat s0 = src0[i];
+        TFloat s1 = src1[j];
+        TFloat wi = win[i];
+        TFloat wj = win[j];
         dst[i] = s0 * wj - s1 * wi;
         dst[j] = s0 * wi + s1 * wj;
     }
 }
 
-vector<double> midct(double* x, int N) {
-    vector<double> res;
+vector<TFloat> midct(TFloat* x, int N) {
+    vector<TFloat> res;
     for (int n = 0; n < 2 * N; n++) {
-        double sum = 0;
+        TFloat sum = 0;
         for (int k = 0; k < N; k++) {
-            sum += (x[k] * cos((M_PI/N) * ((double)n + 0.5 + N/2) * ((double)k + 0.5)));
+            sum += (x[k] * cos((M_PI/N) * ((TFloat)n + 0.5 + N/2) * ((TFloat)k + 0.5)));
         }
 
         res.push_back(sum);
@@ -60,36 +52,32 @@ vector<double> midct(double* x, int N) {
     return res;
 }
 
-void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, const TBlockSize& blockSize) {
+void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize) {
     uint32_t pos = 0;
-    for (uint32_t band = 0; band < QMF_BANDS; band++) {
+    for (uint32_t band = 0; band < NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << blockSize.LogCount[band];
-        double* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
+        TFloat* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
         uint32_t bufSz = (band == 2) ? 256 : 128; 
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t winStart = (numMdctBlocks == 1) ? ((band == 2) ? 112 : 48) : 0;
         //compensate level for 3rd band in case of short window
-        const double multiple = (numMdctBlocks != 1 && band == 2) ? 2.0 : 1.0;
-        vector<double> tmp(512);
+        const TFloat multiple = (numMdctBlocks != 1 && band == 2) ? 2.0 : 1.0;
+        vector<TFloat> tmp(512);
         uint32_t blockPos = 0;
 
         for (size_t k = 0; k < numMdctBlocks; ++k) {
-            memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(double));
+            memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(TFloat));
             for (size_t i = 0; i < 32; i++) {
                 srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[blockPos + blockSz - 32 + i];
                 srcBuf[blockPos + blockSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[blockPos + blockSz - 32 + i];
             }
-            memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(double));
-            const vector<double>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
+            memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(TFloat));
+            const vector<TFloat>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
             for (size_t i = 0; i < sp.size(); i++) {
                 Specs[blockPos + pos + i] = sp[i] * multiple;
             }
             if (band) {
-                for (uint32_t j = 0; j < sp.size() / 2; j++) {
-                    double tmp = Specs[blockPos + pos +j];
-                    Specs[blockPos + pos + j] = Specs[blockPos + pos + sp.size() - 1 -j];
-                    Specs[blockPos + pos + sp.size() - 1 -j] = tmp;
-                }
+                SwapArray(&Specs[blockPos + pos], sp.size());
             }
 
             blockPos += 32;
@@ -97,29 +85,23 @@ void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, 
         pos += bufSz;
     } 
 }
-void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, double* mid, double* hi) {
+void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi) {
     uint32_t pos = 0;
-    for (size_t band = 0; band < QMF_BANDS; band++) {
+    for (size_t band = 0; band < NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
         const uint32_t bufSz = (band == 2) ? 256 : 128;
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t start = 0;
 
-        double* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
+        TFloat* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
 
-        vector<double> invBuf(512);
-        double* prevBuf = &dstBuf[bufSz * 2  - 16];
+        vector<TFloat> invBuf(512);
+        TFloat* prevBuf = &dstBuf[bufSz * 2  - 16];
         for (uint32_t block = 0; block < numMdctBlocks; block++) {
-
             if (band) {
-                for (uint32_t j = 0; j < blockSz/2; j++) {
-                    double tmp = Specs[pos+j];
-                    Specs[pos+j] = Specs[pos + blockSz - 1 -j];
-                    Specs[pos + blockSz - 1 -j] = tmp;
-                }
+                SwapArray(&Specs[pos], blockSz);
             }
-
-            vector<double> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
+            vector<TFloat> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
             for (size_t i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];
             }
@@ -131,7 +113,7 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
             pos += blockSz;
         }
         if (numMdctBlocks == 1)
-            memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(double));
+            memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(TFloat));
 
         for (size_t j = 0; j < 16; j++) {
             dstBuf[bufSz*2 - 16  + j] = invBuf[bufSz - 16 + j];
@@ -139,9 +121,9 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
     }
 }
 
-TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
-    return [this](double* data) {
-        double sum[512];
+TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
+    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
+        TFloat sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             std::unique_ptr<TAea::TFrame> frame(Aea->ReadFrame());
@@ -150,7 +132,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 
             TBlockSize mode(&bitstream);
             TAtrac1Dequantiser dequantiser;
-            vector<double> specs;
+            vector<TFloat> specs;
             specs.resize(512);;
             dequantiser.Dequant(&bitstream, mode, &specs[0]);
 
@@ -170,7 +152,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 }
 
 
-TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
+TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
     vector<IAtrac1BitAlloc*> bitAlloc;
     for (size_t i = 0; i < srcChannels; i++) {
@@ -180,10 +162,10 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(atrac1container, Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
-    return [this, srcChannels, bitAlloc](double* data) {
+    return [this, srcChannels, bitAlloc](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
-            double src[NumSamples];
-            vector<double> specs(512);
+            TFloat src[NumSamples];
+            vector<TFloat> specs(512);
             for (size_t i = 0; i < NumSamples; ++i) {
                 src[i] = data[i * srcChannels + channel];
             }
@@ -194,10 +176,10 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
             if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
 
-                const vector<double>& invMid = invertSpectr<128>(&PcmBufMid[channel][0]);
+                const vector<TFloat>& invMid = InvertSpectr<128>(&PcmBufMid[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 1).Detect(&invMid[0]) << 1;
 
-                const vector<double>& invHi = invertSpectr<256>(&PcmBufHi[channel][0]);
+                const vector<TFloat>& invHi = InvertSpectr<256>(&PcmBufHi[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 2).Detect(&invHi[0]) << 2;
 
                 //std::cout << "trans: " << windowMask << std::endl;
@@ -207,15 +189,10 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
             }
             const TBlockSize blockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
 
-            //for (int i = 0; i < 256; ++i) {
-            //    std::cout << PcmBufHi[channel][i] << std::endl;
-            //}
-            //std::cout<< "============" << std::endl;
             Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSize);
-            bitAlloc[channel]->Write(Scaler.Scale(specs, blockSize), blockSize);
+            bitAlloc[channel]->Write(Scaler.ScaleFrame(specs, blockSize), blockSize);
         }
     };
 }
 
-
-}
+} //namespace NAtracDEnc

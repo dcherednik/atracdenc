@@ -30,9 +30,9 @@ class TEndOfRead : public std::exception {
 template <class T>
 class TPCMBuffer {
     std::vector<T> Buf_;
-    int32_t NumChannels;
+    uint16_t NumChannels;
 public:
-    TPCMBuffer(const int32_t bufSize, const int32_t numChannels)
+    TPCMBuffer(const int32_t bufSize, const uint32_t numChannels)
        : NumChannels(numChannels)
     {
         Buf_.resize(bufSize*numChannels);
@@ -52,7 +52,7 @@ public:
             abort();
         return &Buf_[rpos];
     }
-    size_t Channels() const {
+    uint16_t Channels() const {
         return NumChannels;
     }
     void Zero(size_t pos, size_t len) {
@@ -82,6 +82,9 @@ class TPCMEngine {
 public:
     typedef std::unique_ptr<IPCMWriter<T>> TWriterPtr;
     typedef std::unique_ptr<IPCMReader<T>> TReaderPtr;
+    struct ProcessMeta {
+        const uint16_t Channels;
+    };
 private:
     TPCMBuffer<T> Buffer;
     TWriterPtr Writer;
@@ -104,7 +107,7 @@ public:
             , Writer(std::move(writer))
             , Reader(std::move(reader)) {
         }
-        typedef std::function<void(T* data)> TProcessLambda; 
+        typedef std::function<void(T* data, const ProcessMeta& meta)> TProcessLambda; 
 
         uint64_t ApplyProcess(size_t step, TProcessLambda lambda) {
             if (step > Buffer.Size()) {
@@ -115,8 +118,9 @@ public:
                 Reader->Read(Buffer, sizeToRead);
             }
             size_t lastPos = 0;
+            ProcessMeta meta = {Buffer.Channels()};
             for (size_t i = 0; i + step <= Buffer.Size(); i+=step) {
-                lambda(Buffer[i]);
+                lambda(Buffer[i], meta);
                 lastPos = i + step;
             }
             assert(lastPos == Buffer.Size());

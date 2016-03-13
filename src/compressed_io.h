@@ -2,6 +2,7 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <memory>
 
 class ICompressedIO {
 public:
@@ -29,3 +30,5 @@ public:
     virtual long long GetLengthInSamples() const = 0;
     virtual ~ICompressedIO() {}
 };
+
+typedef std::unique_ptr<ICompressedIO> TCompressedIOPtr;
