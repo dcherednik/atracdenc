@@ -140,7 +140,7 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
 }
 
 TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
-    return [this](double* data) {
+    return [this](double* data, const TPCMEngine<double>::ProcessMeta& meta) {
         double sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
@@ -180,7 +180,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(atrac1container, Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
-    return [this, srcChannels, bitAlloc](double* data) {
+    return [this, srcChannels, bitAlloc](double* data, const TPCMEngine<double>::ProcessMeta& meta) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
             vector<double> specs(512);

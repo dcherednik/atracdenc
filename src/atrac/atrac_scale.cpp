@@ -1,5 +1,6 @@
 #include "atrac_scale.h"
 #include "atrac1.h"
+#include "atrac3.h"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
@@ -16,7 +17,7 @@ vector<TScaledBlock> TScaler<TBaseData>::Scale(const vector<double>& specs, cons
     for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
         const bool shortWinMode = !!blockSize.LogCount[bandNum];
         for (uint8_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = shortWinMode ? this->SpecsStartShort[blockNum] : this->SpecsStartLong[blockNum];
+            const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] : TBaseData::SpecsStartLong[blockNum];
             const uint16_t specNumEnd = specNumStart + this->SpecsPerBlock[blockNum];
             double maxAbsSpec = 0;
             for (uint16_t curSpec = specNumStart; curSpec < specNumEnd; ++curSpec) {
@@ -45,4 +46,5 @@ vector<TScaledBlock> TScaler<TBaseData>::Scale(const vector<double>& specs, cons
     return scaledBlocks;
 }
 template class TScaler<TAtrac1Data>;
+template class TScaler<TAtrac3Data>;
 }
