@@ -40,17 +40,32 @@ static string GetHelp() {
         "\n--decode -d \t - decode mode"
         "\n -i input file"
         "\n -o output file"
+        "\n --bitrate (only if supported by codec)"
         "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU. WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
         "\n --bfuidxfast\t enable fast search of BFU amount"
         "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window";
 }
 
+static int checkedStoi(const char* data, int min, int max, int def) {
+    int tmp = 0;
+    try {
+        tmp = stoi(data);
+        if (tmp < min || tmp > max)
+            throw std::invalid_argument(data);
+        return tmp;
+    } catch (std::invalid_argument&) {
+        cerr << "Wrong arg: " << data << " " << def << " will be used" << endl;
+        return def;
+    }
+}
+
 int main(int argc, char* const* argv) {
     const char* myName = argv[0];
     static struct option longopts[] = {
-        { "encode", no_argument, NULL, 'e' },
+        { "encode", optional_argument, NULL, 'e' },
         { "decode", no_argument, NULL, 'd' },
         { "help", no_argument, NULL, 'h' },
+        { "bitrate", required_argument, NULL, 'b'},
         { "bfuidxconst", required_argument, NULL, 1},
         { "bfuidxfast", no_argument, NULL, 2},
         { "notransient", optional_argument, NULL, 3},
@@ -68,11 +83,17 @@ int main(int argc, char* const* argv) {
     bool mono = false;
     bool nostdout = false;
     TAtrac1EncodeSettings::EWindowMode windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
-    uint32_t winMask = 0; //all is long
+    uint32_t winMask = 0; //0 - all is long
+    uint32_t bitrate = 0; //0 - use default for codec
     while ((ch = getopt_long(argc, argv, "edhi:o:m", longopts, NULL)) != -1) {
         switch (ch) {
             case 'e':
                 mode |= E_ENCODE;
+                if (optarg) {
+                    if (strcmp(optarg, "atrac3") == 0) {
+                        mode |= E_ATRAC3;
+                    }
+                }
                 break;
             case 'd':
                 mode |= E_DECODE;
@@ -92,13 +113,11 @@ int main(int argc, char* const* argv) {
                 cout << GetHelp() << endl;
                 return 0;
                 break;
+            case 'b':
+                bitrate = checkedStoi(optarg, 32, 384, 0);
+                break;
             case 1:
-                try {
-                    bfuIdxConst = stoi(optarg);
-                } catch (std::invalid_argument&) {
-                    cerr << "Wrong arg: " << optarg << " should be (0, 8]" << endl;
-                    return -1;
-                }
+                bfuIdxConst = checkedStoi(optarg, 1, 8, 0);
                 break;
             case 2:
                 fastBfuNumSearch = true;
@@ -141,6 +160,7 @@ int main(int argc, char* const* argv) {
     IProcessor<double>* atracProcessor;
     uint64_t totalSamples = 0;
     TWavPtr wavIO;
+    uint32_t pcmFrameSz = 0; //size of one pcm frame to process
     if (mode == E_ENCODE) {
         wavIO = TWavPtr(new TWav(inFile));
         const int numChannels = wavIO->GetChannelNum();
@@ -151,6 +171,7 @@ int main(int argc, char* const* argv) {
         if (!nostdout)
             cout << "Input file: " << inFile << "\n Channels: " << numChannels << "\n SampleRate: " << wavIO->GetSampleRate() << "\n TotalSamples: " << totalSamples << endl;
         atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
+        pcmFrameSz = 512;
     } else if (mode == E_DECODE) {
         TAeaPtr aeaIO = TAeaPtr(new TAea(inFile));
         totalSamples = aeaIO->GetLengthInSamples();
@@ -160,6 +181,22 @@ int main(int argc, char* const* argv) {
         wavIO = TWavPtr(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
         pcmEngine = new TPCMEngine<double>(4096, aeaIO->GetChannelNum(), TPCMEngine<double>::TWriterPtr(wavIO->GetPCMWriter<double>()));
         atracProcessor = new TAtrac1Processor(move(aeaIO), TAtrac1EncodeSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask));
+        pcmFrameSz = 512;
+    } else if (mode == (E_ENCODE | E_ATRAC3)) {
+        std::cout << "WARNING: ATRAC3 is uncompleted mode (no psy, tonal encoding, gc), result will be not good )))" << std::endl;
+        const TContainerParams* atrac3params = TAtrac3Data::GetContainerParamsForBitrate(bitrate*1024);
+        if (atrac3params == nullptr) {
+            std::cerr << "wrong atrac3 params, exiting" << std::endl;
+            return 1;
+        }
+        std::cout << "bitrate " << atrac3params->Bitrate << std::endl;
+        wavIO = TWavPtr(new TWav(inFile));
+        const int numChannels = wavIO->GetChannelNum();
+        totalSamples = wavIO->GetTotalSamples();
+        TAeaPtr omaIO = TAeaPtr(new TOma(outFile, "test", numChannels, numChannels * totalSamples / 512, OMAC_ID_ATRAC3, atrac3params->FrameSz));
+        pcmEngine = new TPCMEngine<double>(4096, numChannels, TPCMEngine<double>::TReaderPtr(wavIO->GetPCMReader<double>()));
+        atracProcessor = new TAtrac3Processor(move(omaIO), *atrac3params);
+        pcmFrameSz = 1024;
     } else {
         cerr << "Processing mode was not specified" << endl;
         return 1;
@@ -170,7 +207,7 @@ int main(int argc, char* const* argv) {
 
     uint64_t processed = 0;
     try {
-        while (totalSamples > (processed = pcmEngine->ApplyProcess(512, atracLambda)))
+        while (totalSamples > (processed = pcmEngine->ApplyProcess(pcmFrameSz, atracLambda)))
         {
             if (!nostdout)
                 printProgress(processed*100/totalSamples);

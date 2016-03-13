@@ -1,6 +1,8 @@
 #pragma once
 #include "pcmengin.h"
+#include "atrac3denc.h"
 #include "aea.h"
+#include "oma.h"
 #include "atrac_encode_settings.h"
 #include "transient_detector.h"
 #include "atrac/atrac1.h"
@@ -15,7 +17,8 @@ namespace NAtracDEnc {
 
 enum EMode {
     E_ENCODE = 1,
-    E_DECODE = 2
+    E_DECODE = 2,
+    E_ATRAC3 = 4
 };
 
 class TAtrac1MDCT : public virtual TAtrac1Data {
