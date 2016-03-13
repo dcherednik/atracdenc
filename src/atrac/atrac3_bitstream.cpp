@@ -9,8 +9,11 @@
 using NAtracDEnc::TScaledBlock;
 using std::vector;
 
-void TAtrac3BitStreamWriter::CLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream) {
-    uint32_t numBits = ClcLengthTab[selector];
+uint32_t TAtrac3BitStreamWriter::CLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream) {
+    const uint32_t numBits = ClcLengthTab[selector];
+    const uint32_t bitsUsed = (selector > 1) ? numBits * blockSize : numBits * blockSize / 2;
+    if (!bitStream)
+        return bitsUsed;
     if (selector > 1) {
         for (uint32_t i = 0; i < blockSize; ++i) {
             bitStream->Write(NBitStream::MakeSign(mantissas[i], numBits), numBits);
@@ -23,11 +26,13 @@ void TAtrac3BitStreamWriter::CLCEnc(const uint32_t selector, const int mantissas
             bitStream->Write(code, numBits);
         }
     }
+    return bitsUsed;
 }
 
-void TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream) {
+uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int mantissas[MAXSPECPERBLOCK], const uint32_t blockSize, NBitStream::TBitStream* bitStream) {
     const THuffEntry* huffTable = HuffTables[selector - 1].Table;
     const uint8_t tableSz = HuffTables[selector - 1].Sz;
+    uint32_t bitsUsed = 0;
     if (selector > 1) {
         for (uint32_t i = 0; i < blockSize; ++i) {
             int m = mantissas[i];
@@ -36,8 +41,9 @@ void TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int mantissas
                 huffS -= 1;
             assert(huffS < 256);
             assert(huffS < tableSz);
-            std::cout << "m: " << m << "huff: " << huffS << std::endl;
-            bitStream->Write(huffTable[huffS].Code, huffTable[huffS].Bits);
+            bitsUsed += huffTable[huffS].Bits;
+            if (bitStream)
+                bitStream->Write(huffTable[huffS].Code, huffTable[huffS].Bits);
         }
     } else {
         assert(tableSz == 9); 
@@ -45,18 +51,52 @@ void TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int mantissas
             const int ma = mantissas[i * 2];
             const int mb = mantissas[i * 2 + 1];
             const uint32_t huffS = MantissasToVlcIndex(ma, mb);
-            bitStream->Write(huffTable[huffS].Code, huffTable[huffS].Bits);
+            bitsUsed += huffTable[huffS].Bits;
+            if (bitStream)
+                bitStream->Write(huffTable[huffS].Code, huffTable[huffS].Bits);
         }
     }
+    return bitsUsed;
+}
+std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const vector<TScaledBlock>& scaledBlocks, const vector<uint32_t>& precisionPerEachBlocks, int* mantisas) {
+    uint32_t bitsUsed = 5 + 1; //numBlocks + codingMode
+    const uint32_t numBlocks = precisionPerEachBlocks.size();
+    bitsUsed += numBlocks * 3; //used VLC or CLC table (precision)
+
+    auto lambda = [=](bool clcMode, bool calcMant) {
+        uint32_t bits = 0;
+        for (uint32_t i = 0; i < numBlocks; ++i) {
+            if (precisionPerEachBlocks[i] == 0)
+                continue;
+            bits += 6; //sfi
+            const uint32_t first = BlockSizeTab[i];
+            const uint32_t last = BlockSizeTab[i+1];
+            const uint32_t blockSize = last - first;
+            const double mul = MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
+            if (calcMant) {
+                for (uint32_t j = 0, f = first; f < last; f++, j++) {
+                    mantisas[f] = round(scaledBlocks[i].Values[j] * mul);
+                }
+            }
+            bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr) :
+                VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
+        }
+        return bits;
+    };
+    const uint32_t clcBits = lambda(true, true);
+    const uint32_t vlcBits = lambda(false, false);
+    bool mode = clcBits <= vlcBits;
+    //std::cout << "mode: " << mode << " " << clcBits << "  "  <<vlcBits << std::endl;
+    return std::make_pair(mode, bitsUsed + (mode ? clcBits : vlcBits));
 }
 void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlocks, const vector<uint32_t>& precisionPerEachBlocks, NBitStream::TBitStream* bitStream) {
     const uint32_t numBlocks = precisionPerEachBlocks.size(); //number of blocks to save
-    const uint32_t codingMode = 0;//1; //0 - VLC, 1 - CLC
-    int mantisas[MAXSPECPERBLOCK];
+    int mt[MAX_SPECS];
+    const auto consumption = CalcSpecsBitsConsumption(scaledBlocks, precisionPerEachBlocks, mt);
+    const uint32_t codingMode = consumption.first;//0 - VLC, 1 - CLC
     assert(numBlocks <= 32);
     bitStream->Write(numBlocks-1, 5);
     bitStream->Write(codingMode, 1);
-
     for (uint32_t i = 0; i < numBlocks; ++i) {
         uint32_t val = precisionPerEachBlocks[i]; //coding table used (VLC) or number of bits used (CLC)
         bitStream->Write(val, 3);
@@ -70,23 +110,16 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlock
         if (precisionPerEachBlocks[i] == 0)
             continue;
 
-        uint32_t first = BlockSizeTab[i];
+        const uint32_t first = BlockSizeTab[i];
         const uint32_t last = BlockSizeTab[i+1];
         const uint32_t blockSize = last - first;
-        const double mul = MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
-
-        for (uint32_t j = 0; first < last; first++, j++) {
-            mantisas[j] = round(scaledBlocks[i].Values[j] * mul);
-        }
 
         if (codingMode == 1) {
-            CLCEnc(precisionPerEachBlocks[i], mantisas, blockSize, bitStream);
+            CLCEnc(precisionPerEachBlocks[i], mt + first, blockSize, bitStream);
         } else {
-            VLCEnc(precisionPerEachBlocks[i], mantisas, blockSize, bitStream);
+            VLCEnc(precisionPerEachBlocks[i], mt + first, blockSize, bitStream);
         }
     }
-
-
 }
 
 void TAtrac3BitStreamWriter::WriteSoundUnit(const TAtrac3SubbandInfo& subbandInfo, const vector<TScaledBlock>& scaledBlocks) {

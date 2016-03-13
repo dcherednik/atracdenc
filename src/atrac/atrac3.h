@@ -52,6 +52,7 @@ protected:
     static constexpr uint32_t const * const SpecsStartLong = &BlockSizeTab[0];
     static constexpr uint32_t ClcLengthTab[8] = { 0, 4, 3, 3, 4, 4, 5, 6 };
     static const int NumQMF = 4;
+    static const uint32_t MAX_SPECS = 1024;
 
     static constexpr uint32_t BlocksPerBand[NumQMF + 1] = {0, 18, 26, 30, 32};
     static constexpr uint32_t SpecsPerBlock[33] = {
