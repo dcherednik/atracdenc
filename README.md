@@ -6,9 +6,18 @@ You need C++11 compiler.
 cmake > 2.8
 libsndfiles 
 
+binary:
+
 `cd src`
 `mkdir build`
 `cd build`
+`cmake ../`
+`make`
+
+
+binary and tests:
+
+`cd test`
 `cmake ../`
 `make`
 
