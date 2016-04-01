@@ -35,7 +35,7 @@ TEST(TAtrac1MDCT, TAtrac1MDCTLongEncDec) {
     for (int i = 0; i < 256; i++) {
         hi[i] = i;
     }
-    const TBlockSize blockSize; //default - long
+    const TBlockSize blockSize(false, false, false);
 
     mdct.Mdct(&specs[0], &low[0], &mid[0], &hi[0], blockSize);
 
