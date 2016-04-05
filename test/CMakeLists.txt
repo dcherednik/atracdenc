@@ -22,6 +22,7 @@ set(atrac1mdct_test_sources
     ../src/atrac/atrac1_dequantiser.cpp
     ../src/atrac/atrac1_bitalloc.cpp
     ../src/atrac/atrac1.cpp
+    ../src/atrac/atrac3.cpp #atrac_scale has explicit instantiation
     ../src/atracdenc_ut.cpp
     ../src/aea.cpp
 )
