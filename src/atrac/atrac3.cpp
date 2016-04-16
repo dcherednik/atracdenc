@@ -15,7 +15,10 @@ constexpr TAtrac3Data::THuffTablePair TAtrac3Data::HuffTables[7];
 
 constexpr TContainerParams TAtrac3Data::ContainerParams[8];
 double TAtrac3Data::EncodeWindow[256] = {0};
+double TAtrac3Data::DecodeWindow[256] = {0};
 double TAtrac3Data::ScaleTable[64] = {0};
+double TAtrac3Data::GainLevel[16];
+double TAtrac3Data::GainInterpolation[31];
 
 const TContainerParams* TAtrac3Data::GetContainerParamsForBitrate(uint32_t bitrate) {
     std::cout << bitrate << std::endl;

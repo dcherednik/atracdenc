@@ -122,7 +122,7 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlock
     }
 }
 
-void TAtrac3BitStreamWriter::WriteSoundUnit(const TAtrac3SubbandInfo& subbandInfo, const vector<TScaledBlock>& scaledBlocks) {
+void TAtrac3BitStreamWriter::WriteSoundUnit(const TAtrac3Data::SubbandInfo& subbandInfo, const vector<TScaledBlock>& scaledBlocks) {
     NBitStream::TBitStream bitStream;
     if (Params.Js) {
         //TODO
@@ -134,11 +134,9 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const TAtrac3SubbandInfo& subbandInf
 
     //write gain info
     for (uint32_t band = 0; band < numQmfBand; ++band) {
-        const vector<TAtrac3SubbandInfo::TGainPoint>& GainPoints = subbandInfo.GetGainPoints(band);
+        const vector<TAtrac3Data::SubbandInfo::TGainPoint>& GainPoints = subbandInfo.GetGainPoints(band);
         bitStream.Write(GainPoints.size(), 3);
-        assert(GainPoints.size() == 0);
-        for (const TAtrac3SubbandInfo::TGainPoint& point : GainPoints) {
-            abort();
+        for (const TAtrac3Data::SubbandInfo::TGainPoint& point : GainPoints) {
             bitStream.Write(point.Level, 4);
             bitStream.Write(point.Location, 5);
         }
