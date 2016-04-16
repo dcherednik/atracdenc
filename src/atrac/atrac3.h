@@ -31,8 +31,16 @@ inline bool operator> (const TContainerParams& x, const unsigned int y)
 
 class TAtrac3Data {
 protected:
+    static const uint32_t MDCTSz = 512;
     static double ScaleTable[64];
     static double EncodeWindow[256];
+    static double DecodeWindow[256];
+    static double GainLevel[16];
+    static double GainInterpolation[31];
+    static constexpr int32_t ExponentOffset = 4;
+    static constexpr int32_t LocScale = 3;
+    static constexpr int32_t LocSz = 1 << LocScale;
+    static constexpr int32_t GainInterpolationPosShift = 15;
 
     static const uint32_t NumSamples=1024;
     static const uint32_t frameSz = 152;
@@ -140,6 +148,17 @@ public:
         for (int i = 0; i < 256; i++) {
             EncodeWindow[i] = (sin(((i + 0.5) / 256.0 - 0.5) * M_PI) + 1.0) * 0.5;
         }
+        for (int i = 0; i < 256; i++) {
+            const double a = EncodeWindow[i];
+            const double b = EncodeWindow[255-i];
+            DecodeWindow[i] = 2.0 * a / (a*a + b*b);
+        }
+        for (int i = 0; i < 16; i++) {
+            GainLevel[i] = pow(2.0, ExponentOffset - i);
+        }
+        for (int i = 0; i < 31; i++) {
+            GainInterpolation[i] = pow(2.0, -1.0 / LocSz * (i - 15));
+        }
     }
     static uint32_t MantissaToCLcIdx(int32_t mantissa) {
         assert(mantissa > -3 && mantissa < 2);
@@ -164,27 +183,28 @@ public:
         { 352800, 1024, false }
     };
     static const TContainerParams* GetContainerParamsForBitrate(uint32_t bitrate);
-};
 
-class TAtrac3SubbandInfo {
-public:
-    struct TGainPoint {
-        const uint32_t Level;
-        const uint32_t Location;
+    class SubbandInfo {
+    public:
+        struct TGainPoint {
+            const uint32_t Level;
+            const uint32_t Location;
+        };
+    private:
+        std::vector<std::vector<TGainPoint>> Info;
+    public:
+        SubbandInfo()
+        {
+            Info.resize(4);
+        }
+        void AddSubbandCurve(uint16_t n, std::vector<TGainPoint>&& curve) {
+            Info[n] = std::move(curve);
+        }
+        uint32_t GetQmfNum() const {
+            return Info.size();
+        }
+        const std::vector<TGainPoint>& GetGainPoints(uint32_t i) const {
+            return Info[i];
+        }
     };
-private:
-    std::vector<std::vector<TGainPoint>> Info;
-public:
-    TAtrac3SubbandInfo()
-    {
-        Info.resize(4);
-    }
-    uint32_t GetQmfNum() const {
-        return Info.size();
-    }
-    const std::vector<TGainPoint>& GetGainPoints(uint32_t i) const {
-        assert(Info[i].size() == 0);
-        return Info[i];
-    }
 };
-

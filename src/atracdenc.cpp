@@ -6,6 +6,7 @@
 #include "atrac/atrac1_dequantiser.h"
 #include "atrac/atrac1_qmf.h"
 #include "atrac/atrac1_bitalloc.h"
+#include "util.h"
 
 namespace NAtracDEnc {
 using namespace std;
@@ -85,11 +86,7 @@ void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, 
                 Specs[blockPos + pos + i] = sp[i] * multiple;
             }
             if (band) {
-                for (uint32_t j = 0; j < sp.size() / 2; j++) {
-                    double tmp = Specs[blockPos + pos +j];
-                    Specs[blockPos + pos + j] = Specs[blockPos + pos + sp.size() - 1 -j];
-                    Specs[blockPos + pos + sp.size() - 1 -j] = tmp;
-                }
+                SwapArray(&Specs[blockPos + pos], sp.size());
             }
 
             blockPos += 32;
@@ -110,15 +107,9 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
         vector<double> invBuf(512);
         double* prevBuf = &dstBuf[bufSz * 2  - 16];
         for (uint32_t block = 0; block < numMdctBlocks; block++) {
-
             if (band) {
-                for (uint32_t j = 0; j < blockSz/2; j++) {
-                    double tmp = Specs[pos+j];
-                    Specs[pos+j] = Specs[pos + blockSz - 1 -j];
-                    Specs[pos + blockSz - 1 -j] = tmp;
-                }
+                SwapArray(&Specs[pos], blockSz);
             }
-
             vector<double> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
             for (size_t i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];

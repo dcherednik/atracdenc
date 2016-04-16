@@ -25,5 +25,5 @@ public:
     {
 
     }
-    void WriteSoundUnit(const TAtrac3SubbandInfo& subbandInfo, const std::vector<NAtracDEnc::TScaledBlock>& scaledBlocks);
+    void WriteSoundUnit(const TAtrac3Data::SubbandInfo& subbandInfo, const std::vector<NAtracDEnc::TScaledBlock>& scaledBlocks);
 };
