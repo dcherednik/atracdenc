@@ -20,7 +20,7 @@ void TBitStream::Write(unsigned long long val, int n) {
     const int bytesPos = BitsUsed / 8;
     const int overlap = BitsUsed % 8;
 
-    if (overlap || bitsReq > 0) {
+    if (overlap || bitsReq >= 0) {
         Buf.resize(Buf.size() + (bitsReq / 8 + (overlap ? 2 : 1 )), 0);
     }
 	TMix t;
