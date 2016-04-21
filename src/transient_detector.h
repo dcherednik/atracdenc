@@ -8,7 +8,8 @@ class TTransientDetector {
     const uint32_t ShortSz;
     const uint32_t BlockSz;
     const uint32_t NShortBlocks;
-    static const uint32_t prevBufSz = 20;
+    static const uint32_t PrevBufSz = 20;
+    static const uint32_t FIRLen = 21;
     void HPFilter(const double* in, double* out);
     std::vector<double> HPFBuffer;
     double LastEnergy = 0.0;
@@ -18,7 +19,7 @@ public:
         , BlockSz(blockSz)
         , NShortBlocks(blockSz/shortSz)
     {
-        HPFBuffer.resize(BlockSz + prevBufSz); 
+        HPFBuffer.resize(BlockSz + FIRLen); 
     }
     bool Detect(const double* buf);
 };
