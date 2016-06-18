@@ -8,7 +8,7 @@ namespace NMDCT {
 class TMDCTBase {
 protected:
     MDCTContext Ctx;
-    TMDCTBase(int n, double scale) {
+    TMDCTBase(int n, TFloat scale) {
         mdct_ctx_init(&Ctx, n, scale);
     };
     virtual ~TMDCTBase() {
@@ -19,13 +19,13 @@ protected:
 
 template<int N>
 class TMDCT : public TMDCTBase {
-    std::vector<double> Buf;
+    std::vector<TFloat> Buf;
 public:
     TMDCT(float scale = 1.0)
         : TMDCTBase(N, scale)
         , Buf(N/2)
     {}
-    const std::vector<double>& operator()(double* in) {
+    const std::vector<TFloat>& operator()(TFloat* in) {
         mdct(&Ctx, &Buf[0], in);
         return Buf;
     }
@@ -33,13 +33,13 @@ public:
 
 template<int N>
 class TMIDCT : public TMDCTBase {
-    std::vector<double> Buf;
+    std::vector<TFloat> Buf;
 public:
     TMIDCT(float scale = 1.0)
         : TMDCTBase(N, scale)
         , Buf(N)
     {}
-    const std::vector<double>& operator()(double* in) {
+    const std::vector<TFloat>& operator()(TFloat* in) {
         midct(&Ctx, &Buf[0], in);
         return Buf;
     }

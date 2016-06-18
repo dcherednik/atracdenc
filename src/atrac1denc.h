@@ -1,6 +1,5 @@
 #pragma once
 #include "pcmengin.h"
-#include "atrac3denc.h"
 #include "aea.h"
 #include "oma.h"
 #include "atrac_encode_settings.h"
@@ -21,34 +20,34 @@ enum EMode {
     E_ATRAC3 = 4
 };
 
-class TAtrac1MDCT : public virtual TAtrac1Data {
+class TAtrac1MDCT : public virtual NAtrac1::TAtrac1Data {
     NMDCT::TMDCT<512> Mdct512;
     NMDCT::TMDCT<256> Mdct256;
     NMDCT::TMDCT<64> Mdct64;
     NMDCT::TMIDCT<512> Midct512;
     NMDCT::TMIDCT<256> Midct256;
 public:
-    void IMdct(double specs[512], const TBlockSize& mode, double* low, double* mid, double* hi);
-    void Mdct(double specs[512], double* low, double* mid, double* hi, const TBlockSize& blockSize);
+    void IMdct(TFloat specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi);
+    void Mdct(TFloat specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize);
     TAtrac1MDCT()
         : Mdct512(2)
         , Mdct256(1)
     {}
 };
 
-class TAtrac1Processor : public IProcessor<double>, public TAtrac1MDCT, public virtual TAtrac1Data {
-    TAeaPtr Aea;
-    const TAtrac1EncodeSettings Settings;
+class TAtrac1Processor : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
+    TCompressedIOPtr Aea;
+    const NAtrac1::TAtrac1EncodeSettings Settings;
 
-    double PcmBufLow[2][256 + 16];
-    double PcmBufMid[2][256 + 16];
-    double PcmBufHi[2][512 + 16];
+    TFloat PcmBufLow[2][256 + 16];
+    TFloat PcmBufMid[2][256 + 16];
+    TFloat PcmBufHi[2][512 + 16];
 
     int32_t PcmValueMax = 32767;
     int32_t PcmValueMin = -32767;
 
-    Atrac1SynthesisFilterBank<double> SynthesisFilterBank[2];
-    Atrac1SplitFilterBank<double> SplitFilterBank[2];
+    Atrac1SynthesisFilterBank<TFloat> SynthesisFilterBank[2];
+    Atrac1SplitFilterBank<TFloat> SplitFilterBank[2];
 
     class TTransientDetectors {
         std::vector<TTransientDetector> transientDetectorLow;
@@ -82,9 +81,9 @@ class TAtrac1Processor : public IProcessor<double>, public TAtrac1MDCT, public v
     TScaler<TAtrac1Data> Scaler;
 
 public:
-    TAtrac1Processor(TAeaPtr&& aea, TAtrac1EncodeSettings&& settings);
-    TPCMEngine<double>::TProcessLambda GetDecodeLambda() override;
+    TAtrac1Processor(TCompressedIOPtr&& aea, NAtrac1::TAtrac1EncodeSettings&& settings);
+    TPCMEngine<TFloat>::TProcessLambda GetDecodeLambda() override;
 
-    TPCMEngine<double>::TProcessLambda GetEncodeLambda() override;
+    TPCMEngine<TFloat>::TProcessLambda GetEncodeLambda() override;
 };
 }

@@ -17,9 +17,10 @@ add_executable(bitstream_test ${bitstream_test_sources})
 target_link_libraries(bitstream_test gtest_main)
 
 set(atrac1mdct_test_sources
-    ../src/atracdenc.cpp
+    ../src/atrac1denc.cpp
     ../src/transient_detector.cpp
     ../src/bitstream/bitstream.cpp
+    ../src/atrac/atrac_psy_common.cpp
     ../src/atrac/atrac_scale.cpp
     ../src/atrac/atrac1_dequantiser.cpp
     ../src/atrac/atrac1_bitalloc.cpp
@@ -35,6 +36,7 @@ set(atrac3mdct_test_sources
     ../src/atrac3denc.cpp
     ../src/transient_detector.cpp
     ../src/bitstream/bitstream.cpp
+    ../src/atrac/atrac_psy_common.cpp
     ../src/atrac/atrac_scale.cpp
     ../src/atrac/atrac3_bitstream.cpp
     ../src/atrac/atrac1.cpp #atrac_scale has explicit instantiation
@@ -50,3 +52,11 @@ set(util_test_sources
 )
 add_executable(util_test ${util_test_sources})
 target_link_libraries(util_test gtest_main)
+
+set(transient_detector_test_sources
+    ../src/transient_detector_ut.cpp
+    ../src/transient_detector.cpp
+)
+add_executable(transient_detector_test ${transient_detector_test_sources})
+target_link_libraries(transient_detector_test gtest_main)
+

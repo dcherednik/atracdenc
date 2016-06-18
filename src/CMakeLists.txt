@@ -1,5 +1,8 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
+#add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
+
 add_definitions( "-Wall -O2 -g" )
 
 project(atracdenc)
@@ -17,11 +20,12 @@ set(SOURCE_EXE
     wav.cpp
     aea.cpp
     transient_detector.cpp
-    atracdenc.cpp
+    atrac1denc.cpp
     bitstream/bitstream.cpp
     atrac/atrac1.cpp
     atrac/atrac1_dequantiser.cpp
     atrac/atrac_scale.cpp
+    atrac/atrac_psy_common.cpp
     atrac/atrac1_bitalloc.cpp
     oma.cpp
     atrac3denc.cpp
