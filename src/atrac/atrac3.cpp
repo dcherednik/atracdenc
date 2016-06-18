@@ -1,5 +1,9 @@
 #include "atrac3.h"
 #include <algorithm>
+
+namespace NAtracDEnc {
+namespace NAtrac3 {
+
 constexpr uint32_t TAtrac3Data::BlockSizeTab[33];
 constexpr uint32_t TAtrac3Data::ClcLengthTab[8];
 constexpr double TAtrac3Data::MaxQuant[8];
@@ -24,3 +28,6 @@ const TContainerParams* TAtrac3Data::GetContainerParamsForBitrate(uint32_t bitra
     std::cout << bitrate << std::endl;
     return std::lower_bound(ContainerParams, ContainerParams+8, bitrate);
 }
+
+} // namespace NAtrac3
+} // namespace NAtracDEnc

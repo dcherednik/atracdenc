@@ -5,6 +5,8 @@
 #include <cassert>
 #include <iostream>
 
+namespace NAtracDEnc {
+namespace NAtrac3 {
 
 struct TContainerParams {
     const uint32_t Bitrate;
@@ -30,6 +32,9 @@ inline bool operator> (const TContainerParams& x, const unsigned int y)
 }
 
 class TAtrac3Data {
+public:
+    static constexpr uint8_t MaxBfus = 32;
+    static constexpr uint32_t NumSamples = 1024;
 protected:
     static const uint32_t MDCTSz = 512;
     static double ScaleTable[64];
@@ -42,7 +47,7 @@ protected:
     static constexpr int32_t LocSz = 1 << LocScale;
     static constexpr int32_t GainInterpolationPosShift = 15;
 
-    static const uint32_t NumSamples=1024;
+    static constexpr uint32_t NumSpecs = NumSamples;
     static const uint32_t frameSz = 152;
     static constexpr double MaxQuant[8] = {
         0.0,    1.5,    2.5,    3.5,
@@ -59,8 +64,9 @@ protected:
 
     static constexpr uint32_t const * const SpecsStartLong = &BlockSizeTab[0];
     static constexpr uint32_t ClcLengthTab[8] = { 0, 4, 3, 3, 4, 4, 5, 6 };
-    static const int NumQMF = 4;
-    static const uint32_t MAX_SPECS = 1024;
+    static constexpr int NumQMF = 4;
+    static constexpr uint32_t MaxSpecs = NumSamples; //1024
+    static constexpr uint32_t MaxSpecsPerBlock = 128;
 
     static constexpr uint32_t BlocksPerBand[NumQMF + 1] = {0, 18, 26, 30, 32};
     static constexpr uint32_t SpecsPerBlock[33] = {
@@ -114,13 +120,16 @@ protected:
     static constexpr THuffEntry HuffTable7[HuffTable7Sz] = {
         { 0x0, 3 },
         //{ 0x2, 4 }, { 0x3, 4 },
-        { 0x8, 5 }, { 0x9, 5 }, { 0xA, 5}, { 0xB, 5 }, { 0xC, 5 }, { 0xD, 5 }, { 0xE, 5}, { 0xF, 5 }, { 0x10, 5 }, { 0x11, 5 },
+        { 0x8, 5 }, { 0x9, 5 }, { 0xA, 5}, { 0xB, 5 }, { 0xC, 5 }, { 0xD, 5 }, { 0xE, 5}, { 0xF, 5 }, { 0x10, 5 },
+                                                                                                            { 0x11, 5 },
         { 0x24, 6 }, { 0x25, 6 }, { 0x26, 6 }, { 0x27, 6 }, { 0x28, 6 }, { 0x29, 6 }, { 0x2A, 6 }, { 0x2B, 6 },
         { 0x2C, 6 }, { 0x2D, 6 }, { 0x2E, 6 }, { 0x2F, 6 }, { 0x30, 6 }, { 0x31, 6 }, { 0x32, 6 }, { 0x33, 6 },
         { 0x68, 7 }, { 0x69, 7 }, { 0x6A, 7 }, { 0x6B, 7 }, { 0x6C, 7 }, { 0x6D, 7 }, { 0x6E, 7 },
         { 0x6F, 7 }, { 0x70, 7 }, { 0x71, 7 }, { 0x72, 7 }, { 0x73, 7 }, { 0x74, 7 }, { 0x75, 7 },
-        { 0xEC, 8 }, { 0xED, 8 }, { 0xEE, 8 }, { 0xEF, 8 }, { 0xF0, 8 }, { 0xF1, 8 }, { 0xF2, 8 }, { 0xF3, 8 }, { 0xF4, 8 }, { 0xF5, 8 },
-        { 0xF6, 8 }, { 0xF7, 8 }, { 0xF8, 8 }, { 0xF9, 8 }, { 0xFA, 8 }, { 0xFB, 8 }, { 0xFC, 8 }, { 0xFD, 8 }, { 0xFE, 8 }, { 0xFF, 8 },
+        { 0xEC, 8 }, { 0xED, 8 }, { 0xEE, 8 }, { 0xEF, 8 }, { 0xF0, 8 }, { 0xF1, 8 }, { 0xF2, 8 }, { 0xF3, 8 },
+                                                                                               { 0xF4, 8 }, { 0xF5, 8 },
+        { 0xF6, 8 }, { 0xF7, 8 }, { 0xF8, 8 }, { 0xF9, 8 }, { 0xFA, 8 }, { 0xFB, 8 }, { 0xFC, 8 }, { 0xFD, 8 },
+                                                                                               { 0xFE, 8 }, { 0xFF, 8 },
         { 0x2, 4 }, { 0x3, 4 } //TODO: is it right table???
     };
 
@@ -146,7 +155,7 @@ public:
             }
         }
         for (int i = 0; i < 256; i++) {
-            EncodeWindow[i] = (sin(((i + 0.5) / 256.0 - 0.5) * M_PI) + 1.0) * 0.5;
+            EncodeWindow[i] = (sin(((i + 0.5) / 256.0 - 0.5) * M_PI) + 1.0)/* * 0.5*/;
         }
         for (int i = 0; i < 256; i++) {
             const double a = EncodeWindow[i];
@@ -186,6 +195,7 @@ public:
 
     class SubbandInfo {
     public:
+        static const uint32_t MaxGainPointsNum = 8;
         struct TGainPoint {
             const uint32_t Level;
             const uint32_t Location;
@@ -207,4 +217,26 @@ public:
             return Info[i];
         }
     };
+
+    struct TTonalVal {
+        const uint16_t Pos;
+        const double Val;
+    };
+    typedef std::vector<TTonalVal> TTonalComponents;
 };
+
+struct TAtrac3EncoderSettings {
+    explicit TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll, bool noTonalComponents)
+        : ConteinerParams(TAtrac3Data::GetContainerParamsForBitrate(bitrate))
+        , NoGainControll(noGainControll)
+        , NoTonalComponents(noTonalComponents)
+    {
+        std::cout << bitrate << " " << ConteinerParams->Bitrate << std::endl;
+    }
+    const TContainerParams* ConteinerParams;
+    const bool NoGainControll;
+    const bool NoTonalComponents;
+};
+
+} // namespace NAtrac3
+} // namespace NAtracDEnc

@@ -1,16 +1,16 @@
-#include "atracdenc.h"
+#include "atrac1denc.h"
 #include <gtest/gtest.h>
 
 #include <vector>
 using std::vector;
 using namespace NAtracDEnc;
 
-void CheckResult128(const vector<double>& a, const vector<double>& b) {
+void CheckResult128(const vector<TFloat>& a, const vector<TFloat>& b) {
     for (int i = 0; i < 96; ++i ) {
         EXPECT_NEAR(a[i], 4 * b[i+32], 0.0000001);
     }
 }
-void CheckResult256(const vector<double>& a, const vector<double>& b) {
+void CheckResult256(const vector<TFloat>& a, const vector<TFloat>& b) {
     for (int i = 0; i < 192; ++i ) {
         EXPECT_NEAR(a[i], 2 * b[i+32], 0.0000001);
     }
@@ -19,14 +19,14 @@ void CheckResult256(const vector<double>& a, const vector<double>& b) {
 
 TEST(TAtrac1MDCT, TAtrac1MDCTLongEncDec) {
     TAtrac1MDCT mdct;
-    vector<double> low(128 * 2);
-    vector<double> mid(128 * 2);
-    vector<double> hi(256 * 2);
-    vector<double> specs(512 * 2);
+    vector<TFloat> low(128 * 2);
+    vector<TFloat> mid(128 * 2);
+    vector<TFloat> hi(256 * 2);
+    vector<TFloat> specs(512 * 2);
 
-    vector<double> lowRes(128 * 2);
-    vector<double> midRes(128 * 2);
-    vector<double> hiRes(256 * 2);
+    vector<TFloat> lowRes(128 * 2);
+    vector<TFloat> midRes(128 * 2);
+    vector<TFloat> hiRes(256 * 2);
  
     for (int i = 0; i < 128; i++) {
         low[i] = mid[i] = i;
@@ -48,25 +48,25 @@ TEST(TAtrac1MDCT, TAtrac1MDCTLongEncDec) {
 
 TEST(TAtrac1MDCT, TAtrac1MDCTShortEncDec) {
     TAtrac1MDCT mdct;
-    vector<double> low(128 * 2);
-    vector<double> mid(128 * 2);
-    vector<double> hi(256 * 2);
-    vector<double> specs(512 * 2);
+    vector<TFloat> low(128 * 2);
+    vector<TFloat> mid(128 * 2);
+    vector<TFloat> hi(256 * 2);
+    vector<TFloat> specs(512 * 2);
 
-    vector<double> lowRes(128 * 2);
-    vector<double> midRes(128 * 2);
-    vector<double> hiRes(256 * 2);
+    vector<TFloat> lowRes(128 * 2);
+    vector<TFloat> midRes(128 * 2);
+    vector<TFloat> hiRes(256 * 2);
  
     for (int i = 0; i < 128; i++) {
         low[i] = mid[i] = i;
     }
-    const vector<double> lowCopy = low; //in case of short wondow AtracMDCT changed input buffer during calculation
-    const vector<double> midCopy = mid;
+    const vector<TFloat> lowCopy = low; //in case of short wondow AtracMDCT changed input buffer during calculation
+    const vector<TFloat> midCopy = mid;
 
     for (int i = 0; i < 256; i++) {
         hi[i] = i;
     }
-    const vector<double> hiCopy = hi;
+    const vector<TFloat> hiCopy = hi;
 
     const TBlockSize blockSize(true, true, true); //short
 

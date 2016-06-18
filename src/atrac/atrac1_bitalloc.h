@@ -7,7 +7,9 @@
 #include <map>
 #include <cstdint>
 
+namespace NAtracDEnc {
 namespace NAtrac1 {
+
 using NAtracDEnc::TScaledBlock;
 
 class IAtrac1BitAlloc {
@@ -32,11 +34,13 @@ public:
     explicit TAtrac1BitStreamWriter(TAea* container)
         : Container(container)
     {};
-    void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx, const TBlockSize& blockSize);
+    void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
+                        uint32_t bfuAmountIdx, const TBlockSize& blockSize);
 };
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
-    std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift, const TBlockSize& blockSize);
+    std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
+                                             const TFloat spread, const TFloat shift, const TBlockSize& blockSize);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
     uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
@@ -51,4 +55,5 @@ public:
      uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
 };
 
-}
+} //namespace NAtrac1
+} //namespace NAtracDEnc

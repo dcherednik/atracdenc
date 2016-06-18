@@ -29,3 +29,5 @@ public:
     virtual long long GetLengthInSamples() const = 0;
     virtual ~ICompressedIO() {}
 };
+
+typedef std::unique_ptr<ICompressedIO> TCompressedIOPtr;

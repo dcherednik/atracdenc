@@ -1,13 +1,15 @@
 #pragma once
 #include <string.h>
 
+#include "../config.h"
+
 template<class TPCM, int nIn>
 class TQmf {
     static const float TapHalf[24];
-    double QmfWindow[48];
+    TFloat QmfWindow[48];
     TPCM PcmBuffer[nIn + 46];
-    double PcmBufferMerge[nIn + 46];
-    double DelayBuff[46];
+    TFloat PcmBufferMerge[nIn + 46];
+    TFloat DelayBuff[46];
 public:
     TQmf() {
         const int sz = sizeof(QmfWindow)/sizeof(QmfWindow[0]);
@@ -21,8 +23,8 @@ public:
         }
     }
 
-    void Split(TPCM* in, double* lower, double* upper) {
-        double temp;
+    void Split(TPCM* in, TFloat* lower, TFloat* upper) {
+        TFloat temp;
         for (int i = 0; i < 46; i++)
             PcmBuffer[i] = PcmBuffer[nIn + i];
 
@@ -41,9 +43,9 @@ public:
         }
     }
 
-    void Merge(TPCM* out, double* lower, double* upper) {
-        memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(double));
-        double* newPart = &PcmBufferMerge[46];
+    void Merge(TPCM* out, TFloat* lower, TFloat* upper) {
+        memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(TFloat));
+        TFloat* newPart = &PcmBufferMerge[46];
         for (int i = 0; i < nIn; i+=4) {
             newPart[i+0] = lower[i/2] + upper[i/2];
             newPart[i+1] = lower[i/2] - upper[i/2];
@@ -51,10 +53,10 @@ public:
             newPart[i+3] = lower[i/2 + 1] - upper[i/2 + 1];
         }
 
-        double* winP = &PcmBufferMerge[0];
+        TFloat* winP = &PcmBufferMerge[0];
         for (int j = nIn/2; j != 0; j--) {
-            double s1 = 0;
-            double s2 = 0;
+            TFloat s1 = 0;
+            TFloat s2 = 0;
             for (int i = 0; i < 48; i+=2) {
                 s1 += winP[i] * QmfWindow[i];
                 s2 += winP[i+1] * QmfWindow[i+1];
@@ -64,7 +66,7 @@ public:
             winP += 2;
             out += 2;
         }
-        memcpy(&DelayBuff[0], &PcmBufferMerge[nIn], 46*sizeof(double));
+        memcpy(&DelayBuff[0], &PcmBufferMerge[nIn], 46*sizeof(TFloat));
     }
 };
 

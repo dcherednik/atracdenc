@@ -11,8 +11,10 @@ TEST(TBitStream, DefaultConstructor) {
 TEST(TBitStream, SimpleWriteRead) {
     TBitStream bs;
     bs.Write(5, 3);
-    EXPECT_EQ(3, bs.GetSizeInBits());
+    bs.Write(true, 1);
+    EXPECT_EQ(4, bs.GetSizeInBits());
     EXPECT_EQ(5, bs.Read(3));
+    EXPECT_EQ(true, bs.Read(1));
 }
 
 TEST(TBisStream, OverlapWriteRead) {
@@ -30,6 +32,7 @@ TEST(TBisStream, OverlapWriteRead) {
     EXPECT_EQ(212, bs.Read(22));
     EXPECT_EQ(323, bs.Read(22));
 }
+
 TEST(TBisStream, OverlapWriteRead2) {
     TBitStream bs;
     bs.Write(2, 2);
@@ -40,6 +43,64 @@ TEST(TBisStream, OverlapWriteRead2) {
     EXPECT_EQ(7, bs.Read(4));
     EXPECT_EQ(10003, bs.Read(16));
 }
+
+TEST(TBisStream, OverlapWriteRead3) {
+    TBitStream bs;
+    bs.Write(40, 6);
+    bs.Write(3, 2);
+    bs.Write(0, 3);
+    bs.Write(0, 3);
+    bs.Write(0, 3);
+    bs.Write(0, 3);
+
+    bs.Write(3, 5);
+    bs.Write(1, 2);
+    bs.Write(1, 1);
+    bs.Write(1, 1);
+    bs.Write(1, 1);
+    bs.Write(1, 1);
+
+    bs.Write(0, 3);
+    bs.Write(4, 3);
+    bs.Write(35, 6);
+    bs.Write(25, 6);
+    bs.Write(3, 3);
+    bs.Write(32, 6);
+    bs.Write(29, 6);
+    bs.Write(3, 3);
+    bs.Write(36, 6);
+    bs.Write(49, 6);
+
+
+
+
+    EXPECT_EQ(40, bs.Read(6));
+    EXPECT_EQ(3, bs.Read(2));
+    EXPECT_EQ(0, bs.Read(3));
+    EXPECT_EQ(0, bs.Read(3));
+    EXPECT_EQ(0, bs.Read(3));
+    EXPECT_EQ(0, bs.Read(3));
+    EXPECT_EQ(3, bs.Read(5));
+
+    EXPECT_EQ(1, bs.Read(2));
+    EXPECT_EQ(1, bs.Read(1));
+    EXPECT_EQ(1, bs.Read(1));
+    EXPECT_EQ(1, bs.Read(1));
+    EXPECT_EQ(1, bs.Read(1));
+
+    EXPECT_EQ(0, bs.Read(3));
+    EXPECT_EQ(4, bs.Read(3));
+    EXPECT_EQ(35, bs.Read(6));
+    EXPECT_EQ(25, bs.Read(6));
+    EXPECT_EQ(3, bs.Read(3));
+    EXPECT_EQ(32, bs.Read(6));
+    EXPECT_EQ(29, bs.Read(6));
+    EXPECT_EQ(3, bs.Read(3));
+    EXPECT_EQ(36, bs.Read(6));
+    EXPECT_EQ(49, bs.Read(6));
+
+}
+
 
 TEST(TBisStream, SignWriteRead) {
     TBitStream bs;
