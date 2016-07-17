@@ -24,17 +24,21 @@ public:
      * so next transformation (mdct #3) gets modulated first part
      */
     typedef std::function<void(TFloat* bufCur, TFloat* bufNext)> TGainModulator;
-    static TFloat GetGainInc(uint32_t levelIdxCur) {
+    static TFloat GetGainInc(uint32_t levelIdxCur)
+    {
         const int incPos = T::ExponentOffset - levelIdxCur + T::GainInterpolationPosShift;
         return T::GainInterpolation[incPos];
     }
-    static TFloat GetGainInc(uint32_t levelIdxCur, uint32_t levelIdxNext) {
+    static TFloat GetGainInc(uint32_t levelIdxCur, uint32_t levelIdxNext)
+    {
         const int incPos = levelIdxNext - levelIdxCur + T::GainInterpolationPosShift;
         return T::GainInterpolation[incPos];
     }
 
 
-    TGainDemodulator Demodulate(const std::vector<typename T::SubbandInfo::TGainPoint>& giNow, const std::vector<typename T::SubbandInfo::TGainPoint>& giNext) {
+    TGainDemodulator Demodulate(const std::vector<typename T::SubbandInfo::TGainPoint>& giNow,
+                                const std::vector<typename T::SubbandInfo::TGainPoint>& giNext)
+    {
         return [=](TFloat* out, TFloat* cur, TFloat* prev) {
             uint32_t pos = 0;
             const TFloat scale = giNext.size() ? T::GainLevel[giNext[0].Level] : 1;
@@ -43,7 +47,8 @@ public:
                 const uint32_t levelPos = giNow[i].Level;
                 assert(levelPos < sizeof(T::GainLevel)/sizeof(T::GainLevel[0]));
                 TFloat level = T::GainLevel[levelPos];
-                const int incPos = ((i + 1) < giNow.size() ? giNow[i + 1].Level : T::ExponentOffset) - giNow[i].Level + T::GainInterpolationPosShift;
+                const int incPos = ((i + 1) < giNow.size() ? giNow[i + 1].Level : T::ExponentOffset)
+                                   - giNow[i].Level + T::GainInterpolationPosShift;
                 TFloat gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
                     //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << std::endl;
@@ -72,7 +77,8 @@ public:
                 const uint32_t levelPos = giCur[i].Level;
                 assert(levelPos < sizeof(T::GainLevel)/sizeof(T::GainLevel[0]));
                 TFloat level = T::GainLevel[levelPos];
-                const int incPos = ((i + 1) < giCur.size() ? giCur[i + 1].Level : T::ExponentOffset) - giCur[i].Level + T::GainInterpolationPosShift;
+                const int incPos = ((i + 1) < giCur.size() ? giCur[i + 1].Level : T::ExponentOffset)
+                                   - giCur[i].Level + T::GainInterpolationPosShift;
                 TFloat gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
                     //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " bufNext: " << bufNext[pos] << std::endl;

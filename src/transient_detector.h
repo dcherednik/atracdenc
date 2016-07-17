@@ -6,6 +6,7 @@
 #include "config.h"
 
 namespace NAtracDEnc {
+
 class TTransientDetector {
     const uint32_t ShortSz;
     const uint32_t BlockSz;
@@ -28,5 +29,6 @@ public:
     uint32_t GetLastTransientPos() const { return LastTransientPos; }
 };
 
-std::vector<TFloat> AnalyzeGain(const TFloat* in, const uint32_t len, const uint32_t maxPoints);
+std::vector<TFloat> AnalyzeGain(const TFloat* in, uint32_t len, uint32_t maxPoints, bool useRms);
+
 }

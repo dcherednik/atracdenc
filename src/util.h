@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 #include "config.h"
 
@@ -30,7 +31,7 @@ inline uint16_t GetFirstSetBit(uint32_t x) {
 template<class T>
 inline uint16_t Log2FloatToIdx(T x, uint16_t shift) {
     T t = x * shift;
-    return GetFirstSetBit(t);
+    return GetFirstSetBit(std::trunc(t));
 }
 
 template<class T>
