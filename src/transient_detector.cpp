@@ -11,7 +11,7 @@ using std::vector;
 static TFloat calculateRMS(const TFloat* in, uint32_t n) {
     TFloat s = 0;
     for (uint32_t i = 0; i < n; i++) {
-        s += in[i] * in[i];
+        s += (in[i] * in[i]);
     }
     s /= n;
     return sqrt(s);
@@ -70,14 +70,14 @@ bool TTransientDetector::Detect(const TFloat* buf) {
     return trans;
 }
 
-std::vector<TFloat> AnalyzeGain(const TFloat* in, const uint32_t len, const uint32_t maxPoints) {
+std::vector<TFloat> AnalyzeGain(const TFloat* in, const uint32_t len, const uint32_t maxPoints, bool useRms) {
     vector<TFloat> res;
     const uint32_t step = len / maxPoints;
     for (uint32_t pos = 0; pos < len; pos += step) {
-        TFloat rms = calculatePeak(in + pos, step);
+        TFloat rms = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
         res.emplace_back(rms);
     }
     return res;
 }
 
-}
+} //namespace NAtracDEnc

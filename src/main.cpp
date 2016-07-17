@@ -186,7 +186,7 @@ int main(int argc, char* const* argv)
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
     bool noStdOut = false;
-    bool noGainControl = true;
+    bool noGainControl = false;
     bool noTonalComponents = false;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long

@@ -197,8 +197,8 @@ public:
     public:
         static const uint32_t MaxGainPointsNum = 8;
         struct TGainPoint {
-            const uint32_t Level;
-            const uint32_t Location;
+            uint32_t Level;
+            uint32_t Location;
         };
     private:
         std::vector<std::vector<TGainPoint>> Info;
