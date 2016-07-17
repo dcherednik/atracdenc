@@ -12,10 +12,10 @@ public:
     TQmf() {
         const int sz = sizeof(QmfWindow)/sizeof(QmfWindow[0]);
 
-        for (int i = 0 ; i < sz/2; i++) {
+        for (size_t i = 0 ; i < sz/2; i++) {
             QmfWindow[i] = QmfWindow[ sz - 1 - i] = TapHalf[i] * 2.0;
         }
-        for (int i = 0; i < sizeof(PcmBuffer)/sizeof(PcmBuffer[0]); i++) {
+        for (size_t i = 0; i < sizeof(PcmBuffer)/sizeof(PcmBuffer[0]); i++) {
             PcmBuffer[i] = 0;
             PcmBufferMerge[i] = 0;
         }
@@ -23,15 +23,15 @@ public:
 
     void Split(TPCM* in, double* lower, double* upper) {
         double temp;
-        for (int i = 0; i < 46; i++)
+        for (size_t i = 0; i < 46; i++)
             PcmBuffer[i] = PcmBuffer[nIn + i];
 
-        for (int i = 0; i < nIn; i++)
+        for (size_t i = 0; i < nIn; i++)
             PcmBuffer[46+i] = in[i];
 
-        for (int j = 0; j<nIn; j+=2) {
+        for (size_t j = 0; j < nIn; j+=2) {
             lower[j/2] = upper[j/2] = 0.0;
-            for (int i = 0; i < 24; i++)  {
+            for (size_t i = 0; i < 24; i++)  {
                 lower[j/2] += QmfWindow[2*i] * PcmBuffer[48-1+j-(2*i)];
                 upper[j/2] += QmfWindow[(2*i)+1] * PcmBuffer[48-1+j-(2*i)-1];
             }
@@ -52,10 +52,10 @@ public:
         }
 
         double* winP = &PcmBufferMerge[0];
-        for (int j = nIn/2; j != 0; j--) {
+        for (size_t j = nIn/2; j != 0; j--) {
             double s1 = 0;
             double s2 = 0;
-            for (int i = 0; i < 48; i+=2) {
+            for (size_t i = 0; i < 48; i+=2) {
                 s1 += winP[i] * QmfWindow[i];
                 s2 += winP[i+1] * QmfWindow[i+1];
             }

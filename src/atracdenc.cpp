@@ -73,15 +73,15 @@ void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, 
         vector<double> tmp(512);
         uint32_t blockPos = 0;
 
-        for (int k = 0; k < numMdctBlocks; ++k) {
+        for (size_t k = 0; k < numMdctBlocks; ++k) {
             memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(double));
-            for (int i = 0; i < 32; i++) {
+            for (size_t i = 0; i < 32; i++) {
                 srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[blockPos + blockSz - 32 + i];
                 srcBuf[blockPos + blockSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[blockPos + blockSz - 32 + i];
             }
             memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(double));
             const vector<double>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
-            for (uint32_t i = 0; i < sp.size(); i++) {
+            for (size_t i = 0; i < sp.size(); i++) {
                 Specs[blockPos + pos + i] = sp[i] * multiple;
             }
             if (band) {
@@ -99,7 +99,7 @@ void TAtrac1MDCT::Mdct(double Specs[512], double* low, double* mid, double* hi, 
 }
 void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, double* mid, double* hi) {
     uint32_t pos = 0;
-    for (uint32_t band = 0; band < QMF_BANDS; band++) {
+    for (size_t band = 0; band < QMF_BANDS; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
         const uint32_t bufSz = (band == 2) ? 256 : 128;
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
@@ -120,7 +120,7 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
             }
 
             vector<double> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
-            for (int i = 0; i < (inv.size()/2); i++) {
+            for (size_t i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];
             }
 
@@ -133,7 +133,7 @@ void TAtrac1MDCT::IMdct(double Specs[512], const TBlockSize& mode, double* low, 
         if (numMdctBlocks == 1)
             memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(double));
 
-        for (int j = 0; j < 16; j++) {
+        for (size_t j = 0; j < 16; j++) {
             dstBuf[bufSz*2 - 16  + j] = invBuf[bufSz - 16 + j];
         }
     }
@@ -156,7 +156,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 
             IMdct(&specs[0], mode, &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             SynthesisFilterBank[channel].Synthesis(&sum[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
-            for (int i = 0; i < NumSamples; ++i) {
+            for (size_t i = 0; i < NumSamples; ++i) {
                 if (sum[i] > PcmValueMax)
                     sum[i] = PcmValueMax;
                 if (sum[i] < PcmValueMin)
@@ -173,7 +173,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
     vector<IAtrac1BitAlloc*> bitAlloc;
-    for (int i = 0; i < srcChannels; i++) {
+    for (size_t i = 0; i < srcChannels; i++) {
         TAea* atrac1container = dynamic_cast<TAea*>(Aea.get());
         if (atrac1container == nullptr)
             abort();
@@ -184,7 +184,7 @@ TPCMEngine<double>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             double src[NumSamples];
             vector<double> specs(512);
-            for (int i = 0; i < NumSamples; ++i) {
+            for (size_t i = 0; i < NumSamples; ++i) {
                 src[i] = data[i * srcChannels + channel];
             }
 

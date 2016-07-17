@@ -21,10 +21,10 @@ void TTransientDetector::HPFilter(const double* in, double* out) {
     };
     memcpy(HPFBuffer.data() + PrevBufSz, in, BlockSz * sizeof(double));
     const double* inBuf = HPFBuffer.data();
-    for (int i = 0; i < BlockSz; ++i) {
+    for (size_t i = 0; i < BlockSz; ++i) {
         double s = inBuf[i + 10];
         double s2 = 0;
-        for (int j = 0; j < ((FIRLen - 1) / 2) - 1 ; j += 2) {
+        for (size_t j = 0; j < ((FIRLen - 1) / 2) - 1 ; j += 2) {
             s += fircoef[j] * (inBuf[i + j] + inBuf[i + FIRLen - j]);
             s2 += fircoef[j + 1] * (inBuf[i + j + 1] + inBuf[i + FIRLen - j - 1]);
         }

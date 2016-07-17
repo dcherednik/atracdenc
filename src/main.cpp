@@ -54,7 +54,6 @@ int main(int argc, char* const* argv) {
         { "bfuidxconst", required_argument, NULL, 1},
         { "bfuidxfast", no_argument, NULL, 2},
         { "notransient", optional_argument, NULL, 3},
-        { "mono", no_argument, NULL, 'm'},
         { "nostdout", no_argument, NULL, 4},
         { NULL, 0, NULL, 0}
     };
@@ -65,7 +64,6 @@ int main(int argc, char* const* argv) {
     uint32_t mode = 0;
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
-    bool mono = false;
     bool nostdout = false;
     TAtrac1EncodeSettings::EWindowMode windowMode = TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //all is long
@@ -84,9 +82,6 @@ int main(int argc, char* const* argv) {
                 outFile = optarg;
                 if (outFile == "-")
                     nostdout = true;
-                break;
-            case 'm':
-                mono = true;
                 break;
             case 'h':
                 cout << GetHelp() << endl;

@@ -106,7 +106,7 @@ public:
         }
         typedef std::function<void(T* data)> TProcessLambda; 
 
-        uint64_t ApplyProcess(int step, TProcessLambda lambda) {
+        uint64_t ApplyProcess(size_t step, TProcessLambda lambda) {
             if (step > Buffer.Size()) {
                 throw TPCMBufferTooSmall();
             }
@@ -114,8 +114,8 @@ public:
                 const uint32_t sizeToRead = Buffer.Size();
                 Reader->Read(Buffer, sizeToRead);
             }
-            int32_t lastPos = 0;
-            for (int i = 0; i + step <= Buffer.Size(); i+=step) {
+            size_t lastPos = 0;
+            for (size_t i = 0; i + step <= Buffer.Size(); i+=step) {
                 lambda(Buffer[i]);
                 lastPos = i + step;
             }

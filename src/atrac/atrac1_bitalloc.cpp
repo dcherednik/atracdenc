@@ -32,13 +32,13 @@ static const uint32_t BitBoostMask[MAX_BFUS] = {
 //returns 1 for tone-like, 0 - noise-like
 static double AnalizeSpread(const std::vector<TScaledBlock>& scaledBlocks) {
     double s = 0.0;
-    for (int i = 0; i < scaledBlocks.size(); ++i) {
+    for (size_t i = 0; i < scaledBlocks.size(); ++i) {
         s += scaledBlocks[i].ScaleFactorIndex;
     }
     s /= scaledBlocks.size();
     double sigma = 0.0;
     double xxx = 0.0;
-    for (int i = 0; i < scaledBlocks.size(); ++i) {
+    for (size_t i = 0; i < scaledBlocks.size(); ++i) {
         xxx = (scaledBlocks[i].ScaleFactorIndex - s);
         xxx *= xxx;
         sigma += xxx;
@@ -104,7 +104,7 @@ uint32_t TBitsBooster::ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint3
 
 vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum, const double spread, const double shift, const TBlockSize& blockSize) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
-    for (int i = 0; i < bitsPerEachBlock.size(); ++i) {
+    for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         const uint32_t fix = blockSize.LogCount[BfuToBand(i)] ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
         int tmp = spread * ( (double)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
         if (tmp > 16) {
@@ -172,7 +172,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
         for (;;) {
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, BfuAmountTab[bfuIdx], spread, shift, blockSize);
             uint32_t bitsUsed = 0;
-            for (int i = 0; i < tmpAlloc.size(); i++) {
+            for (size_t i = 0; i < tmpAlloc.size(); i++) {
                 bitsUsed += SpecsPerBlock[i] * tmpAlloc[i];
             }
 
@@ -216,7 +216,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
 
 void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks, uint32_t bfuAmountIdx, const TBlockSize& blockSize) {
     NBitStream::TBitStream bitStream;
-    int bitUsed = 0;
+    size_t bitUsed = 0;
     if (bfuAmountIdx >= (1 << BitsPerBfuAmountTabIdx)) {
         cerr << "Wrong bfuAmountIdx (" << bfuAmountIdx << "), frame skiped" << endl;
         return;
@@ -243,11 +243,11 @@ void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachB
         bitStream.Write(tmp, 4);
         bitUsed+=4;
     }
-    for (int i = 0; i < bitsPerEachBlock.size(); ++i) {
+    for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         bitStream.Write(scaledBlocks[i].ScaleFactorIndex, 6);
         bitUsed+=6;
     }
-    for (int i = 0; i < bitsPerEachBlock.size(); ++i) {
+    for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         const auto wordLength = bitsPerEachBlock[i];
         if (wordLength == 0 || wordLength == 1)
             continue;
@@ -255,8 +255,8 @@ void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachB
         const double multiple = ((1 << (wordLength - 1)) - 1);
         for (const double val : scaledBlocks[i].Values) {
             const int tmp = round(val * multiple);
-            const int testwl = bitsPerEachBlock[i] ? (bitsPerEachBlock[i] - 1) : 0;
-            const int a = !!testwl + testwl;
+            const uint32_t testwl = bitsPerEachBlock[i] ? (bitsPerEachBlock[i] - 1) : 0;
+            const uint32_t a = !!testwl + testwl;
             if (a != wordLength) {
                 cerr << "wordlen error " << a << " " << wordLength << endl;
                 abort();

@@ -77,7 +77,7 @@ typedef std::unique_ptr<TWav> TWavPtr;
 template<class T>
 IPCMReader<T>* TWav::GetPCMReader() const {
     return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != File.channels())
+        if (data.Channels() != (size_t)File.channels())
             throw TWrongReadBuffer(); 
         if (size_t read = File.readf(data[0], size) != size) {
             assert(read < size);
@@ -90,7 +90,7 @@ IPCMReader<T>* TWav::GetPCMReader() const {
 template<class T>
 IPCMWriter<T>* TWav::GetPCMWriter() {
     return new TWavPcmWriter<T>([this](const TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != File.channels())
+        if (data.Channels() != (size_t)File.channels())
             throw TWrongReadBuffer();
         if (File.writef(data[0], size) != size) {
             fprintf(stderr, "can't write block\n");
