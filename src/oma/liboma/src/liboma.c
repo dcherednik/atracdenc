@@ -3,8 +3,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <assert.h>
+
+//to use htonl
+//TODO: rewrite
+#include <arpa/inet.h>
 
 static const int OMA_HEADER_SIZE = 96;
 static const int liboma_samplerates[8] = { 32000, 44100, 48000, 88200, 96000, 0 };
@@ -92,7 +97,6 @@ static int oma_write_atrac3_header(uint32_t *params, oma_info_t *info) {
 static int oma_read_atrac3p_header(uint32_t params, oma_info_t* info) {
     const int channel_id = (params >> 10) & 7;
     if (channel_id == 0) {
-        fprintf(stderr, "");
         return -1;
     }
     const int samplerate = liboma_samplerates[(params >> 13) & 0x7];

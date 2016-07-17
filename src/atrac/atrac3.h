@@ -35,7 +35,7 @@ class TAtrac3Data {
 public:
     static constexpr uint8_t MaxBfus = 32;
     static constexpr uint32_t NumSamples = 1024;
-protected:
+//protected:
     static const uint32_t MDCTSz = 512;
     static double ScaleTable[64];
     static double EncodeWindow[256];

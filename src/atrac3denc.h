@@ -16,7 +16,7 @@
 #include <array>
 namespace NAtracDEnc {
 
-class TAtrac3MDCT : public virtual NAtrac3::TAtrac3Data {
+class TAtrac3MDCT : public NAtrac3::TAtrac3Data {
     NMDCT::TMDCT<512> Mdct512;
     NMDCT::TMIDCT<512> Midct512;
 public:
@@ -33,6 +33,9 @@ public:
     void Mdct(TFloat specs[1024],
               TFloat* bands[4],
               TFloat maxLevels[4],
+              TGainModulatorArray gainModulators);
+    void Mdct(TFloat specs[1024],
+              TFloat* bands[4],
               TGainModulatorArray gainModulators = TGainModulatorArray());
     void Midct(TFloat specs[1024],
                TFloat* bands[4],
@@ -44,7 +47,7 @@ protected:
 //returns threshhold
 typedef std::function<float(const TFloat* p, uint16_t len)> TTonalDetector;
 
-class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT, public virtual NAtrac3::TAtrac3Data {
+class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     TCompressedIOPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
     TFloat PcmBuffer[2][4][256 + 256]; //2 channel, 4 band, 256 sample + 256 for overlap buffer
@@ -62,7 +65,7 @@ public:
 #endif
     uint32_t CheckLevelOverflow(TFloat max, uint32_t levelIdx);
     std::vector<SubbandInfo::TGainPoint> FilterCurve(const std::vector<SubbandInfo::TGainPoint>& curve,
-                                                     const int threshold);
+                                                     uint32_t threshold);
     TFloat LimitRel(TFloat x);
     std::vector<TFloat> CalcBaseLevel(TFloat prev, const std::vector<TFloat>& gain);
     TAtrac3Data::SubbandInfo CreateSubbandInfo(TFloat* in[4], uint32_t channel, TTransientDetector* transientDetector);

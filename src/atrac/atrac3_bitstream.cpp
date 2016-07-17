@@ -7,10 +7,13 @@
 #include <vector>
 #include <cstdlib>
 
+#include <cstring>
+
 namespace NAtracDEnc {
 namespace NAtrac3 {
 
 using std::vector;
+using std::memset;
 
 static const uint32_t FixedBitAllocTable[TAtrac3Data::MaxBfus] = {
   6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
@@ -115,8 +118,6 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
 
     uint8_t numBfu = 32;
     vector<uint32_t> precisionPerEachBlocks(numBfu);
-    uint32_t targetBitsPerBfus;
-    uint32_t curBitsPerBfus;
     uint8_t mode;
     for (;;) {
         precisionPerEachBlocks.resize(numBfu);
@@ -139,7 +140,6 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
             if (consumption.second < minBits) {
                 if (maxShift - minShift < 0.1) {
                     precisionPerEachBlocks = tmpAlloc;
-                    curBitsPerBfus = consumption.second;
                     mode = consumption.first;
                     break;
                 }
@@ -150,12 +150,10 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
                 shift += (maxShift - shift) / 2;
             } else {
                 precisionPerEachBlocks = tmpAlloc;
-                curBitsPerBfus = consumption.second;
                 mode = consumption.first;
                 break;
             }
         }
-        targetBitsPerBfus = bitsAvaliablePerBfus;
         break;
 
     }
@@ -342,12 +340,6 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalC
                 }
                 lastPos = k;
                 checkPos = lastPos;
-                bool shouldBreakCurrentGroup = true;
-                for (uint16_t k = j+1; k < 16; ++k) {
-                    if (bandFlags[k]) {
-                        shouldBreakCurrentGroup = false;
-                    }
-                }
             }
 
             assert(subGroupEndPos == checkPos);
@@ -363,7 +355,7 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
                                                             const TFloat shift)
 {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
-    for (int i = 0; i < bitsPerEachBlock.size(); ++i) {
+    for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         const uint32_t fix = FixedBitAllocTable[i];
         int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift; 
         if (tmp > 7) {

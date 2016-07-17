@@ -53,6 +53,12 @@ void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TFloat maxLevels[4]
     }
 }
 
+void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TGainModulatorArray gainModulators)
+{
+    static TFloat dummy[4];
+    Mdct(specs, bands, dummy, gainModulators);
+}
+
 void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorArray gainDemodulators)
 {
     for (int band = 0; band < 4; ++band) {
@@ -193,7 +199,7 @@ uint32_t TAtrac3Processor::CheckLevelOverflow(const TFloat probe, uint32_t level
 }
 
 vector<TAtrac3Data::SubbandInfo::TGainPoint> TAtrac3Processor::FilterCurve(const vector<SubbandInfo::TGainPoint>& curve,
-                                                                           const int threshold)
+                                                                           const uint32_t threshold)
 {
     if (curve.empty())
         return curve;
@@ -268,7 +274,7 @@ std::vector<TFloat> TAtrac3Processor::CalcBaseLevel(const TFloat prev, const std
     TFloat maxRel = 1.0;
     bool done = false;
     //TODO: recheck it. It looks like we realy need to compare only prev and last point
-    for (int i = gain.size() - 1; i < gain.size(); ++i) {
+    for (size_t i = gain.size() - 1; i < gain.size(); ++i) {
         if (prev > gain[i] && prev / gain[i] > maxRel) {
             maxRel = prev / gain[i];
             done = true;
@@ -289,7 +295,7 @@ std::vector<TFloat> TAtrac3Processor::CalcBaseLevel(const TFloat prev, const std
     baseLine[baseLine.size() - 1] = val1;
     TFloat a = (baseLine[baseLine.size() - 1] - baseLine[0]) / baseLine.size();
 
-    for (int i = 1; i < baseLine.size() - 1; i++) {
+    for (size_t i = 1; i < baseLine.size() - 1; i++) {
         baseLine[i] = i * a + baseLine[0];
     }
     return baseLine;
@@ -369,7 +375,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
             vector<TFloat> specs(1024);
             TFloat src[NumSamples];
 
-            for (int i = 0; i < NumSamples; ++i) {
+            for (size_t i = 0; i < NumSamples; ++i) {
                 src[i] = data[meta.Channels == 1 ? i : (i * 2 + channel)] / 4.0; //no mono mode in atrac3. //TODO we can TFloat frame after encoding
             }
 

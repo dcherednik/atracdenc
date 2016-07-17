@@ -3,7 +3,7 @@
 #include "config.h"
 
 template<class T>
-class TGainProcessor : public virtual T {
+class TGainProcessor : public T {
 
 public:
     typedef std::function<void(TFloat* out, TFloat* cur, TFloat* prev)> TGainDemodulator;

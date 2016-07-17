@@ -20,7 +20,7 @@ TEST(AnalyzeGain, AnalyzeGainSimple) {
             in[i] = 0.5;
         }
     }
-    vector<TFloat> res = AnalyzeGain(in, 256, 32);
+    vector<TFloat> res = AnalyzeGain(in, 256, 32, false);
     EXPECT_EQ(res.size(), 32);    
 
 //    for (TFloat v : res)
