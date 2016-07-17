@@ -6,6 +6,7 @@
 #include <functional>
 
 #include <assert.h>
+#include <string.h>
 
 class TPCMBufferTooSmall : public std::exception {
     virtual const char* what() const throw() {

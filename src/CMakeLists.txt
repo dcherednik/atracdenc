@@ -1,14 +1,11 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 add_definitions( "-Wall -O2 -g" )
-set(CMAKE_CXX_STANDARD 11)
 
 project(atracdenc)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 INCLUDE(FindLibSndFile)
-
-find_package(libsndfile REQUIRED)
 
 include_directories(${LIBSNDFILE_INCLUDE_DIR})
 
