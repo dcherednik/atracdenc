@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "config.h"
+#include <cstring>
 
 template<class T>
 inline void SwapArray(T* p, const size_t len) {
@@ -13,6 +14,20 @@ inline void SwapArray(T* p, const size_t len) {
         p[i] = p[j];
         p[j] = tmp;
     }
+}
+
+template<size_t N>
+inline void InvertSpectrInPlase(TFloat* in) {
+    for (size_t i = 0; i < N; i+=2)
+        in[i] *= -1;
+}
+
+template<size_t N>
+inline std::vector<TFloat> InvertSpectr(const TFloat* in) {
+    std::vector<TFloat> buf(N);
+    std::memcpy(&buf[0], in, N * sizeof(TFloat));
+    InvertSpectrInPlase<N>(&buf[0]);
+    return buf;
 }
 
 inline uint16_t GetFirstSetBit(uint32_t x) {

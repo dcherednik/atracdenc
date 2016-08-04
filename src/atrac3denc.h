@@ -52,22 +52,26 @@ class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     const NAtrac3::TAtrac3EncoderSettings Params;
     TFloat PcmBuffer[2][4][256 + 256]; //2 channel, 4 band, 256 sample + 256 for overlap buffer
 
-    TFloat LastLevels[2][4]; //2 channel, 4 band - level of last subblock, used to create curve
-    TFloat LastHPLevels[2][4]; //2 channel, 4 band - level of last HP filtered subblock, used for transient detection
     TFloat PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 
     Atrac3SplitFilterBank<TFloat> SplitFilterBank[2];
     TScaler<TAtrac3Data> Scaler;
     std::vector<TTransientDetector> TransientDetectors;
     typedef std::array<uint8_t, NumSpecs> TonalComponentMask;
+public:
+    struct TTransientParam {
+        const int32_t AttackLocation;
+        const TFloat AttackRelation;
+        const int32_t ReleaseLocation;
+        const TFloat ReleaseRelation;
+    };
+private:
+
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif
-    uint32_t CheckLevelOverflow(TFloat max, uint32_t levelIdx);
-    std::vector<SubbandInfo::TGainPoint> FilterCurve(const std::vector<SubbandInfo::TGainPoint>& curve,
-                                                     uint32_t threshold);
     TFloat LimitRel(TFloat x);
-    std::vector<TFloat> CalcBaseLevel(TFloat prev, const std::vector<TFloat>& gain);
+    TTransientParam CalcTransientParam(const std::vector<TFloat>& gain, TFloat lastMax);
     TAtrac3Data::SubbandInfo CreateSubbandInfo(TFloat* in[4], uint32_t channel, TTransientDetector* transientDetector);
     TonalComponentMask AnalyzeTonalComponent(TFloat* specs);
     TTonalComponents ExtractTonalComponents(TFloat* specs, TTonalDetector fn);

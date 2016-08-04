@@ -14,15 +14,6 @@ using namespace NAtrac1;
 using namespace NMDCT;
 using std::vector;
 
-template<int N>
-static vector<TFloat> invertSpectr(const TFloat* in) {
-    vector<TFloat> buf(N);
-    memcpy(&buf[0], in, N * sizeof(TFloat));
-    for (int i = 0; i < N; i+=2)
-        buf[i] *= -1;
-    return buf;
-}
-
 TAtrac1Processor::TAtrac1Processor(TCompressedIOPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
@@ -185,10 +176,10 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
             if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
 
-                const vector<TFloat>& invMid = invertSpectr<128>(&PcmBufMid[channel][0]);
+                const vector<TFloat>& invMid = InvertSpectr<128>(&PcmBufMid[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 1).Detect(&invMid[0]) << 1;
 
-                const vector<TFloat>& invHi = invertSpectr<256>(&PcmBufHi[channel][0]);
+                const vector<TFloat>& invHi = InvertSpectr<256>(&PcmBufHi[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 2).Detect(&invHi[0]) << 2;
 
                 //std::cout << "trans: " << windowMask << std::endl;

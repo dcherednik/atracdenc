@@ -11,20 +11,6 @@ using namespace NMDCT;
 using namespace NAtrac3;
 using std::vector;
 
-
-static void hpFilter(const TFloat* in, TFloat* out, uint32_t n)
-{
-    TFloat t0 = 0;
-    TFloat t1 = 0;
-    for (uint32_t i = 0; i < n; ++i) {
-        TFloat x = in[i] / 4.0f;
-        TFloat y = t0 + x;
-        t0 = t1 + y - 2.0f * x;
-        t1 = x - .5f * y;
-        out[i] = y;
-    }
-}
-
 void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TFloat maxLevels[4], TGainModulatorArray gainModulators)
 {
     for (int band = 0; band < 4; ++band) {
@@ -32,14 +18,14 @@ void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TFloat maxLevels[4]
         TFloat* const curSpec = &specs[band*256];
         TGainModulator modFn = gainModulators[band];
         vector<TFloat> tmp(512);
-        TFloat maxOverlapGain = 0.0;
         memcpy(&tmp[0], &srcBuff[256], 256 * sizeof(TFloat));
         if (modFn) {
             modFn(tmp.data(), srcBuff);
         }
+        TFloat max = 0.0;
         for (int i = 0; i < 256; i++) {
+            max = std::max(max, std::abs(srcBuff[i]));
             srcBuff[256+i] = TAtrac3Data::EncodeWindow[i] * srcBuff[i];
-            maxOverlapGain = std::max(maxOverlapGain, std::abs(srcBuff[256+i]));
             srcBuff[i] = TAtrac3Data::EncodeWindow[255-i] * srcBuff[i];
         }
         memcpy(&tmp[256], &srcBuff[0], 256 * sizeof(TFloat));
@@ -49,7 +35,7 @@ void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TFloat maxLevels[4]
         if (band & 1) {
             SwapArray(curSpec, 256);
         }
-        maxLevels[band] = maxOverlapGain;
+        maxLevels[band] = max;
     }
 }
 
@@ -159,6 +145,7 @@ TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* s
     }
     return res;
 }
+
 std::vector<TTonalComponent> TAtrac3Processor::MapTonalComponents(const TTonalComponents& tonalComponents)
 {
     vector<TTonalComponent> componentMap;
@@ -185,120 +172,54 @@ TFloat TAtrac3Processor::LimitRel(TFloat x)
     return std::min(std::max(x, GainLevel[15]), GainLevel[0]);
 }
 
-uint32_t TAtrac3Processor::CheckLevelOverflow(const TFloat probe, uint32_t levelIdx)
+TAtrac3Processor::TTransientParam TAtrac3Processor::CalcTransientParam(const std::vector<TFloat>& gain, const TFloat lastMax)
 {
-    //std::cout << "CheckLevelOverflow: " << probe << " start idx: " << levelIdx << std::endl;
-    while (probe / GainLevel[levelIdx] > 65535) {
-        if (levelIdx == 0) {
-            std::cerr << "level too hi" << std::endl;
-            break;
-        }
-        levelIdx--;
-    }
-    return levelIdx;
-}
+    int32_t attackLocation = 0;
+    TFloat attackRelation = 1;
 
-vector<TAtrac3Data::SubbandInfo::TGainPoint> TAtrac3Processor::FilterCurve(const vector<SubbandInfo::TGainPoint>& curve,
-                                                                           const uint32_t threshold)
-{
-    if (curve.empty())
-        return curve;
-
-#ifndef NDEBUG
-    int prev = -1;
-    for (auto v : curve) {
-        assert((int)v.Location > prev);
-//        std::cout << "in: " << v.Level << " " << v.Location << " threshold: " << threshold << std::endl;
-        prev = v.Location;
-    }
-#endif
-
-    std::vector<TAtrac3Data::SubbandInfo::TGainPoint> res;
-    res.push_back(curve[curve.size() - 1]);
-    for (int32_t i = curve.size() - 1; i >=0;) {
-        uint32_t minSeenVal = curve[i].Level;
-        uint32_t maxSeenVal = curve[i].Level;
-
-        int32_t j = i;
-        for (;;) {
-            minSeenVal = std::min(curve[j].Level, minSeenVal);
-            maxSeenVal = std::max(curve[j].Level, maxSeenVal);
-
-            uint32_t curVal = curve[j].Level;
-/*
-            std::cout << "i: " << i
-                << " j: " << j
-                << " minSeenVal: " << minSeenVal
-                << " maxSeenVal: " << maxSeenVal
-                << " curVal: " << curVal
-                << std::endl;
-*/
-            if ((j == 0 && (curve[0].Level != curve[1].Level)) ||
-                (curVal - minSeenVal > threshold) ||
-                (maxSeenVal - curVal > threshold) )
-            {
-                res.push_back(curve[j]);
+    const TFloat attackThreshold = 4;
+    //pre-echo searching
+    TFloat tmp;
+    TFloat q = lastMax; //std::max(lastMax, gain[0]);
+    tmp = gain[0] / q;
+    if (tmp > attackThreshold) {
+        attackRelation = tmp;
+    } else {
+        for (uint32_t i = 0; i < gain.size() -1; ++i) {
+            q =  std::max(q, gain[i]);
+            tmp = gain[i+1] / q;
+            if (tmp > attackThreshold) {
+                attackRelation = tmp;
+                attackLocation = i;
                 break;
             }
-            if (j == 0)
-                break;
-            j--;
         }
-        i = j;
-        if (i == 0)
+    }
+
+    int32_t releaseLocation = 0;
+    TFloat releaseRelation = 1;
+
+    const TFloat releaseTreshold = 4;
+    //post-echo searching
+    q = 0;
+    for (uint32_t i = gain.size() - 1; i > 0; --i) {
+        q = std::max(q, gain[i]);
+        tmp = gain[i-1] / q;
+        if (tmp > releaseTreshold) {
+            releaseRelation = tmp;
+            releaseLocation = i;
             break;
+        }
     }
-    std::reverse(res.begin(), res.end());
-
-//    for (auto v : res)
-//        std::cout << "out: " << v.Level << " " << v.Location << std::endl;
-
-    if (res.size() < TAtrac3Data::SubbandInfo::MaxGainPointsNum) {
-        return res;
-    }
-    return FilterCurve(res, threshold + 1);
-}
-
-//TODO: implement real transient detector
-bool checkTransient(TFloat cur, TFloat prev)
-{
-    TFloat x = (cur > prev) ? cur / prev : prev / cur;
-    if (x > 6)
-        return true;
-
-    return false;
-}
-
-std::vector<TFloat> TAtrac3Processor::CalcBaseLevel(const TFloat prev, const std::vector<TFloat>& gain) {
-
-    TFloat maxRel = 1.0;
-    bool done = false;
-    //TODO: recheck it. It looks like we realy need to compare only prev and last point
-    for (size_t i = gain.size() - 1; i < gain.size(); ++i) {
-        if (prev > gain[i] && prev / gain[i] > maxRel) {
-            maxRel = prev / gain[i];
-            done = true;
+    if (releaseLocation == 0) {
+        q = std::max(q, gain[0]);
+        tmp = lastMax / q;
+        if (tmp > releaseTreshold) {
+            releaseRelation = tmp;
         }
     }
 
-    TFloat val0 = gain[gain.size() - 1];
-    if (done) {
-        const TFloat rel = LimitRel(maxRel);
-        uint32_t relIdx = 15 - Log2FloatToIdx(rel, 2048);
-        val0 = prev / GainLevel[relIdx];
-    }
-
-    TFloat val1 = gain[gain.size() - 1];
-    std::vector<TFloat> baseLine(gain.size());
-
-    baseLine[0] = val0;
-    baseLine[baseLine.size() - 1] = val1;
-    TFloat a = (baseLine[baseLine.size() - 1] - baseLine[0]) / baseLine.size();
-
-    for (size_t i = 1; i < baseLine.size() - 1; i++) {
-        baseLine[i] = i * a + baseLine[0];
-    }
-    return baseLine;
+    return {attackLocation, attackRelation, releaseLocation, releaseRelation};
 }
 
 TAtrac3Data::SubbandInfo TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
@@ -308,52 +229,68 @@ TAtrac3Data::SubbandInfo TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
     TAtrac3Data::SubbandInfo siCur;
     for (int band = 0; band < 4; ++band) {
 
-        const TFloat* srcBuff = in[band];
-        TFloat* const lastLevel = &LastLevels[channel][band];
-        TFloat* const lastHPLevel = &LastHPLevels[channel][band];
-        TFloat* const lastMax = &PrevPeak[channel][band];
+        TFloat invBuf[256];
+        if (band & 1) {
+            memcpy(invBuf, in[band], 256*sizeof(TFloat));
+            InvertSpectrInPlase<256>(invBuf);
+        }
+        const TFloat* srcBuff = (band & 1) ? invBuf : in[band];
+
+        const TFloat* const lastMax = &PrevPeak[channel][band];
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
-        //RMS gain
-        std::vector<TFloat> gain = AnalyzeGain(srcBuff, 256, 32, true);
-        //std::cout << "gain prev: " << *lastLevel << std::endl;
-        //for ( auto vvv : gain ) {
-        //    std::cout << " gain: " << vvv << std::endl;
-        //}
-        int32_t gainPos = gain.size() - 2;
-        bool hasTransient = false;
+        std::vector<TFloat> gain = AnalyzeGain(srcBuff, 256, 32, false);
 
-        std::vector<TFloat> base = CalcBaseLevel(*lastLevel, gain);
+        auto transientParam = CalcTransientParam(gain, *lastMax);
+        bool hasTransient = (transientParam.AttackRelation != 1.0 || transientParam.ReleaseRelation != 1.0);
 
-        TFloat hpSig[256];
-        hpFilter(srcBuff, &hpSig[0], 256);
-        //Peak gain
-        std::vector<TFloat> hpGain = AnalyzeGain(&hpSig[0], 256, 32, false);
+        //combine attack and release
+        TFloat relA = 1;
+        TFloat relB = 1;
+        TFloat relC = 1;
+        uint32_t loc1 = 0;
+        uint32_t loc2 = 0;
+        if (transientParam.AttackLocation < transientParam.ReleaseLocation) {
+            //Peak like transient
+            relA = transientParam.AttackRelation;
+            loc1 = transientParam.AttackLocation;
+            relB = 1;
+            loc2 = transientParam.ReleaseLocation;
+            relC = transientParam.ReleaseRelation;
+        } else if (transientParam.AttackLocation > transientParam.ReleaseLocation) {
+            //Hole like transient
+            relA = transientParam.AttackRelation;
+            loc1 = transientParam.ReleaseLocation;
+            relB = transientParam.AttackRelation * transientParam.ReleaseRelation;
+            loc2 = transientParam.AttackLocation;
+            relC = transientParam.ReleaseRelation;
+        } else {
+            //???
+            //relA = relB = relC = transientParam.AttackRelation * transientParam.ReleaseRelation;
+            //loc1 = loc2 = transientParam.ReleaseLocation;
+            hasTransient = false;
+        }
+        //std::cout << "loc: " << loc1 << " " << loc2 << " rel: " << relA << " " << relB << " " << relC <<  std::endl;
 
-        for (; gainPos >= 0; --gainPos) {
-            const TFloat val = (gainPos == 0) ? *lastLevel : gain[gainPos];
-
-            const TFloat hpval = (gainPos == 0) ? *lastHPLevel : hpGain[gainPos];
-            if (!hasTransient && checkTransient(hpval, hpGain[gainPos + 1])) {
-                //std::cout << "hasTransient true at: " << gainPos << " base: " << base[gainPos] << std::endl;
-                hasTransient = true;
-            }
-
-            const TFloat rel = LimitRel(val / base[gainPos]);
-            uint32_t scaleIdx = 15 - Log2FloatToIdx(rel, 2048);
-
-            curve.push_back({scaleIdx, (uint32_t)gainPos /*+ !!gainPos*/});
+        if (relC != 1) {
+            relA /= relC;
+            relB /= relC;
+            relC = 1.0;
+        }
+        auto relToIdx = [this](TFloat rel) {
+            rel = LimitRel(1/rel);
+            return (uint32_t)(15 - Log2FloatToIdx(rel, 2048));
+        };
+        curve.push_back({relToIdx(relA), loc1});
+        if (loc1 != loc2) {
+            curve.push_back({relToIdx(relB), loc2});
+        }
+        if (loc2 != 31) {
+            curve.push_back({relToIdx(relC), 31});
         }
 
-
-        *lastLevel = gain[gain.size() -1];
-        *lastHPLevel = hpGain[gain.size() -1];
         if (hasTransient) {
-            std::reverse(curve.begin(), curve.end());
-            auto t = CheckLevelOverflow(*lastMax, curve[0].Level);
-            //std::cout << "overflow: " << curve[0].Level << " new: " << t << " max: " << *lastMax << std::endl;
-            curve[0].Level = t;
-            siCur.AddSubbandCurve(band, std::move(FilterCurve(curve, 0)));
+            siCur.AddSubbandCurve(band, std::move(curve));
         }
 
     }
