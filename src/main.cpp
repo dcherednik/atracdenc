@@ -81,7 +81,7 @@ enum EOptions
     O_MONO = 'm',
     O_NOSTDOUT = '4',
     O_NOTONAL = 5,
-    O_NOGAINCONTROL = 6,
+    O_GAINCONTROL = 6,
 };
 
 static void PrepareAtrac1Encoder(const string& inFile,
@@ -175,7 +175,7 @@ int main(int argc, char* const* argv)
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
         { "notonal", no_argument, NULL, O_NOTONAL},
-        { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
+        { "gaincontrol", no_argument, NULL, O_GAINCONTROL},
         { NULL, 0, NULL, 0}
     };
 
@@ -186,7 +186,7 @@ int main(int argc, char* const* argv)
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
     bool noStdOut = false;
-    bool noGainControl = false;
+    bool noGainControl = true;
     bool noTonalComponents = false;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
@@ -242,8 +242,8 @@ int main(int argc, char* const* argv)
             case O_NOTONAL:
                 noTonalComponents = true;
                 break;
-            case O_NOGAINCONTROL:
-                noGainControl = true;
+            case O_GAINCONTROL:
+                noGainControl = false;
                 break;
 			default:
                 printUsage(myName);
