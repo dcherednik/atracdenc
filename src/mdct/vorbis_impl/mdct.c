@@ -37,6 +37,7 @@
  */
 
 #include "mdct.h"
+#include <alloca.h>
 
 /**
  * Allocates and initializes lookup tables in the MDCT context.
