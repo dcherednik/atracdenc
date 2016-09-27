@@ -26,6 +26,7 @@ class TAtrac1MDCT : public virtual NAtrac1::TAtrac1Data {
     NMDCT::TMDCT<64> Mdct64;
     NMDCT::TMIDCT<512> Midct512;
     NMDCT::TMIDCT<256> Midct256;
+    NMDCT::TMIDCT<64> Midct64;
 public:
     void IMdct(TFloat specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi);
     void Mdct(TFloat specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize);

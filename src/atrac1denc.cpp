@@ -39,19 +39,6 @@ static void vector_fmul_window(TFloat *dst, const TFloat *src0,
     }
 }
 
-vector<TFloat> midct(TFloat* x, int N) {
-    vector<TFloat> res;
-    for (int n = 0; n < 2 * N; n++) {
-        TFloat sum = 0;
-        for (int k = 0; k < N; k++) {
-            sum += (x[k] * cos((M_PI/N) * ((TFloat)n + 0.5 + N/2) * ((TFloat)k + 0.5)));
-        }
-
-        res.push_back(sum);
-    }
-    return res;
-}
-
 void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < NumQMF; band++) {
@@ -101,7 +88,7 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
             if (band) {
                 SwapArray(&Specs[pos], blockSz);
             }
-            vector<TFloat> inv = (numMdctBlocks != 1) ? midct(&Specs[pos], blockSz) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
+            vector<TFloat> inv = (numMdctBlocks != 1) ? Midct64(&Specs[pos]) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
             for (size_t i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];
             }

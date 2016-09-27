@@ -3,8 +3,10 @@
 #define CONFIG_DOUBLE
 
 #ifdef CONFIG_DOUBLE
+#    define kiss_fft_scalar double
 typedef double TFloat;
 #else
+#    define kiss_fft_scalar float
 typedef float TFloat;
 #endif
 

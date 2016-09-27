@@ -27,7 +27,8 @@ INCLUDE(FindLibSndFile)
 include_directories(${LIBSNDFILE_INCLUDE_DIR})
 include_directories("oma/liboma/include")
 
-set(SOURCE_MDCT_LIB mdct/vorbis_impl/mdct.c)
+set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
+set_source_files_properties(fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
 set(SOURCE_OMA_LIB oma/liboma/src/liboma.c)
 set(SOURCE_EXE
     main.cpp
@@ -45,10 +46,11 @@ set(SOURCE_EXE
     atrac3denc.cpp
     atrac/atrac3.cpp
     atrac/atrac3_bitstream.cpp
+    mdct/mdct.cpp
     )
 
-add_library(mdct_impl STATIC ${SOURCE_MDCT_LIB})
+add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
 add_library(oma STATIC ${SOURCE_OMA_LIB})
 add_executable(atracdenc ${SOURCE_EXE})
-target_link_libraries(atracdenc mdct_impl oma ${SNDFILE_LIBRARIES})
+target_link_libraries(atracdenc fft_impl oma ${SNDFILE_LIBRARIES})
 

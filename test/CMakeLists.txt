@@ -19,11 +19,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-po
 include_directories(${gtest_SOURCE_DIR}/include)
 
 set(mdct_test_sources
+    ../src/mdct/mdct.cpp
     ../src/mdct/mdct_ut.cpp
 )
-set(MDCT_SOURCE_LIB ../src/mdct/vorbis_impl/mdct.c)
 add_executable(mdct_test ${mdct_test_sources})
-target_link_libraries(mdct_test mdct_impl gtest_main)
+target_link_libraries(mdct_test fft_impl gtest_main)
 
 set(bitstream_test_sources
     ../src/bitstream/bitstream.cpp
@@ -44,9 +44,10 @@ set(atrac1mdct_test_sources
     ../src/atrac/atrac3.cpp #atrac_scale has explicit instantiation
     ../src/atracdenc_ut.cpp
     ../src/aea.cpp
+    ../src/mdct/mdct.cpp
 )
 add_executable(atrac1mdct_test ${atrac1mdct_test_sources})
-target_link_libraries(atrac1mdct_test mdct_impl gtest_main)
+target_link_libraries(atrac1mdct_test fft_impl gtest_main)
 
 set(atrac3mdct_test_sources
     ../src/atrac3denc.cpp
@@ -59,9 +60,10 @@ set(atrac3mdct_test_sources
     ../src/atrac/atrac3.cpp
     ../src/atrac3denc_ut.cpp
     ../src/oma.cpp
+    ../src/mdct/mdct.cpp
 )
 add_executable(atrac3mdct_test ${atrac3mdct_test_sources})
-target_link_libraries(atrac3mdct_test mdct_impl oma gtest_main)
+target_link_libraries(atrac3mdct_test fft_impl oma gtest_main)
 
 set(util_test_sources
     ../src/util_ut.cpp
