@@ -65,6 +65,7 @@ public:
     uint32_t GetChannelNum() const;
     uint32_t GetSampleRate() const;
     uint64_t GetTotalSamples() const;
+    bool IsFormatSupported() const;
     template<class T>
     IPCMReader<T>* GetPCMReader() const;
 

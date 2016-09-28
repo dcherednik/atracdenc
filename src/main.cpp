@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <stdexcept>
 
 #include <getopt.h>
 
@@ -84,6 +85,15 @@ enum EOptions
     O_GAINCONTROL = 6,
 };
 
+static void CheckInputFormat(const TWav* p)
+{
+    if (p->IsFormatSupported() == false)
+        throw std::runtime_error("unsupported format of input file");
+
+    if (p->GetSampleRate() != 44100)
+        throw std::runtime_error("unsupported sample rate");
+}
+
 static void PrepareAtrac1Encoder(const string& inFile,
                                  const string& outFile, 
                                  const bool noStdOut, 
@@ -95,7 +105,11 @@ static void PrepareAtrac1Encoder(const string& inFile,
 {
     using NAtrac1::TAtrac1Data;
 
-    wavIO->reset(new TWav(inFile));
+    {
+        TWav* wavPtr = new TWav(inFile);
+        CheckInputFormat(wavPtr);
+        wavIO->reset(wavPtr);
+    }
     const int numChannels = (*wavIO)->GetChannelNum();
     *totalSamples = (*wavIO)->GetTotalSamples();
     //TODO: recheck it
@@ -148,7 +162,11 @@ static void PrepareAtrac3Encoder(const string& inFile,
     std::cout << "WARNING: ATRAC3 is uncompleted, result will be not good )))" << std::endl;
     if (!noStdOut)
         std::cout << "bitrate " << encoderSettings.ConteinerParams->Bitrate << std::endl;
-    wavIO->reset(new TWav(inFile));
+    {
+        TWav* wavPtr = new TWav(inFile);
+        CheckInputFormat(wavPtr);
+        wavIO->reset(wavPtr);
+    }
     const int numChannels = (*wavIO)->GetChannelNum();
     *totalSamples = (*wavIO)->GetTotalSamples();
     TCompressedIOPtr omaIO = TCompressedIOPtr(new TOma(outFile,
@@ -274,38 +292,43 @@ int main(int argc, char* const* argv)
     uint64_t totalSamples = 0;
     TWavPtr wavIO;
     uint32_t pcmFrameSz = 0; //size of one pcm frame to process
-    switch (mode) {
-        case E_ENCODE:
-        {
-            using NAtrac1::TAtrac1Data;
-            NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask);
-            PrepareAtrac1Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
+
+    try {
+        switch (mode) {
+            case E_ENCODE:
+	        {
+                using NAtrac1::TAtrac1Data;
+                NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask);
+                PrepareAtrac1Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
-            pcmFrameSz = TAtrac1Data::NumSamples;
-        }
-        break;
-        case E_DECODE:
-        {
-            using NAtrac1::TAtrac1Data;
-            PrepareAtrac1Decoder(inFile, outFile, noStdOut,
+                pcmFrameSz = TAtrac1Data::NumSamples;
+            }
+            break;
+            case E_DECODE:
+            {
+                using NAtrac1::TAtrac1Data;
+                PrepareAtrac1Decoder(inFile, outFile, noStdOut,
                 &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
-            pcmFrameSz = TAtrac1Data::NumSamples;
-        }
-        break;
-        case (E_ENCODE | E_ATRAC3):
-        {
-            using NAtrac3::TAtrac3Data;
-            NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl, noTonalComponents); 
-            PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
+                pcmFrameSz = TAtrac1Data::NumSamples;
+            }
+            break;
+            case (E_ENCODE | E_ATRAC3):
+            {
+                using NAtrac3::TAtrac3Data;
+                NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl, noTonalComponents);
+                PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
-            pcmFrameSz = TAtrac3Data::NumSamples;;
+                pcmFrameSz = TAtrac3Data::NumSamples;;
+            }
+            break;
+            default:
+            {
+                throw std::runtime_error("Processing mode was not specified");
+            }
         }
-        break;
-        default:
-        {
-            cerr << "Processing mode was not specified" << endl;
-            return 1;
-        }
+    } catch (const std::exception& ex) {
+        cerr << "Fatal error: " << ex.what() << endl;
+        return 1;
     }
 
     auto atracLambda = (mode == E_DECODE) ? atracProcessor->GetDecodeLambda() :

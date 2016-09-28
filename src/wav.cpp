@@ -40,15 +40,22 @@ TWav::TWav(const std::string& filename, int channels, int sampleRate)
     //disable scaling short -> [-1.0, 1.0]
     File.command(SFC_SET_NORM_DOUBLE /*| SFC_SET_NORM_FLOAT*/, nullptr, SF_FALSE);
 }
+
 TWav::~TWav() {
 }
 
 uint64_t TWav::GetTotalSamples() const {
     return File.frames();
 }
+
 uint32_t TWav::GetChannelNum() const {
     return File.channels();
 }
+
 uint32_t TWav::GetSampleRate() const {
     return File.samplerate();
+}
+
+bool TWav::IsFormatSupported() const {
+    return (File.format() & SF_FORMAT_TYPEMASK) == SF_FORMAT_WAV;
 }
