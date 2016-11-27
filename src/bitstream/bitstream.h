@@ -18,8 +18,8 @@ class TBitStream {
     public:
         TBitStream(const char* buf, int size);
         TBitStream();
-        void Write(unsigned long long val, int n);
-        unsigned long long Read(int n);
+        void Write(uint32_t val, int n);
+        uint32_t Read(int n);
         unsigned long long GetSizeInBits() const;
         uint32_t GetBufSize() const { return Buf.size(); };
         const std::vector<char>& GetBytes() const {
