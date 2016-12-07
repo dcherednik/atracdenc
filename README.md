@@ -1,27 +1,41 @@
 # atracdenc - ATRAC Decoder Encoder
-Implementation of ATRAC1 encoder
+Implementation of ATRAC1, ATRAC3 encoders
 
 Building:
-You need C++11 compiler.
-cmake > 2.8
-libsndfiles 
+
+You need:
+* C++11 compiler.
+* cmake > 2.8
+* libsndfiles 
 
 binary:
 
-`cd src`
-`mkdir build`
-`cd build`
-`cmake ../`
-`make`
+```
+cd src
+mkdir build
+cd build
+cmake ../
+make
+```
 
 
 binary and tests:
 
-`cd test`
-`cmake ../`
-`make`
+```
+cd test
+cmake ../
+make
+```
 
 Usage:
+
+ATRAC1:
+```
+./atracdenc --encode -i ~/01.wav -o /tmp/01.aea
+```
+
+ATRAC3: - use it only if you want to improve it ;)
+
 You can use --help option to get help
 
 Limitations:
