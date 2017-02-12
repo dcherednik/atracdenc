@@ -22,6 +22,7 @@
 #include <memory>
 #include <exception>
 #include <functional>
+#include <cstdlib>
 
 #include <assert.h>
 #include <string.h>
@@ -61,13 +62,13 @@ public:
     T* operator[](size_t pos) {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size())
-            abort();
+            std::abort();
         return &Buf_[rpos];
     }
     const T* operator[](size_t pos) const {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size())
-            abort();
+            std::abort();
         return &Buf_[rpos];
     }
     uint16_t Channels() const {
