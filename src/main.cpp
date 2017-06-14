@@ -60,7 +60,7 @@ static void printProgress(int percent)
 
 static string GetHelp()
 {
-    return "\n--encode -i \t - encode mode"
+    return "\n--encode -e \t - encode mode"
         "\n--decode -d \t - decode mode"
         "\n -i input file"
         "\n -o output file"
@@ -227,7 +227,7 @@ int main(int argc, char* const* argv)
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
     uint32_t bitrate = 0; //0 - use default for codec
-    while ((ch = getopt_long(argc, argv, "edhi:o:m", longopts, NULL)) != -1) {
+    while ((ch = getopt_long(argc, argv, "e:dhi:o:m", longopts, NULL)) != -1) {
         switch (ch) {
             case O_ENCODE:
                 mode |= E_ENCODE;
