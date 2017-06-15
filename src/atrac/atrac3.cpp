@@ -43,7 +43,10 @@ double TAtrac3Data::GainLevel[16];
 double TAtrac3Data::GainInterpolation[31];
 
 const TContainerParams* TAtrac3Data::GetContainerParamsForBitrate(uint32_t bitrate) {
-    std::cout << bitrate << std::endl;
+    // Set default to LP2 mode
+    if (bitrate == 0) {
+        bitrate = 132300;
+    }
     return std::lower_bound(ContainerParams, ContainerParams+8, bitrate);
 }
 
