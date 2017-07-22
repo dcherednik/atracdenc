@@ -75,5 +75,11 @@ uint32_t TWav::GetSampleRate() const {
 }
 
 bool TWav::IsFormatSupported() const {
-    return (File.format() & SF_FORMAT_TYPEMASK) == SF_FORMAT_WAV;
+    switch (File.format() & SF_FORMAT_TYPEMASK) {
+        case SF_FORMAT_WAV:
+        case SF_FORMAT_AIFF:
+            return true;
+        default:
+            return false;
+    }
 }
