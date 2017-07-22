@@ -215,10 +215,10 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlock
     }
 }
 
-uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalComponent>& tonalComponents,
+uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                                                      TTonalComponentsSubGroup groups[64])
 {
-    for (const TTonalComponent& tc : tonalComponents) {
+    for (const TTonalBlock& tc : tonalComponents) {
         assert(tc.ScaledBlock.Values.size() < 8);
         assert(tc.ScaledBlock.Values.size() > 0);
         assert(tc.QuantIdx >1);
@@ -253,7 +253,7 @@ uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalCom
     return tcsgn;
 }
 
-uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalComponent>& tonalComponents,
+uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                                                        NBitStream::TBitStream* bitStream, uint8_t numQmfBand)
 {
     const uint16_t bitsUsed = bitStream->GetSizeInBits();
@@ -388,54 +388,70 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
 }
 
 
-void TAtrac3BitStreamWriter::WriteSoundUnit(const TAtrac3Data::SubbandInfo& subbandInfo,
-                                            const std::vector<TTonalComponent>& tonalComponents,
-                                            const vector<TScaledBlock>& scaledBlocks)
+void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>& singleChannelElements)
 {
-    NBitStream::TBitStream bitStream;
-    if (Params.Js) {
-        //TODO
-    } else {
-        bitStream.Write(0x28, 6); //0x28 - id
-    }
-    const uint8_t numQmfBand = subbandInfo.GetQmfNum();
-    bitStream.Write(numQmfBand - 1, 2);
 
-    //write gain info
-    for (uint32_t band = 0; band < numQmfBand; ++band) {
-        const vector<TAtrac3Data::SubbandInfo::TGainPoint>& GainPoints = subbandInfo.GetGainPoints(band);
-        assert(GainPoints.size() < TAtrac3Data::SubbandInfo::MaxGainPointsNum);
-        bitStream.Write(GainPoints.size(), 3);
-        int s = 0;
-        for (const TAtrac3Data::SubbandInfo::TGainPoint& point : GainPoints) {
-            bitStream.Write(point.Level, 4);
-            bitStream.Write(point.Location, 5);
-            s++;
-            assert(s < 8);
+    assert(singleChannelElements.size() == 1 || singleChannelElements.size() == 2);
+    NBitStream::TBitStream bitStreams[2];
+    uint16_t usedBits[2];
+    for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
+        const TSingleChannelElement& sce = singleChannelElements[channel];
+        const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
+        const std::vector<TTonalBlock>& tonalComponents = sce.TonalBlocks;
+
+        NBitStream::TBitStream* bitStream = &bitStreams[channel];
+
+        if (Params.Js) {
+            //TODO
+            abort();
+        } else {
+            bitStream->Write(0x28, 6); //0x28 - id
         }
-    }
-    const uint16_t bitsUsedByGainInfo = bitStream.GetSizeInBits() - 8;
-    const uint16_t bitsUsedByTonal = EncodeTonalComponents(tonalComponents, &bitStream, numQmfBand);
-    //spec
-    EncodeSpecs(scaledBlocks, &bitStream, bitsUsedByTonal + bitsUsedByGainInfo);
+        const uint8_t numQmfBand = subbandInfo.GetQmfNum();
+        bitStream->Write(numQmfBand - 1, 2);
 
-    if (!Container)
-        abort();
-    if (OutBuffer.empty()) {
-        std::vector<char> channel = bitStream.GetBytes();
-        assert(channel.size() <= Params.FrameSz/2);
-        channel.resize(Params.FrameSz/2);
-        OutBuffer.insert(OutBuffer.end(), channel.begin(), channel.end());
-    } else {
-        std::vector<char> channel = bitStream.GetBytes();
-
-        assert(channel.size() <= Params.FrameSz/2);
-        channel.resize(Params.FrameSz/2);
-        OutBuffer.insert(OutBuffer.end(), channel.begin(), channel.end());
-        Container->WriteFrame(OutBuffer);
-        OutBuffer.clear();
+        //write gain info
+        for (uint32_t band = 0; band < numQmfBand; ++band) {
+            const vector<TAtrac3Data::SubbandInfo::TGainPoint>& GainPoints = subbandInfo.GetGainPoints(band);
+            assert(GainPoints.size() < TAtrac3Data::SubbandInfo::MaxGainPointsNum);
+            bitStream->Write(GainPoints.size(), 3);
+            int s = 0;
+            for (const TAtrac3Data::SubbandInfo::TGainPoint& point : GainPoints) {
+                bitStream->Write(point.Level, 4);
+                bitStream->Write(point.Location, 5);
+                s++;
+                assert(s < 8);
+            }
+        }
+        const uint16_t bitsUsedByGainInfo = bitStream->GetSizeInBits() - 8;
+        const uint16_t bitsUsedByTonal = EncodeTonalComponents(tonalComponents, bitStream, numQmfBand);
+        usedBits[channel] = bitsUsedByGainInfo + bitsUsedByTonal;
     }
 
+    for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
+        const TSingleChannelElement& sce = singleChannelElements[channel];
+        const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
+        NBitStream::TBitStream* bitStream = &bitStreams[channel];
+        //spec
+        EncodeSpecs(scaledBlocks, bitStream, usedBits[channel]);
+
+        if (!Container)
+            abort();
+        std::vector<char> channelData = bitStream->GetBytes();
+        assert(channelData.size() <= (size_t)Params.FrameSz >> 1);
+        channelData.resize(Params.FrameSz >> 1);
+        OutBuffer.insert(OutBuffer.end(), channelData.begin(), channelData.end());
+    }
+
+    //No mone mode for atrac3, just make duplicate of first channel
+    if (singleChannelElements.size() == 1 && !Params.Js) {
+        int sz = OutBuffer.size();
+        assert(sz == Params.FrameSz >> 1);
+        OutBuffer.resize(sz << 1);
+        std::copy_n(OutBuffer.begin(), sz, OutBuffer.begin() + sz);
+    }
+    Container->WriteFrame(OutBuffer);
+    OutBuffer.clear();
 }
 
 } // namespace NAtrac3

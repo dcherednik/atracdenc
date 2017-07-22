@@ -234,6 +234,12 @@ public:
         const std::vector<TGainPoint>& GetGainPoints(uint32_t i) const {
             return Info[i];
         }
+        void Reset()
+        {
+            for (auto& v : Info) {
+                v.clear();
+            }
+        }
     };
 
     struct TTonalVal {
@@ -244,16 +250,18 @@ public:
 };
 
 struct TAtrac3EncoderSettings {
-    explicit TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll, bool noTonalComponents)
+    explicit TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll, bool noTonalComponents, uint8_t sourceChannels)
         : ConteinerParams(TAtrac3Data::GetContainerParamsForBitrate(bitrate))
         , NoGainControll(noGainControll)
         , NoTonalComponents(noTonalComponents)
+        , SourceChannels(sourceChannels)
     {
         std::cout << bitrate << " " << ConteinerParams->Bitrate << std::endl;
     }
     const TContainerParams* ConteinerParams;
     const bool NoGainControll;
     const bool NoTonalComponents;
+    const uint8_t SourceChannels;
 };
 
 } // namespace NAtrac3

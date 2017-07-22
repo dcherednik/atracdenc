@@ -112,6 +112,13 @@ static void CheckInputFormat(const TWav* p)
         throw std::runtime_error("unsupported sample rate");
 }
 
+static TWavPtr OpenWavFile(const string& inFile)
+{
+    TWav* wavPtr = new TWav(inFile);
+    CheckInputFormat(wavPtr);
+    return TWavPtr(wavPtr);
+}
+
 static void PrepareAtrac1Encoder(const string& inFile,
                                  const string& outFile, 
                                  const bool noStdOut, 
@@ -173,20 +180,15 @@ static void PrepareAtrac3Encoder(const string& inFile,
                                  const bool noStdOut,
                                  NAtrac3::TAtrac3EncoderSettings&& encoderSettings,
                                  uint64_t* totalSamples,
-                                 TWavPtr* wavIO,
+                                 const TWavPtr& wavIO,
                                  TPcmEnginePtr* pcmEngine,
                                  TAtracProcessorPtr* atracProcessor)
 {
     std::cout << "WARNING: ATRAC3 is uncompleted, result will be not good )))" << std::endl;
     if (!noStdOut)
         std::cout << "bitrate " << encoderSettings.ConteinerParams->Bitrate << std::endl;
-    {
-        TWav* wavPtr = new TWav(inFile);
-        CheckInputFormat(wavPtr);
-        wavIO->reset(wavPtr);
-    }
-    const int numChannels = (*wavIO)->GetChannelNum();
-    *totalSamples = (*wavIO)->GetTotalSamples();
+    const int numChannels = encoderSettings.SourceChannels;
+    *totalSamples = wavIO->GetTotalSamples();
     TCompressedIOPtr omaIO = TCompressedIOPtr(new TOma(outFile,
                                                        "test",
                                                        numChannels,
@@ -194,7 +196,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
                                                        encoderSettings.ConteinerParams->FrameSz));
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
-                                            TPCMEngine<TFloat>::TReaderPtr((*wavIO)->GetPCMReader<TFloat>())));
+                                            TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));
     atracProcessor->reset(new TAtrac3Processor(std::move(omaIO), std::move(encoderSettings)));
 }
 
@@ -333,9 +335,10 @@ int main(int argc, char* const* argv)
             case (E_ENCODE | E_ATRAC3):
             {
                 using NAtrac3::TAtrac3Data;
-                NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl, noTonalComponents);
+                wavIO = OpenWavFile(inFile);
+                NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl, noTonalComponents, wavIO->GetChannelNum());
                 PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
-                &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
+                &totalSamples, wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac3Data::NumSamples;;
             }
             break;

@@ -94,6 +94,7 @@ TAtrac3Processor::TAtrac3Processor(TCompressedIOPtr&& oma, TAtrac3EncoderSetting
     : Oma(std::move(oma))
     , Params(std::move(encoderSettings))
     , TransientDetectors(2 * 4, TTransientDetector(8, 256)) //2 - channels, 4 - bands
+    , SingleChannelElements(Params.SourceChannels)
 {}
 
 TAtrac3Processor::~TAtrac3Processor()
@@ -164,9 +165,8 @@ TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* s
     return res;
 }
 
-std::vector<TTonalComponent> TAtrac3Processor::MapTonalComponents(const TTonalComponents& tonalComponents)
+void TAtrac3Processor::MapTonalComponents(const TTonalComponents& tonalComponents, vector<TTonalBlock>* componentMap)
 {
-    vector<TTonalComponent> componentMap;
     for (uint16_t i = 0; i < tonalComponents.size();) {
         const uint16_t startPos = i;
         uint16_t curPos;
@@ -179,9 +179,8 @@ std::vector<TTonalComponent> TAtrac3Processor::MapTonalComponents(const TTonalCo
         for (uint8_t j = 0; j < len; ++j)
             tmp[j] = tonalComponents[startPos + j].Val;
         const TScaledBlock& scaledBlock = Scaler.Scale(tmp, len);
-        componentMap.push_back({&tonalComponents[startPos], 7, scaledBlock});
+        componentMap->push_back({&tonalComponents[startPos], 7, scaledBlock});
     }
-    return componentMap;
 }
 
 
@@ -240,11 +239,11 @@ TAtrac3Processor::TTransientParam TAtrac3Processor::CalcTransientParam(const std
     return {attackLocation, attackRelation, releaseLocation, releaseRelation};
 }
 
-TAtrac3Data::SubbandInfo TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
-                                                             uint32_t channel,
-                                                             TTransientDetector* transientDetector)
+void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
+                                         uint32_t channel,
+                                         TTransientDetector* transientDetector,
+                                         TAtrac3Data::SubbandInfo* subbandInfo)
 {
-    TAtrac3Data::SubbandInfo siCur;
     for (int band = 0; band < 4; ++band) {
 
         TFloat invBuf[256];
@@ -308,11 +307,10 @@ TAtrac3Data::SubbandInfo TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
         }
 
         if (hasTransient) {
-            siCur.AddSubbandCurve(band, std::move(curve));
+            subbandInfo->AddSubbandCurve(band, std::move(curve));
         }
 
     }
-    return siCur;
 }
 
 
@@ -326,24 +324,35 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
 
     TAtrac3BitStreamWriter* bitStreamWriter = new TAtrac3BitStreamWriter(omaptr, *Params.ConteinerParams);
     return [this, bitStreamWriter](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
-        for (uint32_t channel=0; channel < 2; channel++) {
+        using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
+
+        // TTonalBlock has pointer to the TTonalVal so TTonalComponents must be avaliable
+        // TODO: this code should be rewritten
+        TTonalComponents tonals[2];
+
+        assert(SingleChannelElements.size() == meta.Channels);
+        for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
             vector<TFloat> specs(1024);
             TFloat src[NumSamples];
 
             for (size_t i = 0; i < NumSamples; ++i) {
-                src[i] = data[meta.Channels == 1 ? i : (i * 2 + channel)] / 4.0; //no mono mode in atrac3. //TODO we can TFloat frame after encoding
+                src[i] = data[i * meta.Channels  + channel] / 4.0;
             }
 
             TFloat* p[4] = {&PcmBuffer[channel][0][0], &PcmBuffer[channel][1][0], &PcmBuffer[channel][2][0], &PcmBuffer[channel][3][0]};
             SplitFilterBank[channel].Split(&src[0], p);
             
-            TAtrac3Data::SubbandInfo siCur = Params.NoGainControll ?
-                TAtrac3Data::SubbandInfo() : CreateSubbandInfo(p, channel, &TransientDetectors[channel*4]); //4 detectors per band
+            TSce* sce = &SingleChannelElements[channel];
+
+            sce->SubbandInfo.Reset();
+            if (!Params.NoGainControll) {
+                CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
+            }
 
             TFloat* maxOverlapLevels = PrevPeak[channel];
 
-            Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(siCur));
-            TTonalComponents tonals = Params.NoTonalComponents ? 
+            Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
+            tonals[channel] = Params.NoTonalComponents ?
                     TAtrac3Data::TTonalComponents() : ExtractTonalComponents(specs.data(), [](const TFloat* spec, uint16_t len) {
                 std::vector<TFloat> magnitude(len);
                 for (uint16_t i = 0; i < len; ++i) {
@@ -358,11 +367,15 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
                 return NAN;
             });
 
-            const std::vector<TTonalComponent>& components = MapTonalComponents(tonals);
+            sce->TonalBlocks.clear();
+            MapTonalComponents(tonals[channel], &sce->TonalBlocks);
 
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
-            bitStreamWriter->WriteSoundUnit(siCur, components, Scaler.ScaleFrame(specs, TBlockSize())); 
+            sce->ScaledBlocks = std::move(Scaler.ScaleFrame(specs, TBlockSize()));
+
         }
+
+        bitStreamWriter->WriteSoundUnit(SingleChannelElements);
     };
 }
 

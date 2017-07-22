@@ -75,6 +75,7 @@ class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     Atrac3SplitFilterBank<TFloat> SplitFilterBank[2];
     TScaler<TAtrac3Data> Scaler;
     std::vector<TTransientDetector> TransientDetectors;
+    std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
     typedef std::array<uint8_t, NumSpecs> TonalComponentMask;
 public:
     struct TTransientParam {
@@ -90,11 +91,13 @@ public:
 #endif
     TFloat LimitRel(TFloat x);
     TTransientParam CalcTransientParam(const std::vector<TFloat>& gain, TFloat lastMax);
-    TAtrac3Data::SubbandInfo CreateSubbandInfo(TFloat* in[4], uint32_t channel, TTransientDetector* transientDetector);
+    void CreateSubbandInfo(TFloat* in[4], uint32_t channel,
+                           TTransientDetector* transientDetector,
+                           TAtrac3Data::SubbandInfo* subbandInfo);
     TonalComponentMask AnalyzeTonalComponent(TFloat* specs);
     TTonalComponents ExtractTonalComponents(TFloat* specs, TTonalDetector fn);
 
-    std::vector<NAtrac3::TTonalComponent> MapTonalComponents(const TTonalComponents& tonalComponents);
+    void MapTonalComponents(const TTonalComponents& tonalComponents, std::vector<NAtrac3::TTonalBlock>* componentMap);
 public:
     TAtrac3Processor(TCompressedIOPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
     ~TAtrac3Processor();
