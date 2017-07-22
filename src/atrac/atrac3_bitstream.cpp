@@ -295,15 +295,17 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
             const uint8_t codedValues = curGroup.SubGroupPtr[0]->ScaledBlock.Values.size();
 
             //Number of tonal component for each 64spec block. Used to set qmf band flags and simplify band encoding loop
-            uint8_t bandFlags[16];
-            memset(bandFlags, 0, 16 * sizeof(uint8_t));
+            union {
+                uint8_t c[16];
+                uint32_t i[4] = {0};
+            } bandFlags;
             assert(numQmfBand <= 4);
             for (uint8_t j = subGroupStartPos; j < subGroupEndPos; ++j) {
                 //assert num of coded values are same in group
                 assert(codedValues == curGroup.SubGroupPtr[j]->ScaledBlock.Values.size());
                 uint8_t specBlock = (curGroup.SubGroupPtr[j]->ValPtr->Pos) >> 6;
                 assert((specBlock >> 2) < numQmfBand);
-                bandFlags[specBlock]++;
+                bandFlags.c[specBlock]++;
             }
 
             assert(numQmfBand == 4);
@@ -311,7 +313,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
             tcgnCheck++;
             
             for (uint8_t j = 0; j < numQmfBand; ++j) {
-                bitStream->Write((bool)(*(uint32_t*)&bandFlags[j<<2]), 1);
+                bitStream->Write((bool)bandFlags.i[j], 1);
             }
             //write number of coded values for components in current group
             assert(codedValues > 0);
@@ -324,11 +326,11 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
             uint8_t lastPos = subGroupStartPos;
             uint8_t checkPos = 0;
             for (uint16_t j = 0; j < 16; ++j) {
-                if (!(*(uint32_t*)&bandFlags[j & 0xC])) { //discard two bits
+                if (!(bandFlags.i[j >> 2])) {
                     continue;
                 }
 
-                const uint8_t codedComponents = bandFlags[j];
+                const uint8_t codedComponents = bandFlags.c[j];
                 assert(codedComponents < 8);
                 bitStream->Write(codedComponents, 3);
                 uint8_t k = lastPos;
