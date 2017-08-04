@@ -24,6 +24,7 @@
 #include "atrac/atrac3.h"
 #include "atrac/atrac3_qmf.h"
 #include "transient_detector.h"
+#include "delay_buffer.h"
 
 #include "atrac/atrac3_bitstream.h"
 #include "atrac/atrac_scale.h"
@@ -68,7 +69,7 @@ typedef std::function<float(const TFloat* p, uint16_t len)> TTonalDetector;
 class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     TCompressedIOPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
-    TFloat PcmBuffer[2][4][256 + 256]; //2 channel, 4 band, 256 sample + 256 for overlap buffer
+    TDelayBuffer<TFloat, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
 
     TFloat PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 

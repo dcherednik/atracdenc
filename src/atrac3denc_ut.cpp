@@ -134,7 +134,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
     
     for (size_t pos = 0; pos < len; pos += workSz) {
         vector<TFloat> specs(1024);
-        memcpy(buff.Band0, signal.data() + pos, workSz * sizeof(TFloat));
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
 
         TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
         mdct.Mdct(specs.data(), p);
@@ -161,7 +161,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
     
     for (size_t pos = 0; pos < len; pos += workSz) {
         vector<TFloat> specs(1024);
-        memcpy(buff.Band0, signal.data() + pos, workSz * sizeof(TFloat));
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
 
         TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
 
@@ -290,7 +290,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
  
     for (size_t pos = 0; pos < len; pos += workSz) {
         vector<TFloat> specs(1024);
-        memcpy(buff.Band0, signal.data() + pos, workSz * sizeof(TFloat));
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
 
         TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
         //for (int i = 0; i < 256; i++) {

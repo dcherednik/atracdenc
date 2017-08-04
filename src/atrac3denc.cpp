@@ -35,18 +35,17 @@ void TAtrac3MDCT::Mdct(TFloat specs[1024], TFloat* bands[4], TFloat maxLevels[4]
         TFloat* srcBuff = bands[band];
         TFloat* const curSpec = &specs[band*256];
         TGainModulator modFn = gainModulators[band];
-        vector<TFloat> tmp(512);
-        memcpy(&tmp[0], &srcBuff[256], 256 * sizeof(TFloat));
+        TFloat tmp[512];
+        memcpy(&tmp[0], srcBuff, 256 * sizeof(TFloat));
         if (modFn) {
-            modFn(tmp.data(), srcBuff);
+            modFn(&tmp[0], &srcBuff[256]);
         }
         TFloat max = 0.0;
         for (int i = 0; i < 256; i++) {
-            max = std::max(max, std::abs(srcBuff[i]));
-            srcBuff[256+i] = TAtrac3Data::EncodeWindow[i] * srcBuff[i];
-            srcBuff[i] = TAtrac3Data::EncodeWindow[255-i] * srcBuff[i];
+            max = std::max(max, std::abs(srcBuff[256+i]));
+            srcBuff[i] = TAtrac3Data::EncodeWindow[i] * srcBuff[256+i];
+            tmp[256+i] = TAtrac3Data::EncodeWindow[255-i] * srcBuff[256+i];
         }
-        memcpy(&tmp[256], &srcBuff[0], 256 * sizeof(TFloat));
         const vector<TFloat>& sp = Mdct512(&tmp[0]);
         assert(sp.size() == 256);
         memcpy(curSpec, sp.data(), 256 * sizeof(TFloat));
@@ -339,19 +338,25 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
                 src[i] = data[i * meta.Channels  + channel] / 4.0;
             }
 
-            TFloat* p[4] = {&PcmBuffer[channel][0][0], &PcmBuffer[channel][1][0], &PcmBuffer[channel][2][0], &PcmBuffer[channel][3][0]};
-            SplitFilterBank[channel].Split(&src[0], p);
+            {
+                TFloat* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
+                SplitFilterBank[channel].Split(&src[0], p);
+            }
             
             TSce* sce = &SingleChannelElements[channel];
 
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
-                CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
+                //CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
             }
 
             TFloat* maxOverlapLevels = PrevPeak[channel];
 
-            Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
+            {
+                TFloat* p[4] = {PcmBuffer.GetFirst(channel), PcmBuffer.GetFirst(channel+2), PcmBuffer.GetFirst(channel+4), PcmBuffer.GetFirst(channel+6)};
+                Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
+            }
+
             tonals[channel] = Params.NoTonalComponents ?
                     TAtrac3Data::TTonalComponents() : ExtractTonalComponents(specs.data(), [](const TFloat* spec, uint16_t len) {
                 std::vector<TFloat> magnitude(len);
