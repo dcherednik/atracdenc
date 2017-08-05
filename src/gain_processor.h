@@ -114,7 +114,7 @@ public:
             }
             for (; pos < T::MDCTSz/2; pos++) {
 
-                //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " << bufCur[pos] << std::endl;
+                //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " << bufCur[pos] << " new value: " << bufCur[pos] / scale<<std::endl;
                 bufCur[pos] /= scale;
             }
         };

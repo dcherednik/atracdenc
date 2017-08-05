@@ -62,12 +62,6 @@ inline uint16_t GetFirstSetBit(uint32_t x) {
 }
 
 template<class T>
-inline uint16_t Log2FloatToIdx(T x, uint16_t shift) {
-    T t = x * shift;
-    return GetFirstSetBit(std::trunc(t));
-}
-
-template<class T>
 inline T CalcMedian(T* in, uint32_t len) {
     std::vector<T> tmp(in, in+len);
     std::sort(tmp.begin(), tmp.end());

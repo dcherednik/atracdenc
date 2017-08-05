@@ -345,6 +345,38 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
     }
 }
 
+TEST(AtracGainControl, RelToIdxTest) {
+
+    EXPECT_EQ(4, RelationToIdx(1));
+    EXPECT_EQ(4, RelationToIdx(1.8));
+    EXPECT_EQ(3, RelationToIdx(2));
+    EXPECT_EQ(3, RelationToIdx(3));
+    EXPECT_EQ(3, RelationToIdx(3.5));
+    EXPECT_EQ(2, RelationToIdx(4));
+    EXPECT_EQ(2, RelationToIdx(7));
+    EXPECT_EQ(1, RelationToIdx(8));
+    EXPECT_EQ(1, RelationToIdx(15));
+    EXPECT_EQ(0, RelationToIdx(16));
+    EXPECT_EQ(0, RelationToIdx(9999));
+
+    EXPECT_EQ(4, RelationToIdx(0.8));
+    EXPECT_EQ(5, RelationToIdx(0.5));
+    EXPECT_EQ(5, RelationToIdx(0.4));
+    EXPECT_EQ(5, RelationToIdx(0.3));
+    EXPECT_EQ(6, RelationToIdx(0.25));
+    EXPECT_EQ(6, RelationToIdx(0.126));
+    EXPECT_EQ(7, RelationToIdx(0.125));
+    EXPECT_EQ(7, RelationToIdx(0.0626));
+    EXPECT_EQ(8, RelationToIdx(0.0625));
+    EXPECT_EQ(8, RelationToIdx(0.03126));
+    EXPECT_EQ(9, RelationToIdx(0.03125));
+    EXPECT_EQ(9, RelationToIdx(0.015626));
+    EXPECT_EQ(10, RelationToIdx(0.015625));
+    EXPECT_EQ(13, RelationToIdx(0.001953125));
+    EXPECT_EQ(15, RelationToIdx(0.00048828125));
+    EXPECT_EQ(15, RelationToIdx(0.00000048828125));
+}
+
 TEST(TAtrac3MDCT, TAtrac3MDCTWindow) {
     TWindowTest test;
     test.RunTest();

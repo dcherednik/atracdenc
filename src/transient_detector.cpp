@@ -42,7 +42,7 @@ static TFloat calculatePeak(const TFloat* in, uint32_t n) {
         if (absVal > s)
             s = absVal;
     }
-        return s;
+    return s;
 }
 
 void TTransientDetector::HPFilter(const TFloat* in, TFloat* out) {

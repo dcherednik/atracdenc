@@ -25,6 +25,7 @@
 #include "atrac/atrac3_qmf.h"
 #include "transient_detector.h"
 #include "delay_buffer.h"
+#include "util.h"
 
 #include "atrac/atrac3_bitstream.h"
 #include "atrac/atrac_scale.h"
@@ -33,7 +34,22 @@
 
 #include <functional>
 #include <array>
+#include <cmath>
 namespace NAtracDEnc {
+
+///////////////////////////////////////////////////////////////////////////////
+
+inline uint16_t RelationToIdx(TFloat x) {
+    if (x <= 0.5) {
+        x = 1.0 / std::max(x, 0.00048828125);
+        return 4 + GetFirstSetBit(std::trunc(x));
+    } else {
+        x = std::min(x, 16.0);
+        return 4 - GetFirstSetBit(std::trunc(x));
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 class TAtrac3MDCT : public NAtrac3::TAtrac3Data {
     NMDCT::TMDCT<512> Mdct512;
@@ -80,13 +96,15 @@ class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     typedef std::array<uint8_t, NumSpecs> TonalComponentMask;
 public:
     struct TTransientParam {
-        const int32_t AttackLocation;
-        const TFloat AttackRelation;
-        const int32_t ReleaseLocation;
-        const TFloat ReleaseRelation;
+        int32_t Attack0Location; // Attack position relative to previous frame
+        TFloat Attack0Relation;
+        int32_t Attack1Location; // Attack position relative to previous sample
+        TFloat Attack1Relation;
+        int32_t ReleaseLocation;
+        TFloat ReleaseRelation;
     };
 private:
-
+    std::vector<std::vector<TTransientParam>> TransientParamsHistory;
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif
@@ -95,6 +113,9 @@ public:
     void CreateSubbandInfo(TFloat* in[4], uint32_t channel,
                            TTransientDetector* transientDetector,
                            TAtrac3Data::SubbandInfo* subbandInfo);
+    void ResetTransientParamsHistory(int channel, int band);
+    void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);
+    const TTransientParam& GetTransientParamsHistory(int channel, int band) const;
     TonalComponentMask AnalyzeTonalComponent(TFloat* specs);
     TTonalComponents ExtractTonalComponents(TFloat* specs, TTonalDetector fn);
 

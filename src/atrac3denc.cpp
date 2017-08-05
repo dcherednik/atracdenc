@@ -18,7 +18,6 @@
 
 #include "atrac3denc.h"
 #include "transient_detector.h"
-#include "util.h"
 #include <assert.h>
 #include <algorithm>
 #include <iostream>
@@ -94,6 +93,7 @@ TAtrac3Processor::TAtrac3Processor(TCompressedIOPtr&& oma, TAtrac3EncoderSetting
     , Params(std::move(encoderSettings))
     , TransientDetectors(2 * 4, TTransientDetector(8, 256)) //2 - channels, 4 - bands
     , SingleChannelElements(Params.SourceChannels)
+    , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
 {}
 
 TAtrac3Processor::~TAtrac3Processor()
@@ -188,54 +188,77 @@ TFloat TAtrac3Processor::LimitRel(TFloat x)
     return std::min(std::max(x, GainLevel[15]), GainLevel[0]);
 }
 
+void TAtrac3Processor::ResetTransientParamsHistory(int channel, int band)
+{
+    TransientParamsHistory[channel][band] = {-1 , 1, -1, 1, -1, 1};
+}
+
+void TAtrac3Processor::SetTransientParamsHistory(int channel, int band, const TTransientParam& params)
+{
+    TransientParamsHistory[channel][band] = params;
+}
+
+const TAtrac3Processor::TTransientParam& TAtrac3Processor::GetTransientParamsHistory(int channel, int band) const
+{
+    return TransientParamsHistory[channel][band];
+}
+
 TAtrac3Processor::TTransientParam TAtrac3Processor::CalcTransientParam(const std::vector<TFloat>& gain, const TFloat lastMax)
 {
-    int32_t attackLocation = 0;
-    TFloat attackRelation = 1;
+    int32_t attack0Location = -1; // position where gain is risen up, -1 - no attack
+    TFloat attack0Relation = 1;
 
-    const TFloat attackThreshold = 4;
-    //pre-echo searching
-    TFloat tmp;
-    TFloat q = lastMax; //std::max(lastMax, gain[0]);
-    tmp = gain[0] / q;
-    if (tmp > attackThreshold) {
-        attackRelation = tmp;
-    } else {
-        for (uint32_t i = 0; i < gain.size() -1; ++i) {
-            q =  std::max(q, gain[i]);
-            tmp = gain[i+1] / q;
+    const TFloat attackThreshold = 2;
+
+    {
+        // pre-echo searching
+        // relative to previous half frame
+        for (uint32_t i = 0; i < gain.size(); i++) {
+            const TFloat tmp = gain[i] / lastMax;
             if (tmp > attackThreshold) {
-                attackRelation = tmp;
-                attackLocation = i;
+                attack0Relation = tmp;
+                attack0Location = i;
                 break;
             }
+         }
+    }
+
+    int32_t attack1Location = -1;
+    TFloat attack1Relation = 1;
+    {
+        // pre-echo searching
+        // relative to previous subsamples block
+        TFloat q = gain[0];
+        for (uint32_t i = 1; i < gain.size(); i++) {
+            const TFloat tmp = gain[i] / q;
+            if (tmp > attackThreshold) {
+                attack1Relation = tmp;
+                attack1Location = i;
+            }
+            q = std::max(q, gain[i]);
         }
     }
 
-    int32_t releaseLocation = 0;
+    int32_t releaseLocation = -1; // position where gain is fallen down, -1 - no release
     TFloat releaseRelation = 1;
 
-    const TFloat releaseTreshold = 4;
-    //post-echo searching
-    q = 0;
-    for (uint32_t i = gain.size() - 1; i > 0; --i) {
-        q = std::max(q, gain[i]);
-        tmp = gain[i-1] / q;
-        if (tmp > releaseTreshold) {
-            releaseRelation = tmp;
-            releaseLocation = i;
-            break;
-        }
-    }
-    if (releaseLocation == 0) {
-        q = std::max(q, gain[0]);
-        tmp = lastMax / q;
-        if (tmp > releaseTreshold) {
-            releaseRelation = tmp;
+    const TFloat releaseTreshold = 2;
+    {
+        // post-echo searching
+        // relative to current frame
+        TFloat q = gain.back();
+        for (uint32_t i = gain.size() - 2; i > 0; --i) {
+            const TFloat tmp = gain[i] / q;
+            if (tmp > releaseTreshold) {
+                releaseRelation = tmp;
+                releaseLocation = i;
+                break;
+            }
+            q = std::max(q, gain[i]);
         }
     }
 
-    return {attackLocation, attackRelation, releaseLocation, releaseRelation};
+    return {attack0Location, attack0Relation, attack1Location, attack1Relation, releaseLocation, releaseRelation};
 }
 
 void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
@@ -243,72 +266,65 @@ void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
                                          TTransientDetector* transientDetector,
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
+
+    auto relToIdx = [this](TFloat rel) {
+        rel = 1.0/rel;
+        return (uint32_t)(RelationToIdx(rel));
+    };
+
     for (int band = 0; band < 4; ++band) {
 
-        TFloat invBuf[256];
-        if (band & 1) {
-            memcpy(invBuf, in[band], 256*sizeof(TFloat));
-            InvertSpectrInPlase<256>(invBuf);
-        }
-        const TFloat* srcBuff = (band & 1) ? invBuf : in[band];
+        const TFloat* srcBuff = in[band];
 
         const TFloat* const lastMax = &PrevPeak[channel][band];
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
-        std::vector<TFloat> gain = AnalyzeGain(srcBuff, 256, 32, false);
+        const std::vector<TFloat> gain = AnalyzeGain(srcBuff, 256, 32, false);
 
         auto transientParam = CalcTransientParam(gain, *lastMax);
-        bool hasTransient = (transientParam.AttackRelation != 1.0 || transientParam.ReleaseRelation != 1.0);
+        bool hasTransient = false;
 
-        //combine attack and release
-        TFloat relA = 1;
-        TFloat relB = 1;
-        TFloat relC = 1;
-        uint32_t loc1 = 0;
-        uint32_t loc2 = 0;
-        if (transientParam.AttackLocation < transientParam.ReleaseLocation) {
-            //Peak like transient
-            relA = transientParam.AttackRelation;
-            loc1 = transientParam.AttackLocation;
-            relB = 1;
-            loc2 = transientParam.ReleaseLocation;
-            relC = transientParam.ReleaseRelation;
-        } else if (transientParam.AttackLocation > transientParam.ReleaseLocation) {
-            //Hole like transient
-            relA = transientParam.AttackRelation;
-            loc1 = transientParam.ReleaseLocation;
-            relB = transientParam.AttackRelation * transientParam.ReleaseRelation;
-            loc2 = transientParam.AttackLocation;
-            relC = transientParam.ReleaseRelation;
-        } else {
-            //???
-            //relA = relB = relC = transientParam.AttackRelation * transientParam.ReleaseRelation;
-            //loc1 = loc2 = transientParam.ReleaseLocation;
-            hasTransient = false;
+        if (transientParam.Attack0Location == -1 && transientParam.Attack1Location == -1 && transientParam.ReleaseLocation == -1) {
+            // No transient
+            ResetTransientParamsHistory(channel, band);
+            continue;
         }
-        //std::cout << "loc: " << loc1 << " " << loc2 << " rel: " << relA << " " << relB << " " << relC <<  std::endl;
-
-        if (relC != 1) {
-            relA /= relC;
-            relB /= relC;
-            relC = 1.0;
-        }
-        auto relToIdx = [this](TFloat rel) {
-            rel = LimitRel(1/rel);
-            return (uint32_t)(15 - Log2FloatToIdx(rel, 2048));
-        };
-        curve.push_back({relToIdx(relA), loc1});
-        if (loc1 != loc2) {
-            curve.push_back({relToIdx(relB), loc2});
-        }
-        if (loc2 != 31) {
-            curve.push_back({relToIdx(relC), 31});
+        if (transientParam.Attack0Location == -1 && transientParam.Attack1Location == -1) {
+            // Release only in current frame - PostEcho. Not implemented yet.
+            // Note: "Hole like" transient also possible (if value is grather in next frame),
+            // but we keep peak value of this frame, so in next frame we will use this peak value
+            // for searching attack.
+            // Handling "Hole like" transients also not implemented. But it should be masked
+            SetTransientParamsHistory(channel, band, transientParam);
+            continue;
         }
 
+        auto transientParamHistory = GetTransientParamsHistory(channel, band);
+
+        if (transientParamHistory.Attack0Location == -1 && transientParamHistory.Attack1Location == -1 && transientParamHistory.ReleaseLocation == -1 &&
+            transientParam.Attack0Location != -1 /*&& transientParam.Attack1Location == -1 && transientParam.ReleaseLocation == -1*/) {
+            // No transient at previous frame, but transient (attack) at border of first and second half - simplest way, just scale the first half.
+
+            //std::cout << "CASE 1: " << transientParam.Attack0Location << " " << transientParam.Attack0Relation << std::endl;
+            auto idx = relToIdx(transientParam.Attack0Relation);
+            //std::cout << "PREV PEAK: " << *lastMax << " " << idx << std::endl;
+            curve.push_back({idx, (uint32_t)transientParam.Attack0Location});
+            hasTransient = true;
+        }
+
+        //std::cout << "transient params band: " << band <<  " atack0loc: " << transientParam.Attack0Location << " atack0rel: " << transientParam.Attack0Relation <<
+        //                            " atack1loc: " << transientParam.Attack1Location << " atack1rel: " << transientParam.Attack1Relation <<
+        //                            " releaseloc: " << transientParam.ReleaseLocation << " releaserel: "<< transientParam.ReleaseRelation << std::endl;
+
+        //for (int i = 0; i < 256; i++) {
+        //    std::cout << i << "   " << srcBuff[i] << "  |  " << srcBuff[i-256] << std::endl;
+        //}
+ 
+
+        SetTransientParamsHistory(channel, band, transientParam);
         if (hasTransient) {
             subbandInfo->AddSubbandCurve(band, std::move(curve));
         }
-
     }
 }
 
@@ -347,7 +363,8 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
 
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
-                //CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
+                TFloat* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
+                CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
             }
 
             TFloat* maxOverlapLevels = PrevPeak[channel];

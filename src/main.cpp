@@ -213,7 +213,7 @@ int main(int argc, char* const* argv)
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
         { "notonal", no_argument, NULL, O_NOTONAL},
-        { "gaincontrol", no_argument, NULL, O_GAINCONTROL},
+        { "nogaincontrol", no_argument, NULL, O_GAINCONTROL},
         { NULL, 0, NULL, 0}
     };
 
@@ -224,7 +224,7 @@ int main(int argc, char* const* argv)
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool fastBfuNumSearch = false;
     bool noStdOut = false;
-    bool noGainControl = true;
+    bool noGainControl = false;
     bool noTonalComponents = false;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
@@ -281,7 +281,7 @@ int main(int argc, char* const* argv)
                 noTonalComponents = true;
                 break;
             case O_GAINCONTROL:
-                noGainControl = false;
+                noGainControl = true;
                 break;
 			default:
                 printUsage(myName);
