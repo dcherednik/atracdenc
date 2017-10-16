@@ -100,7 +100,7 @@ enum EOptions
     O_MONO = 'm',
     O_NOSTDOUT = '4',
     O_NOTONAL = 5,
-    O_GAINCONTROL = 6,
+    O_NOGAINCONTROL = 6,
 };
 
 static void CheckInputFormat(const TWav* p)
@@ -213,7 +213,7 @@ int main(int argc, char* const* argv)
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
         { "notonal", no_argument, NULL, O_NOTONAL},
-        { "nogaincontrol", no_argument, NULL, O_GAINCONTROL},
+        { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
         { NULL, 0, NULL, 0}
     };
 
@@ -280,11 +280,12 @@ int main(int argc, char* const* argv)
             case O_NOTONAL:
                 noTonalComponents = true;
                 break;
-            case O_GAINCONTROL:
+            case O_NOGAINCONTROL:
                 noGainControl = true;
                 break;
 			default:
                 printUsage(myName);
+                return 1;
         }
 
     }
