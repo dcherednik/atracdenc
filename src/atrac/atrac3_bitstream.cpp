@@ -98,9 +98,8 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
 std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const vector<TScaledBlock>& scaledBlocks,
                                                         const vector<uint32_t>& precisionPerEachBlocks, int* mantisas)
 {
-    uint32_t bitsUsed = 5 + 1; //numBlocks + codingMode
     const uint32_t numBlocks = precisionPerEachBlocks.size();
-    bitsUsed += numBlocks * 3; //used VLC or CLC table (precision)
+    uint32_t bitsUsed = numBlocks * 3;
 
     auto lambda = [=](bool clcMode, bool calcMant) {
         uint32_t bits = 0;
@@ -139,13 +138,8 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
     uint8_t mode;
     for (;;) {
         precisionPerEachBlocks.resize(numBfu);
-        uint32_t usedBfus = 0;
-        for (auto v : precisionPerEachBlocks) {
-            if (v)
-                usedBfus++;
-        }
         const uint32_t bitsAvaliablePerBfus = 8 * Params.FrameSz/2 - bitsUsed - 
-            5 - 1 - (numBfu * 3) - (usedBfus * 6);
+            5 - 1;
         TFloat maxShift = 15;
         TFloat minShift = -3;
         TFloat shift = 3.0;
@@ -425,9 +419,10 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
                 assert(s < 8);
             }
         }
-        const uint16_t bitsUsedByGainInfo = bitStream->GetSizeInBits() - 8;
+        const uint16_t bitsUsedByGainInfoAndHeader = bitStream->GetSizeInBits();
         const uint16_t bitsUsedByTonal = EncodeTonalComponents(tonalComponents, bitStream, numQmfBand);
-        usedBits[channel] = bitsUsedByGainInfo + bitsUsedByTonal;
+        usedBits[channel] = bitsUsedByGainInfoAndHeader + bitsUsedByTonal;
+        assert(bitStream->GetSizeInBits() == usedBits[channel]);
     }
 
     for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
@@ -440,7 +435,7 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
         if (!Container)
             abort();
         std::vector<char> channelData = bitStream->GetBytes();
-        assert(channelData.size() <= (size_t)Params.FrameSz >> 1);
+        assert(bitStream->GetSizeInBits() <= 8 * (size_t)Params.FrameSz / 2);
         channelData.resize(Params.FrameSz >> 1);
         OutBuffer.insert(OutBuffer.end(), channelData.begin(), channelData.end());
     }
