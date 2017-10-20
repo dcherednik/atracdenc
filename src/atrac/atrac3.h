@@ -250,11 +250,13 @@ public:
 };
 
 struct TAtrac3EncoderSettings {
-    explicit TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll, bool noTonalComponents, uint8_t sourceChannels)
+    TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll,
+                           bool noTonalComponents, uint8_t sourceChannels, uint32_t bfuIdxConst)
         : ConteinerParams(TAtrac3Data::GetContainerParamsForBitrate(bitrate))
         , NoGainControll(noGainControll)
         , NoTonalComponents(noTonalComponents)
         , SourceChannels(sourceChannels)
+        , BfuIdxConst(bfuIdxConst)
     {
         std::cout << bitrate << " " << ConteinerParams->Bitrate << std::endl;
     }
@@ -262,6 +264,7 @@ struct TAtrac3EncoderSettings {
     const bool NoGainControll;
     const bool NoTonalComponents;
     const uint8_t SourceChannels;
+    const uint32_t BfuIdxConst;
 };
 
 } // namespace NAtrac3

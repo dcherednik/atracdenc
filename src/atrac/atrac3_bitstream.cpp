@@ -127,47 +127,56 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
     return std::make_pair(mode, bitsUsed + (mode ? clcBits : vlcBits));
 }
 
+//true - should reencode
+//false - not need to
+static inline bool CheckBfus(uint8_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
+{
+    uint8_t curLastBfu = *numBfu - 1;
+    assert(curLastBfu < precisionPerEachBlocks.size());
+    if (precisionPerEachBlocks[curLastBfu] == 0) {
+        *numBfu = curLastBfu;
+        return true;
+    }
+    return false;
+}
 
 std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(const vector<TScaledBlock>& scaledBlocks,
                                                                               uint16_t bitsUsed, int mt[MaxSpecs])
 {
     TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
 
-    uint8_t numBfu = 32;
+    uint8_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
     vector<uint32_t> precisionPerEachBlocks(numBfu);
     uint8_t mode;
-    for (;;) {
+    bool cont = true;
+    while (cont) {
         precisionPerEachBlocks.resize(numBfu);
         const uint32_t bitsAvaliablePerBfus = 8 * Params.FrameSz/2 - bitsUsed - 
             5 - 1;
         TFloat maxShift = 15;
         TFloat minShift = -3;
-        TFloat shift = 3.0;
-        const uint32_t maxBits = bitsAvaliablePerBfus;
-        const uint32_t minBits = bitsAvaliablePerBfus - 90;
         for (;;) {
+            TFloat shift = (maxShift + minShift) / 2;
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift);
             const auto consumption = CalcSpecsBitsConsumption(scaledBlocks, tmpAlloc, mt);
 
-            if (consumption.second < minBits) {
+            if (consumption.second < bitsAvaliablePerBfus) {
                 if (maxShift - minShift < 0.1) {
                     precisionPerEachBlocks = tmpAlloc;
                     mode = consumption.first;
+                    cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);
                     break;
                 }
-                maxShift = shift;
-                shift -= (shift - minShift) / 2;
-            } else if (consumption.second > maxBits) {
-                minShift = shift;
-                shift += (maxShift - shift) / 2;
+                maxShift = shift - 0.01;
+            } else if (consumption.second > bitsAvaliablePerBfus) {
+                minShift = shift + 0.01;
             } else {
                 precisionPerEachBlocks = tmpAlloc;
                 mode = consumption.first;
+                cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);;
                 break;
             }
         }
-        break;
-
     }
     return { mode, precisionPerEachBlocks };
 }

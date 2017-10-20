@@ -47,6 +47,7 @@ class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
     };
     TOma* Container;
     const TContainerParams Params;
+    const uint32_t BfuIdxConst;
     std::vector<char> OutBuffer;
 
     uint32_t CLCEnc(const uint32_t selector, const int mantissas[MaxSpecsPerBlock],
@@ -74,9 +75,10 @@ class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
     uint16_t EncodeTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                                    NBitStream::TBitStream* bitStream, uint8_t numQmfBand);
 public:
-    TAtrac3BitStreamWriter(TOma* container, const TContainerParams& params) //no mono mode for atrac3
+    TAtrac3BitStreamWriter(TOma* container, const TContainerParams& params, uint32_t bfuIdxConst) //no mono mode for atrac3
         : Container(container)
         , Params(params)
+        , BfuIdxConst(bfuIdxConst)
     {
 
     }

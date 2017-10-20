@@ -65,7 +65,7 @@ static string GetHelp()
         "\n -i input file"
         "\n -o output file"
         "\n --bitrate (only if supported by codec)"
-        "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU (ATRAC1). "
+        "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU (ATRAC1, ATRAC3). "
              "WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
         "\n --bfuidxfast\t enable fast search of BFU amount (ATRAC1)"
         "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window "
@@ -259,7 +259,7 @@ int main(int argc, char* const* argv)
                 std::cout << "BITRATE" << bitrate << std::endl;
                 break;
             case O_BFUIDXCONST:
-                bfuIdxConst = checkedStoi(optarg, 1, 8, 0);
+                bfuIdxConst = checkedStoi(optarg, 1, 32, 0);
                 break;
             case O_BFUIDXFAST:
                 fastBfuNumSearch = true;
@@ -300,14 +300,7 @@ int main(int argc, char* const* argv)
         cerr << "No out file" << endl;
         return 1;
     }
-    if (bfuIdxConst > 8) {
-        cerr << "Wrong bfuidxconst value ("<< bfuIdxConst << "). "
-             << "This is advanced options, use --help to get more information"
-             << endl;
-        return 1;
-    }
 
-    
     TPcmEnginePtr pcmEngine;
     TAtracProcessorPtr atracProcessor;
     uint64_t totalSamples = 0;
@@ -318,6 +311,10 @@ int main(int argc, char* const* argv)
         switch (mode) {
             case E_ENCODE:
 	        {
+                if (bfuIdxConst > 8) {
+                    throw std::invalid_argument("ATRAC1 mode, --bfuidxconst is a index of max used BFU. "
+                        "Values [1;8] is allowed");
+                }
                 using NAtrac1::TAtrac1Data;
                 NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask);
                 PrepareAtrac1Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
@@ -337,7 +334,8 @@ int main(int argc, char* const* argv)
             {
                 using NAtrac3::TAtrac3Data;
                 wavIO = OpenWavFile(inFile);
-                NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl, noTonalComponents, wavIO->GetChannelNum());
+                NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl,
+                                                                noTonalComponents, wavIO->GetChannelNum(), bfuIdxConst);
                 PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac3Data::NumSamples;;
