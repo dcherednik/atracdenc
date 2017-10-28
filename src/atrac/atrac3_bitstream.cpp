@@ -132,7 +132,8 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
 static inline bool CheckBfus(uint8_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
 {
     uint8_t curLastBfu = *numBfu - 1;
-    assert(curLastBfu < precisionPerEachBlocks.size());
+    //assert(curLastBfu < precisionPerEachBlocks.size());
+    assert(*numBfu == precisionPerEachBlocks.size());
     if (precisionPerEachBlocks[curLastBfu] == 0) {
         *numBfu = curLastBfu;
         return true;
