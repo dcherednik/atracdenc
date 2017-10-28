@@ -302,7 +302,7 @@ void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
         auto transientParamHistory = GetTransientParamsHistory(channel, band);
 
         if (transientParamHistory.Attack0Location == -1 && transientParamHistory.Attack1Location == -1 && transientParamHistory.ReleaseLocation == -1 &&
-            transientParam.Attack0Location != -1 /*&& transientParam.Attack1Location == -1 && transientParam.ReleaseLocation == -1*/) {
+            transientParam.Attack0Location != -1 /*&& transientParam.Attack1Location == -1*/ && transientParam.ReleaseLocation == -1) {
             // No transient at previous frame, but transient (attack) at border of first and second half - simplest way, just scale the first half.
 
             //std::cout << "CASE 1: " << transientParam.Attack0Location << " " << transientParam.Attack0Relation << std::endl;
