@@ -142,7 +142,7 @@ TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* s
             const uint16_t specNumStart = SpecsStartLong[blockNum];
             const uint16_t specNumEnd = specNumStart + SpecsPerBlock[blockNum];
             float level = fn(specs + specNumStart, SpecsPerBlock[blockNum]);
-            if (!isnan(level)) {
+            if (!std::isnan(level)) {
                 for (uint16_t n = specNumStart; n < specNumEnd; ++n) {
                     //TODO:
                     TFloat absValue = std::abs(specs[n]);
