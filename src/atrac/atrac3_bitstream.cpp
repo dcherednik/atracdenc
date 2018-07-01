@@ -34,8 +34,8 @@ using std::vector;
 using std::memset;
 
 static const uint32_t FixedBitAllocTable[TAtrac3Data::MaxBfus] = {
-  6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
-  4, 4, 4, 3, 3, 3, 3, 3,
+  5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+  3, 3, 3, 3, 3, 3, 3, 3,
   3, 2, 2, 1,
   1, 0
 };
@@ -95,9 +95,11 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
     return bitsUsed;
 }
 
-std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const vector<TScaledBlock>& scaledBlocks,
+std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                         const vector<uint32_t>& precisionPerEachBlocks, int* mantisas)
 {
+
+    const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
     const uint32_t numBlocks = precisionPerEachBlocks.size();
     uint32_t bitsUsed = numBlocks * 3;
 
@@ -141,9 +143,10 @@ static inline bool CheckBfus(uint8_t* numBfu, const vector<uint32_t>& precisionP
     return false;
 }
 
-std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(const vector<TScaledBlock>& scaledBlocks,
+std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(const TSingleChannelElement& sce,
                                                                               uint16_t bitsUsed, int mt[MaxSpecs])
 {
+    const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
     TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
 
     uint8_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
@@ -159,7 +162,11 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
         for (;;) {
             TFloat shift = (maxShift + minShift) / 2;
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift);
-            const auto consumption = CalcSpecsBitsConsumption(scaledBlocks, tmpAlloc, mt);
+            auto consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt);
+
+            auto bitsUsedByTonal = EncodeTonalComponents(sce, tmpAlloc, nullptr);
+            //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << std::endl;
+            consumption.second += bitsUsedByTonal;
 
             if (consumption.second < bitsAvaliablePerBfus) {
                 if (maxShift - minShift < 0.1) {
@@ -179,15 +186,19 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
             }
         }
     }
+    //std::cerr << "==" << std::endl;
     return { mode, precisionPerEachBlocks };
 }
 
-void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlocks, NBitStream::TBitStream* bitStream,
-                                         const uint16_t bitsUsed)
+void TAtrac3BitStreamWriter::EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
+                                         uint16_t bitsUsed)
 {
     int mt[MaxSpecs];
-    auto allocation = CreateAllocation(scaledBlocks, bitsUsed, mt);
+    const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
+
+    auto allocation = CreateAllocation(sce, bitsUsed, mt);
     const vector<uint32_t>& precisionPerEachBlocks = allocation.second;
+    EncodeTonalComponents(sce, precisionPerEachBlocks, bitStream);
     const uint32_t numBlocks = precisionPerEachBlocks.size(); //number of blocks to save
     const uint32_t codingMode = allocation.first;//0 - VLC, 1 - CLC
 
@@ -220,15 +231,19 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const vector<TScaledBlock>& scaledBlock
 }
 
 uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
+                                                     const vector<uint32_t>& allocTable,
                                                      TTonalComponentsSubGroup groups[64])
 {
     for (const TTonalBlock& tc : tonalComponents) {
         assert(tc.ScaledBlock.Values.size() < 8);
         assert(tc.ScaledBlock.Values.size() > 0);
-        assert(tc.QuantIdx >1);
-        assert(tc.QuantIdx <8);
-        groups[tc.QuantIdx * 8 + tc.ScaledBlock.Values.size()].SubGroupPtr.push_back(&tc);
+        assert(tc.ValPtr->Bfu < allocTable.size());
+        auto quant = std::max((uint32_t)2, std::min(allocTable[tc.ValPtr->Bfu] + 1, (uint32_t)7));
+        //std::cerr << " | " << tc.ValPtr->Pos << " | " << (int)tc.ValPtr->Bfu << " | " << quant << std::endl;
+        groups[quant * 8 + tc.ScaledBlock.Values.size()].SubGroupPtr.push_back(&tc);
     }
+
+    //std::cerr << "=====" << std::endl;
     uint8_t tcsgn = 0;
     //for each group
     for (uint8_t i = 0; i < 64; ++i) {
@@ -257,20 +272,30 @@ uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalBlo
     return tcsgn;
 }
 
-uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
-                                                       NBitStream::TBitStream* bitStream, uint8_t numQmfBand)
+uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelElement& sce,
+                                                       const vector<uint32_t>& allocTable,
+                                                       NBitStream::TBitStream* bitStream)
 {
-    const uint16_t bitsUsed = bitStream->GetSizeInBits();
+    const uint16_t bitsUsedOld = bitStream ? bitStream->GetSizeInBits() : 0;
+    const std::vector<TTonalBlock>& tonalComponents = sce.TonalBlocks;
+    const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
+    const uint8_t numQmfBand = subbandInfo.GetQmfNum();
+    uint16_t bitsUsed = 0;
+
     //group tonal components with same quantizer and len
     TTonalComponentsSubGroup groups[64];
-    const uint8_t tcsgn = GroupTonalComponents(tonalComponents, groups);
+    const uint8_t tcsgn = GroupTonalComponents(tonalComponents, allocTable, groups);
 
     assert(tcsgn < 32);
-    bitStream->Write(tcsgn, 5);
+
+    bitsUsed += 5;
+    if (bitStream)
+        bitStream->Write(tcsgn, 5);
+
     if (tcsgn == 0) {
         for (int i = 0; i < 64; ++i)
             assert(groups[i].SubGroupPtr.size() == 0);
-        return 5; //wrote 0 but 5 bits for tcsgn
+        return bitsUsed;
     }
     //Coding mode:
     // 0 - All are VLC
@@ -279,7 +304,9 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
     // 3 - Own mode for each component
 
     //TODO: implement switch for best coding mode. Now VLC for all
-    bitStream->Write(0, 2);
+    bitsUsed += 2;
+    if (bitStream)
+        bitStream->Write(0, 2);
 
     uint8_t tcgnCheck = 0;
     //for each group of equal quantiser and len 
@@ -316,17 +343,24 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
 
             tcgnCheck++;
             
-            for (uint8_t j = 0; j < numQmfBand; ++j) {
-                bitStream->Write((bool)bandFlags.i[j], 1);
+            bitsUsed += numQmfBand;
+            if (bitStream) {
+                for (uint8_t j = 0; j < numQmfBand; ++j) {
+                    bitStream->Write((bool)bandFlags.i[j], 1);
+                }
             }
             //write number of coded values for components in current group
             assert(codedValues > 0);
-            bitStream->Write(codedValues - 1, 3);
+            bitsUsed += 3;
+            if (bitStream)
+                bitStream->Write(codedValues - 1, 3);
             //write quant index
             assert((i >> 3) > 1);
             assert((i >> 3) < 8);
             assert(i);
-            bitStream->Write(i >> 3, 3);
+            bitsUsed += 3;
+            if (bitStream)
+                bitStream->Write(i >> 3, 3);
             uint8_t lastPos = subGroupStartPos;
             uint8_t checkPos = 0;
             for (uint16_t j = 0; j < 16; ++j) {
@@ -336,17 +370,24 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
 
                 const uint8_t codedComponents = bandFlags.c[j];
                 assert(codedComponents < 8);
-                bitStream->Write(codedComponents, 3);
+                bitsUsed += 3;
+                if (bitStream)
+                    bitStream->Write(codedComponents, 3);
                 uint8_t k = lastPos;
                 for (; k < lastPos + codedComponents; ++k) {
                     assert(curGroup.SubGroupPtr[k]->ValPtr->Pos >= j * 64);
                     uint16_t relPos = curGroup.SubGroupPtr[k]->ValPtr->Pos - j * 64;
                     assert(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex < 64);
-                    bitStream->Write(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex, 6);
+
+                    bitsUsed += 6;
+                    if (bitStream)
+                        bitStream->Write(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex, 6);
 
                     assert(relPos < 64);
                     
-                    bitStream->Write(relPos, 6);
+                    bitsUsed += 6;
+                    if (bitStream)
+                        bitStream->Write(relPos, 6);
 
                     assert(curGroup.SubGroupPtr[k]->ScaledBlock.Values.size() < 8);
                     int mantisas[256];
@@ -358,7 +399,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
                     //VLCEnc
 
                     assert(i);
-                    VLCEnc(i>>3, mantisas, curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(), bitStream);
+                    bitsUsed += VLCEnc(i>>3, mantisas, curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(), bitStream);
 
 
                 }
@@ -370,7 +411,9 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const std::vector<TTonalB
         }
     }
     assert(tcgnCheck == tcsgn);
-    return bitStream->GetSizeInBits() - bitsUsed;
+    if (bitStream)
+        assert(bitStream->GetSizeInBits() - bitsUsedOld == bitsUsed);
+    return bitsUsed;
 }
 
 vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
@@ -403,7 +446,6 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
     for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
         const TSingleChannelElement& sce = singleChannelElements[channel];
         const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
-        const std::vector<TTonalBlock>& tonalComponents = sce.TonalBlocks;
 
         NBitStream::TBitStream* bitStream = &bitStreams[channel];
 
@@ -430,17 +472,14 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
             }
         }
         const uint16_t bitsUsedByGainInfoAndHeader = bitStream->GetSizeInBits();
-        const uint16_t bitsUsedByTonal = EncodeTonalComponents(tonalComponents, bitStream, numQmfBand);
-        usedBits[channel] = bitsUsedByGainInfoAndHeader + bitsUsedByTonal;
+        usedBits[channel] = bitsUsedByGainInfoAndHeader;
         assert(bitStream->GetSizeInBits() == usedBits[channel]);
     }
 
     for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
         const TSingleChannelElement& sce = singleChannelElements[channel];
-        const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
         NBitStream::TBitStream* bitStream = &bitStreams[channel];
-        //spec
-        EncodeSpecs(scaledBlocks, bitStream, usedBits[channel]);
+        EncodeSpecs(sce, bitStream, usedBits[channel]);
 
         if (!Container)
             abort();

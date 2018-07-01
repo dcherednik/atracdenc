@@ -30,17 +30,23 @@ namespace NAtracDEnc {
 namespace NAtrac3 {
 
 struct TTonalBlock {
-    TTonalBlock(const TAtrac3Data::TTonalVal* valPtr, uint8_t quantIdx, const TScaledBlock& scaledBlock)
+    TTonalBlock(const TAtrac3Data::TTonalVal* valPtr, const TScaledBlock& scaledBlock)
         : ValPtr(valPtr)
-        , QuantIdx(quantIdx)
         , ScaledBlock(scaledBlock)
     {}
     const TAtrac3Data::TTonalVal* ValPtr = nullptr;
-    uint8_t QuantIdx = 0;
     TScaledBlock ScaledBlock;
 };
 
 class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
+public:
+    struct TSingleChannelElement {
+        TAtrac3Data::SubbandInfo SubbandInfo;
+        std::vector<TTonalBlock> TonalBlocks;
+        std::vector<TScaledBlock> ScaledBlocks;
+    };
+private:
+
     struct TTonalComponentsSubGroup {
         std::vector<uint8_t> SubGroupMap;
         std::vector<const TTonalBlock*> SubGroupPtr;
@@ -59,21 +65,23 @@ class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                              uint32_t bfuNum, TFloat spread, TFloat shift);
 
-    std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const std::vector<TScaledBlock>& scaledBlocks,
+    std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
                                                                uint16_t bitsUsed, int mt[MaxSpecs]);
 
-    std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const std::vector<TScaledBlock>& scaledBlocks,
+    std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                           const std::vector<uint32_t>& precisionPerEachBlocks,
                                                           int* mantisas);
 
-    void EncodeSpecs(const std::vector<TScaledBlock>& scaledBlocks, NBitStream::TBitStream* bitStream,
+    void EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
                      uint16_t bitsUsed);
 
     uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
+                                 const std::vector<uint32_t>& allocTable,
                                  TTonalComponentsSubGroup groups[64]);
 
-    uint16_t EncodeTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
-                                   NBitStream::TBitStream* bitStream, uint8_t numQmfBand);
+    uint16_t EncodeTonalComponents(const TSingleChannelElement& sce,
+                                   const std::vector<uint32_t>& allocTable,
+                                   NBitStream::TBitStream* bitStream);
 public:
     TAtrac3BitStreamWriter(TOma* container, const TContainerParams& params, uint32_t bfuIdxConst) //no mono mode for atrac3
         : Container(container)
@@ -82,12 +90,6 @@ public:
     {
 
     }
-
-    struct TSingleChannelElement {
-        TAtrac3Data::SubbandInfo SubbandInfo;
-        std::vector<TTonalBlock> TonalBlocks;
-        std::vector<TScaledBlock> ScaledBlocks;
-    };
 
     void WriteSoundUnit(const std::vector<TSingleChannelElement>& singleChannelElements);
 };

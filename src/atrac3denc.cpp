@@ -133,10 +133,10 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
 TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* specs, TTonalDetector fn)
 {
     TAtrac3Data::TTonalComponents res;
-    const float thresholds[TAtrac3Data::NumQMF] = { 0.9, 2.4, 2.8, 3.2 };
+    const float thresholds[TAtrac3Data::NumQMF] = { 16, 2.4, 2.8, 3.2 };
     for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
         //disable for frequence above 16KHz until we works without proper psy
-        if (bandNum > 2)
+        if (bandNum)
             continue;
         for (uint8_t blockNum = BlocksPerBand[bandNum]; blockNum < BlocksPerBand[bandNum + 1]; ++blockNum) {
             const uint16_t specNumStart = SpecsStartLong[blockNum];
@@ -146,13 +146,14 @@ TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* s
                 for (uint16_t n = specNumStart; n < specNumEnd; ++n) {
                     //TODO:
                     TFloat absValue = std::abs(specs[n]);
+                    //std::cerr << n << " " << absValue << " " << level << std::endl;
                     if (absValue > 65535.0) {
                         TFloat shift = (specs[n] > 0) ? 65535.0 : -65535.0;
                         std::cerr << "overflow: " << specs[n] << " at: " << n << std::endl;
                         //res.push_back({n, specs[n] - shift});
                         specs[n] = shift;
-                    } else if (log10(std::abs(specs[n])) - log10(level) > thresholds[bandNum]) {
-                        res.push_back({n, specs[n]/* - level*/});
+                    } else if (std::abs(specs[n]) / level > thresholds[bandNum]) {
+                        res.push_back({n, specs[n]/* - level*/, blockNum});
                         specs[n] = 0;//level;
                     }
                     
@@ -178,7 +179,7 @@ void TAtrac3Processor::MapTonalComponents(const TTonalComponents& tonalComponent
         for (uint8_t j = 0; j < len; ++j)
             tmp[j] = tonalComponents[startPos + j].Val;
         const TScaledBlock& scaledBlock = Scaler.Scale(tmp, len);
-        componentMap->push_back({&tonalComponents[startPos], 7, scaledBlock});
+        componentMap->push_back({&tonalComponents[startPos], scaledBlock});
     }
 }
 
@@ -377,12 +378,14 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
             tonals[channel] = Params.NoTonalComponents ?
                     TAtrac3Data::TTonalComponents() : ExtractTonalComponents(specs.data(), [](const TFloat* spec, uint16_t len) {
                 std::vector<TFloat> magnitude(len);
+                //TFloat s = 0.0;
                 for (uint16_t i = 0; i < len; ++i) {
                     magnitude[i] = std::abs(spec[i]);
+                 //   s += magnitude[i];
                 }
-                float median = CalcMedian(magnitude.data(), len);
+                float median =  CalcMedian(magnitude.data(), len);
                 for (uint16_t i = 0; i < len; ++i) {
-                    if (median > 0.001) {
+                    if (median > 1.0) {
                         return median;
                     }
                 }

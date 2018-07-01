@@ -245,6 +245,7 @@ public:
     struct TTonalVal {
         const uint16_t Pos;
         const double Val;
+        const uint8_t Bfu;
     };
     typedef std::vector<TTonalVal> TTonalComponents;
 };
