@@ -33,7 +33,7 @@ using std::endl;
 
 using std::abs;
 
-static const uint32_t MAX_SCALE = 65536;
+static const TFloat MAX_SCALE = 1.0;
 
 template<class TBaseData>
 TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {

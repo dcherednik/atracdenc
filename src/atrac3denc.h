@@ -58,7 +58,7 @@ public:
     typedef TGainProcessor<TAtrac3Data> TAtrac3GainProcessor;
     TAtrac3GainProcessor GainProcessor;
     TAtrac3MDCT()
-        : Mdct512(2)
+        : Mdct512(1)
     {}
 public:
     using TGainModulator = TAtrac3GainProcessor::TGainModulator;

@@ -92,7 +92,7 @@ public:
     TAtrac1Data() {
         if (ScaleTable[0] == 0) {
             for (uint32_t i = 0; i < 64; i++) {
-                ScaleTable[i] = pow(2.0, (double)(i - 15.0) / 3.0);
+                ScaleTable[i] = pow(2.0, (double)(i / 3.0 - 21.0));
             }
         }
         if (SineWindow[0] == 0) {

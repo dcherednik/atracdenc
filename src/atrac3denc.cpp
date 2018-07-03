@@ -147,8 +147,8 @@ TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* s
                     //TODO:
                     TFloat absValue = std::abs(specs[n]);
                     //std::cerr << n << " " << absValue << " " << level << std::endl;
-                    if (absValue > 65535.0) {
-                        TFloat shift = (specs[n] > 0) ? 65535.0 : -65535.0;
+                    if (absValue > 0.999999) {
+                        TFloat shift = (specs[n] > 0) ? 0.999999 : -0.999999;
                         std::cerr << "overflow: " << specs[n] << " at: " << n << std::endl;
                         //res.push_back({n, specs[n] - shift});
                         specs[n] = shift;
@@ -385,7 +385,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
                 }
                 float median =  CalcMedian(magnitude.data(), len);
                 for (uint16_t i = 0; i < len; ++i) {
-                    if (median > 1.0) {
+                    if (median > 0.000015) {
                         return median;
                     }
                 }

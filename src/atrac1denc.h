@@ -49,8 +49,12 @@ public:
     void IMdct(TFloat specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi);
     void Mdct(TFloat specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize);
     TAtrac1MDCT()
-        : Mdct512(2)
-        , Mdct256(1)
+        : Mdct512(1)
+        , Mdct256(0.5)
+        , Mdct64(0.5)
+        , Midct512(512*2)
+        , Midct256(256*2)
+        , Midct64(64*2)
     {}
 };
 
@@ -62,8 +66,8 @@ class TAtrac1Processor : public IProcessor<TFloat>, public TAtrac1MDCT, public v
     TFloat PcmBufMid[2][256 + 16];
     TFloat PcmBufHi[2][512 + 16];
 
-    int32_t PcmValueMax = 32767;
-    int32_t PcmValueMin = -32767;
+    int32_t PcmValueMax = 1;
+    int32_t PcmValueMin = -1;
 
     Atrac1SynthesisFilterBank<TFloat> SynthesisFilterBank[2];
     Atrac1SplitFilterBank<TFloat> SplitFilterBank[2];
