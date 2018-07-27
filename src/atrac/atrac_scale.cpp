@@ -66,6 +66,7 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
 template<class TBaseData>
 vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<TFloat>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
+    scaledBlocks.reserve(TBaseData::MaxBfus);
     for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
         const bool shortWinMode = !!blockSize.LogCount[bandNum];
         for (uint8_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {

@@ -103,7 +103,7 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
     const uint32_t numBlocks = precisionPerEachBlocks.size();
     uint32_t bitsUsed = numBlocks * 3;
 
-    auto lambda = [=](bool clcMode, bool calcMant) {
+    auto lambda = [this, numBlocks, mantisas, &precisionPerEachBlocks, &scaledBlocks](bool clcMode, bool calcMant) {
         uint32_t bits = 0;
         for (uint32_t i = 0; i < numBlocks; ++i) {
             if (precisionPerEachBlocks[i] == 0)
