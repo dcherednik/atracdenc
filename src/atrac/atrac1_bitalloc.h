@@ -24,6 +24,7 @@
 #include <vector>
 #include <map>
 #include <cstdint>
+#include <cfenv>
 
 namespace NAtracDEnc {
 namespace NAtrac1 {
@@ -51,7 +52,9 @@ class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
 public:
     explicit TAtrac1BitStreamWriter(TAea* container)
         : Container(container)
-    {};
+    {
+        fesetround(FE_TONEAREST);
+    };
     void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
                         uint32_t bfuAmountIdx, const TBlockSize& blockSize);
 };

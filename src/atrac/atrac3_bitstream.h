@@ -25,6 +25,7 @@
 #include "atrac_scale.h"
 #include <vector>
 #include <utility>
+#include <cfenv>
 
 namespace NAtracDEnc {
 namespace NAtrac3 {
@@ -88,7 +89,7 @@ public:
         , Params(params)
         , BfuIdxConst(bfuIdxConst)
     {
-
+        fesetround(FE_TONEAREST);
     }
 
     void WriteSoundUnit(const std::vector<TSingleChannelElement>& singleChannelElements);

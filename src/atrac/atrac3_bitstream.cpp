@@ -115,7 +115,7 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
             const TFloat mul = MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
             if (calcMant) {
                 for (uint32_t j = 0, f = first; f < last; f++, j++) {
-                    mantisas[f] = round(scaledBlocks[i].Values[j] * mul);
+                    mantisas[f] = lrint(scaledBlocks[i].Values[j] * mul);
                 }
             }
             bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr) :
