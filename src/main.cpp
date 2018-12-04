@@ -69,9 +69,8 @@ static string GetHelp()
              "WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
         "\n --bfuidxfast\t enable fast search of BFU amount (ATRAC1)"
         "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window "
-                                                                                                              "(ATRAC1)"
+                                                                                                              "(ATRAC1)";
         /*"\n --nogaincontrol disable gain control (ATRAC3)"*/
-        "\n --notonal disable tonal components (ATRAC3)";
 }
 
 static int checkedStoi(const char* data, int min, int max, int def)
@@ -212,7 +211,6 @@ int main(int argc, char* const* argv)
         { "bfuidxfast", no_argument, NULL, O_BFUIDXFAST},
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
-        { "notonal", no_argument, NULL, O_NOTONAL},
         { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
         { NULL, 0, NULL, 0}
     };

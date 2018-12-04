@@ -79,9 +79,6 @@ protected:
     TAtrac3MDCT::TGainModulatorArray MakeGainModulatorArray(const TAtrac3Data::SubbandInfo& si);
 };
 
-//returns threshhold
-typedef std::function<float(const TFloat* p, uint16_t len)> TTonalDetector;
-
 class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     TCompressedIOPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
@@ -93,7 +90,6 @@ class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
     TScaler<TAtrac3Data> Scaler;
     std::vector<TTransientDetector> TransientDetectors;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
-    typedef std::array<uint8_t, NumSpecs> TonalComponentMask;
 public:
     struct TTransientParam {
         int32_t Attack0Location; // Attack position relative to previous frame
@@ -116,10 +112,7 @@ public:
     void ResetTransientParamsHistory(int channel, int band);
     void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);
     const TTransientParam& GetTransientParamsHistory(int channel, int band) const;
-    TonalComponentMask AnalyzeTonalComponent(TFloat* specs);
-    TTonalComponents ExtractTonalComponents(TFloat* specs, TTonalDetector fn);
 
-    void MapTonalComponents(const TTonalComponents& tonalComponents, std::vector<NAtrac3::TTonalBlock>* componentMap);
 public:
     TAtrac3Processor(TCompressedIOPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
     ~TAtrac3Processor();

@@ -129,61 +129,6 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
     }
 }
 
-//TODO:
-TAtrac3Data::TTonalComponents TAtrac3Processor::ExtractTonalComponents(TFloat* specs, TTonalDetector fn)
-{
-    TAtrac3Data::TTonalComponents res;
-    const float thresholds[TAtrac3Data::NumQMF] = { 16, 2.4, 2.8, 3.2 };
-    for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
-        //disable for frequence above 16KHz until we works without proper psy
-        if (bandNum)
-            continue;
-        for (uint8_t blockNum = BlocksPerBand[bandNum]; blockNum < BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = SpecsStartLong[blockNum];
-            const uint16_t specNumEnd = specNumStart + SpecsPerBlock[blockNum];
-            float level = fn(specs + specNumStart, SpecsPerBlock[blockNum]);
-            if (!std::isnan(level)) {
-                for (uint16_t n = specNumStart; n < specNumEnd; ++n) {
-                    //TODO:
-                    TFloat absValue = std::abs(specs[n]);
-                    //std::cerr << n << " " << absValue << " " << level << std::endl;
-                    if (absValue > 0.999999) {
-                        TFloat shift = (specs[n] > 0) ? 0.999999 : -0.999999;
-                        std::cerr << "overflow: " << specs[n] << " at: " << n << std::endl;
-                        //res.push_back({n, specs[n] - shift});
-                        specs[n] = shift;
-                    } else if (std::abs(specs[n]) / level > thresholds[bandNum]) {
-                        res.push_back({n, specs[n]/* - level*/, blockNum});
-                        specs[n] = 0;//level;
-                    }
-                    
-                }
-
-            }
-        }
-    }
-    return res;
-}
-
-void TAtrac3Processor::MapTonalComponents(const TTonalComponents& tonalComponents, vector<TTonalBlock>* componentMap)
-{
-    for (uint16_t i = 0; i < tonalComponents.size();) {
-        const uint16_t startPos = i;
-        uint16_t curPos;
-        do {
-            curPos = tonalComponents[i].Pos;
-            ++i;
-        } while ( i < tonalComponents.size() && tonalComponents[i].Pos == curPos + 1 && i - startPos < 7);
-        const uint16_t len = i - startPos;
-        TFloat tmp[8];
-        for (uint8_t j = 0; j < len; ++j)
-            tmp[j] = tonalComponents[startPos + j].Val;
-        const TScaledBlock& scaledBlock = Scaler.Scale(tmp, len);
-        componentMap->push_back({&tonalComponents[startPos], scaledBlock});
-    }
-}
-
-
 TFloat TAtrac3Processor::LimitRel(TFloat x)
 {
     return std::min(std::max(x, GainLevel[15]), GainLevel[0]);
@@ -342,10 +287,6 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
     return [this, bitStreamWriter](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
-        // TTonalBlock has pointer to the TTonalVal so TTonalComponents must be avaliable
-        // TODO: this code should be rewritten
-        TTonalComponents tonals[2];
-
         assert(SingleChannelElements.size() == meta.Channels);
         for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
             vector<TFloat> specs(1024);
@@ -375,28 +316,8 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
                 Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
-            tonals[channel] = Params.NoTonalComponents ?
-                    TAtrac3Data::TTonalComponents() : ExtractTonalComponents(specs.data(), [](const TFloat* spec, uint16_t len) {
-                std::vector<TFloat> magnitude(len);
-                //TFloat s = 0.0;
-                for (uint16_t i = 0; i < len; ++i) {
-                    magnitude[i] = std::abs(spec[i]);
-                 //   s += magnitude[i];
-                }
-                float median =  CalcMedian(magnitude.data(), len);
-                for (uint16_t i = 0; i < len; ++i) {
-                    if (median > 0.000015) {
-                        return median;
-                    }
-                }
-                return NAN;
-            });
-
-            sce->TonalBlocks.clear();
-            MapTonalComponents(tonals[channel], &sce->TonalBlocks);
-
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
-            sce->ScaledBlocks = std::move(Scaler.ScaleFrame(specs, TBlockSize()));
+            sce->ScaledBlocks = Scaler.ScaleFrame(specs, TBlockSize());
 
         }
 
