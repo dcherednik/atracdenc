@@ -80,6 +80,14 @@ static int oma_get_samplerate_idx(int samplerate) {
     return -1;
 }
 
+static int oma_get_channel_idx(int channel_format) {
+    for (int i = 0; i < 7; i++) {
+        if (channel_id_to_format_tab[i] == channel_format)
+            return i;
+    }
+    return -1;
+}
+
 static int oma_read_atrac3_header(uint32_t params, oma_info_t* info) {
     const int js = (params >> 17) & 0x1;
     const int samplerate = liboma_samplerates[(params >> 13) & 0x7];
@@ -130,6 +138,24 @@ static int oma_read_atrac3p_header(uint32_t params, oma_info_t* info) {
     return 0;
 }
 
+static int oma_write_atrac3p_header(uint32_t *params, oma_info_t *info) {
+
+    const int samplerate_idx = oma_get_samplerate_idx(info->samplerate);
+    if (samplerate_idx == -1)
+        return -1;
+
+    const uint32_t framesz = (info->framesize - 8) / 8;
+    if (framesz > 0x3FF)
+        return -1;
+
+    const int32_t ch_id = oma_get_channel_idx(info->channel_format);
+    if (ch_id < 0)
+        return -1;
+
+    *params = htonl((OMAC_ID_ATRAC3PLUS << 24) | ((int32_t)samplerate_idx << 13) | ((ch_id + 1) << 10) | framesz);
+    return 0;
+}
+
 static int oma_write_header(OMAFILE* ctx, oma_info_t *omainfo) {
     if (ctx == NULL || omainfo == NULL)
         return -1;
@@ -145,7 +171,7 @@ static int oma_write_header(OMAFILE* ctx, oma_info_t *omainfo) {
             oma_write_atrac3_header(params, omainfo);
             break;
         case OMAC_ID_ATRAC3PLUS:
-            assert(0);
+            oma_write_atrac3p_header(params, omainfo);
             break;
         default:
             assert(0);

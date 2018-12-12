@@ -33,7 +33,7 @@ int main(int argc, char* const* argv) {
     const char *codecname = oma_get_codecname(info);
     const int bitrate = oma_get_bitrate(info);
 
-    fprintf(stdout, "codec: %s, bitrate: %d, channel format: %d\n", codecname, bitrate, info->chanel_format);
+    fprintf(stdout, "codec: %s, bitrate: %d, channel format: %d\n", codecname, bitrate, info->channel_format);
 
     OMAFILE* outfile = oma_open(argv[2], OMAM_W, info);
     if (NULL == outfile)
