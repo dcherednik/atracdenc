@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -24,7 +24,6 @@
 #include <vector>
 #include <map>
 #include <cstdint>
-#include <cfenv>
 
 namespace NAtracDEnc {
 namespace NAtrac1 {
@@ -50,11 +49,8 @@ public:
 class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
     TAea* Container;
 public:
-    explicit TAtrac1BitStreamWriter(TAea* container)
-        : Container(container)
-    {
-        fesetround(FE_TONEAREST);
-    };
+    explicit TAtrac1BitStreamWriter(TAea* container);
+
     void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
                         uint32_t bfuAmountIdx, const TBlockSize& blockSize);
 };

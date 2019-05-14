@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -25,12 +25,12 @@
 class ICompressedIO {
 public:
     class TFrame {
-        uint64_t Sz;
+        size_t Sz;
         char* Data;
         TFrame(const TFrame& src) = delete;
         TFrame() = delete;
     public:
-        TFrame(uint64_t sz)
+        TFrame(size_t sz)
             : Sz(sz)
         {
             Data = new char[Sz];
@@ -38,7 +38,7 @@ public:
         ~TFrame() {
             delete[] Data;
         }
-        uint64_t Size() const { return Sz; }
+        size_t Size() const { return Sz; }
         char* Get() { return Data; }
     };
     virtual void WriteFrame(std::vector<char> data) = 0;

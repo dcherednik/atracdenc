@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -32,6 +32,7 @@
 #include "mdct/mdct.h"
 #include "gain_processor.h"
 
+#include <algorithm>
 #include <functional>
 #include <array>
 #include <cmath>
@@ -41,10 +42,10 @@ namespace NAtracDEnc {
 
 inline uint16_t RelationToIdx(TFloat x) {
     if (x <= 0.5) {
-        x = 1.0 / std::max(x, 0.00048828125);
+        x = 1.0 / std::max(x, (TFloat)0.00048828125);
         return 4 + GetFirstSetBit(std::trunc(x));
     } else {
-        x = std::min(x, 16.0);
+        x = std::min(x, (TFloat)16.0);
         return 4 - GetFirstSetBit(std::trunc(x));
     }
 }

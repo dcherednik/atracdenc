@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -28,56 +28,39 @@
 #include "wav.h"
 #include "pcmengin.h"
 
-static int fileext_to_libsndfmt(const std::string& filename) {
-    int fmt = SF_FORMAT_WAV; //default fmt
-    if (filename == "-")
-        return SF_FORMAT_AU;
-    size_t pos = filename.find_last_of(".");
-    if (pos == std::string::npos || pos == filename.size() - 1) //no dot or filename.
-        return fmt;
-    std::string ext = filename.substr(pos+1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::toupper);
-    if (ext == "AU") {
-        fmt = SF_FORMAT_AU;
-    } else if (ext == "AIFF") {
-        fmt = SF_FORMAT_AIFF;
-    } else if (ext == "PCM" || ext == "RAW") {
-        fmt = SF_FORMAT_RAW;
-    }
-    return fmt;
-}
+IPCMProviderImpl* CreatePCMIOReadImpl(const std::string& path);
 
-TWav::TWav(const std::string& filename)
-    : File(SndfileHandle(filename)) {
-    File.command(SFC_SET_NORM_DOUBLE /*| SFC_SET_NORM_FLOAT*/, nullptr, SF_TRUE);
-}
+IPCMProviderImpl* CreatePCMIOWriteImpl(const std::string& path, int channels, int sampleRate);
 
-TWav::TWav(const std::string& filename, int channels, int sampleRate)
-    : File(SndfileHandle(filename, SFM_WRITE, fileext_to_libsndfmt(filename) | SF_FORMAT_PCM_16, channels, sampleRate)) {
-    File.command(SFC_SET_NORM_DOUBLE /*| SFC_SET_NORM_FLOAT*/, nullptr, SF_TRUE);
-}
+TWav::TWav(const std::string& path)
+    : Impl(CreatePCMIOReadImpl(path))
+{ }
+
+TWav::TWav(const std::string& path, int channels, int sampleRate)
+    : Impl(CreatePCMIOWriteImpl(path, channels, sampleRate))
+{ }
 
 TWav::~TWav() {
 }
 
 uint64_t TWav::GetTotalSamples() const {
-    return File.frames();
+    return Impl->GetTotalSamples();
 }
 
 uint32_t TWav::GetChannelNum() const {
-    return File.channels();
+    return Impl->GetChannelsNum();
 }
 
 uint32_t TWav::GetSampleRate() const {
-    return File.samplerate();
+    return Impl->GetSampleRate();
 }
 
-bool TWav::IsFormatSupported() const {
-    switch (File.format() & SF_FORMAT_TYPEMASK) {
-        case SF_FORMAT_WAV:
-        case SF_FORMAT_AIFF:
-            return true;
-        default:
-            return false;
-    }
-}
+//bool TWav::IsFormatSupported() const {
+//    switch (File.format() & SF_FORMAT_TYPEMASK) {
+//        case SF_FORMAT_WAV:
+//        case SF_FORMAT_AIFF:
+//            return true;
+//        default:
+//            return false;
+//    }
+//}

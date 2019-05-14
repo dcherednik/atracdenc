@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -25,11 +25,9 @@
 #include <string.h>
 #include <assert.h>
 
-//to use htonl
-//TODO: rewrite
-#include <arpa/inet.h>
 
-static const int OMA_HEADER_SIZE = 96;
+#define OMA_HEADER_SIZE 96
+
 static const int liboma_samplerates[8] = { 32000, 44100, 48000, 88200, 96000, 0 };
 static const char* codec_name[6] = { "ATRAC3", "ATRAC3PLUS", "MPEG1LAYER3", "LPCM", "", "OMAC_ID_WMA" };
 static char ea3_str[] = {'E', 'A', '3'};
@@ -44,7 +42,20 @@ enum {
     OMAERR_EOF = -6
 };
 
+static uint32_t swapbyte32(uint32_t in) {
+#ifdef BIGENDIAN_ORDER
+    return in;
+#else
+    return ((in & 0xff) << 24 ) | ((in & 0xff00) << 8) | ((in & 0xff0000) >> 8) | ((in & 0xff000000) >> 24);
+#endif
+}
+
+#ifdef _MSC_VER
+__declspec(thread) int err;
+#else
 static __thread int err;
+#endif
+
 int oma_get_last_err() {
     return err;
 }
@@ -116,7 +127,7 @@ static int oma_write_atrac3_header(uint32_t *params, oma_info_t *info) {
     fprintf(stderr, "framesize: %d\n", framesz);
     if (framesz > 0x3FF)
         return -1;
-    *params = htonl((OMAC_ID_ATRAC3 << 24) | (js << 17) | ((uint32_t)samplerate_idx << 13) | framesz);
+    *params = swapbyte32((OMAC_ID_ATRAC3 << 24) | (js << 17) | ((uint32_t)samplerate_idx << 13) | framesz);
     return 0;
 }
 
@@ -152,7 +163,7 @@ static int oma_write_atrac3p_header(uint32_t *params, oma_info_t *info) {
     if (ch_id < 0)
         return -1;
 
-    *params = htonl((OMAC_ID_ATRAC3PLUS << 24) | ((int32_t)samplerate_idx << 13) | ((ch_id + 1) << 10) | framesz);
+    *params = swapbyte32((OMAC_ID_ATRAC3PLUS << 24) | ((int32_t)samplerate_idx << 13) | ((ch_id + 1) << 10) | framesz);
     return 0;
 }
 

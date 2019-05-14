@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -20,7 +20,6 @@
 #include "pcmengin.h"
 #include "aea.h"
 #include "oma.h"
-#include "atrac_encode_settings.h"
 #include "transient_detector.h"
 #include "atrac/atrac1.h"
 #include "atrac/atrac1_qmf.h"

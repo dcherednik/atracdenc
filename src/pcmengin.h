@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -23,6 +23,7 @@
 #include <exception>
 #include <functional>
 #include <cstdlib>
+#include <iostream>
 
 #include <assert.h>
 #include <string.h>
@@ -61,14 +62,18 @@ public:
     }
     T* operator[](size_t pos) {
         size_t rpos = pos * NumChannels;
-        if (rpos >= Buf_.size())
+        if (rpos >= Buf_.size()) {
+            std::cerr << "attempt to access out of buffer pos: " << pos << std::endl;
             std::abort();
+        }
         return &Buf_[rpos];
     }
     const T* operator[](size_t pos) const {
         size_t rpos = pos * NumChannels;
-        if (rpos >= Buf_.size())
+        if (rpos >= Buf_.size()) {
+            std::cerr << "attempt to access out of buffer pos: " << pos << std::endl;
             std::abort();
+        }
         return &Buf_[rpos];
     }
     uint16_t Channels() const {

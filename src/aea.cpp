@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -24,9 +24,8 @@
 
 using std::string;
 
-
 TAea::TMeta TAea::ReadMeta(const string& filename) {
-    FILE* fp = fopen(filename.c_str(), "r");
+    FILE* fp = fopen(filename.c_str(), "rb");
     if (!fp)
         throw TAeaIOError("Can't open file to read", errno);
     std::array<char, AeaMetaSize> buf;
@@ -44,7 +43,7 @@ TAea::TMeta TAea::ReadMeta(const string& filename) {
 }
 
 TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, int channelNum, uint32_t numFrames) {
-    FILE* fp = fopen(filename.c_str(), "w");
+    FILE* fp = fopen(filename.c_str(), "wb");
     if (!fp)
         throw TAeaIOError("Can't open file to write", errno);
     std::array<char, AeaMetaSize> buf;

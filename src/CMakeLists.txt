@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
 
 macro(use_11)
   if (CMAKE_VERSION VERSION_LESS "3.1")
@@ -17,14 +17,34 @@ use_11()
 #add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
 
-add_definitions( "-Wall -O2 -g" )
+if (UNIX)
+  add_definitions( "-Wall -O2 -g" )
+endif()
 
 project(atracdenc)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
-INCLUDE(FindLibSndFile)
 
-include_directories(${LIBSNDFILE_INCLUDE_DIR})
+if (WIN32)
+    add_compile_definitions(PLATFORM_WINDOWS)
+    include_directories("platform/win/getopt")
+    set(SOURCE_PCM_IO_LIB
+        platform/win/pcm_io_mf/pcm_io_mf.cpp
+    )
+else()
+    INCLUDE(FindLibSndFile)
+    include_directories(${LIBSNDFILE_INCLUDE_DIR})
+    set(SOURCE_PCM_IO_LIB
+        pcm_io_sndfile.cpp
+    )
+endif()
+
+include (TestBigEndian)
+TEST_BIG_ENDIAN(BIGENDIAN_ORDER)
+if (${BIGENDIAN})
+  add_compile_definitions(BIGENDIAN_ORDER)
+endif()
+
 include_directories("oma/liboma/include")
 
 set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
@@ -34,6 +54,7 @@ set(SOURCE_EXE
     main.cpp
     wav.cpp
     aea.cpp
+    env.cpp
     transient_detector.cpp
     atrac1denc.cpp
     bitstream/bitstream.cpp
@@ -50,7 +71,8 @@ set(SOURCE_EXE
     )
 
 add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
+add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
 add_library(oma STATIC ${SOURCE_OMA_LIB})
 add_executable(atracdenc ${SOURCE_EXE})
-target_link_libraries(atracdenc fft_impl oma ${SNDFILE_LIBRARIES})
+target_link_libraries(atracdenc fft_impl pcm_io oma ${SNDFILE_LIBRARIES})
 

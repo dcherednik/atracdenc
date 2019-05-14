@@ -39,6 +39,7 @@ add_executable(bitstream_test ${bitstream_test_sources})
 target_link_libraries(bitstream_test gtest_main)
 
 set(atrac1mdct_test_sources
+    ../src/env.cpp
     ../src/atrac1denc.cpp
     ../src/transient_detector.cpp
     ../src/bitstream/bitstream.cpp
@@ -56,6 +57,7 @@ add_executable(atrac1mdct_test ${atrac1mdct_test_sources})
 target_link_libraries(atrac1mdct_test fft_impl gtest_main)
 
 set(atrac3mdct_test_sources
+    ../src/env.cpp
     ../src/atrac3denc.cpp
     ../src/transient_detector.cpp
     ../src/bitstream/bitstream.cpp

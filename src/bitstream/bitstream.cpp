@@ -12,13 +12,13 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
 #include "bitstream.h"
 
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#ifndef BIGENDIAN_ORDER
 #define NBITSTREAM__LITTLE_ENDIAN_CPU
 #endif
 

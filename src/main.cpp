@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -28,6 +28,11 @@
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"
+
+#ifdef PLATFORM_WINDOWS
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 using std::cout;
 using std::cerr;
@@ -104,8 +109,8 @@ enum EOptions
 
 static void CheckInputFormat(const TWav* p)
 {
-    if (p->IsFormatSupported() == false)
-        throw std::runtime_error("unsupported format of input file");
+//    if (p->IsFormatSupported() == false)
+//        throw std::runtime_error("unsupported format of input file");
 
     if (p->GetSampleRate() != 44100)
         throw std::runtime_error("unsupported sample rate");
@@ -199,7 +204,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
     atracProcessor->reset(new TAtrac3Processor(std::move(omaIO), std::move(encoderSettings)));
 }
 
-int main(int argc, char* const* argv)
+int main_(int argc, char* const* argv)
 {
     const char* myName = argv[0];
     static struct option longopts[] = {
@@ -364,17 +369,57 @@ int main(int argc, char* const* argv)
         while (totalSamples > (processed = pcmEngine->ApplyProcess(pcmFrameSz, atracLambda)))
         {
             if (!noStdOut)
-                printProgress(processed*100/totalSamples);
+                printProgress(static_cast<int>(processed*100/totalSamples));
         }
         if (!noStdOut)
             cout << "\nDone" << endl;
     }
     catch (TAeaIOError err) {
         cerr << "Aea IO fatal error: " << err.what() << endl;
-        exit(1);
+		return 1;
     }
     catch (TWavIOError err) {
         cerr << "Wav IO fatal error: " << err.what() << endl;
-        exit(1);
+		return 1;
     }
+	catch (const std::exception& ex) {
+		cerr << "Encode/Decode error: " << ex.what() << endl;
+		return 1;
+	}
+	return 0;
+}
+
+int main(int argc, char* const* argv) {
+#ifndef PLATFORM_WINDOWS
+	return main_(argc, argv);
+# else
+	LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+	std::vector<char*> newArgv(argc);
+
+	for (int i = 0; i < argc; i++) {
+		const size_t sz = wcslen(argvW[i]);
+		const size_t maxUtf8Len = sz * 4;
+		// 0 termination in any case
+		std::vector<char> buf(maxUtf8Len + 1);
+
+		if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, argvW[i], -1, buf.data(), maxUtf8Len, NULL, NULL)) {
+			DWORD lastError = GetLastError();
+			std::cerr << "Unable to convert argument to uft8, " << std::hex << lastError << std::endl;
+		}
+		const size_t utf8Len = strlen(buf.data());
+		newArgv[i] = new char[utf8Len + 1];
+		strcpy(newArgv[i], buf.data());
+	}
+
+
+	int rv = main_(argc, newArgv.data());
+
+	for (auto& a : newArgv) {
+		delete[] a;
+	}
+
+	LocalFree(argvW);
+	return rv;
+#endif
 }

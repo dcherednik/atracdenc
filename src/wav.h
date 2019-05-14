@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -21,7 +21,7 @@
 #include <memory>
 #include <string>
 
-#include <sndfile.hh>
+#include "config.h"
 
 #include "pcmengin.h"
 
@@ -70,8 +70,19 @@ public:
     }
 };
 
+class IPCMProviderImpl {
+public:
+    virtual ~IPCMProviderImpl() = default;
+    virtual size_t GetChannelsNum() const = 0;
+    virtual size_t GetSampleRate() const = 0;
+    virtual size_t GetTotalSamples() const = 0;
+    virtual size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) = 0;
+    virtual size_t Write(const TPCMBuffer<TFloat>& buf, size_t sz) = 0;
+};
+
+//TODO: split for reader/writer
 class TWav {
-    mutable SndfileHandle File;
+    mutable std::unique_ptr<IPCMProviderImpl> Impl;
 public:
     enum Mode {
         E_READ,
@@ -83,7 +94,7 @@ public:
     uint32_t GetChannelNum() const;
     uint32_t GetSampleRate() const;
     uint64_t GetTotalSamples() const;
-    bool IsFormatSupported() const;
+
     template<class T>
     IPCMReader<T>* GetPCMReader() const;
 
@@ -96,9 +107,9 @@ typedef std::unique_ptr<TWav> TWavPtr;
 template<class T>
 IPCMReader<T>* TWav::GetPCMReader() const {
     return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != (size_t)File.channels())
+        if (data.Channels() != Impl->GetChannelsNum())
             throw TWrongReadBuffer(); 
-        if (size_t read = File.readf(data[0], size) != size) {
+        if (size_t read = Impl->Read(data, size) != size) {
             assert(read < size);
             //fprintf(stderr, "to zero: %d\n", size-read);
             data.Zero(read, size - read);
@@ -109,9 +120,9 @@ IPCMReader<T>* TWav::GetPCMReader() const {
 template<class T>
 IPCMWriter<T>* TWav::GetPCMWriter() {
     return new TWavPcmWriter<T>([this](const TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != (size_t)File.channels())
+        if (data.Channels() != Impl->GetChannelsNum())
             throw TWrongReadBuffer();
-        if (File.writef(data[0], size) != size) {
+        if (Impl->Write(data, size) != size) {
             fprintf(stderr, "can't write block\n");
         }
     });

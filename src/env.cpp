@@ -16,21 +16,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#pragma once
+#include "env.h"
 
-#define CONFIG_DOUBLE
+#include <fenv.h>
 
-#define NOMINMAX
+#pragma STDC FENV_ACCESS on
 
-#ifdef CONFIG_DOUBLE
-#    define kiss_fft_scalar double
-typedef double TFloat;
-#else
-#    define kiss_fft_scalar float
-typedef float TFloat;
-#endif
+namespace NEnv {
 
+void SetRoundFloat() {
+    fesetround(FE_TONEAREST);
+}
 
-#ifndef M_PI
-#define M_PI (3.14159265358979323846)
-#endif
+} // namespace NEnv

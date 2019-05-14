@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -196,7 +196,7 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const TSingleChannelElement& sce, NBitS
     int mt[MaxSpecs];
     const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
 
-    auto allocation = CreateAllocation(sce, bitsUsed, mt);
+    const auto& allocation = CreateAllocation(sce, bitsUsed, mt);
     const vector<uint32_t>& precisionPerEachBlocks = allocation.second;
     EncodeTonalComponents(sce, precisionPerEachBlocks, bitStream);
     const uint32_t numBlocks = precisionPerEachBlocks.size(); //number of blocks to save
@@ -471,7 +471,7 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
                 assert(s < 8);
             }
         }
-        const uint16_t bitsUsedByGainInfoAndHeader = bitStream->GetSizeInBits();
+        const uint16_t bitsUsedByGainInfoAndHeader = (uint16_t)bitStream->GetSizeInBits();
         usedBits[channel] = bitsUsedByGainInfoAndHeader;
         assert(bitStream->GetSizeInBits() == usedBits[channel]);
     }

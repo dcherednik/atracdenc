@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with FFmpeg; if not, write to the Free Software
+ * License along with AtracDEnc; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
@@ -25,7 +25,7 @@
 #include "atrac_scale.h"
 #include <vector>
 #include <utility>
-#include <cfenv>
+#include "../env.h"
 
 namespace NAtracDEnc {
 namespace NAtrac3 {
@@ -89,7 +89,7 @@ public:
         , Params(params)
         , BfuIdxConst(bfuIdxConst)
     {
-        fesetround(FE_TONEAREST);
+        NEnv::SetRoundFloat();
     }
 
     void WriteSoundUnit(const std::vector<TSingleChannelElement>& singleChannelElements);
