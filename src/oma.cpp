@@ -19,7 +19,11 @@
 #include "oma.h"
 #include <stdlib.h>
 
-TOma::TOma(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames, int cid, uint32_t framesize) {
+using std::string;
+using std::vector;
+using std::unique_ptr;
+
+TOma::TOma(const string& filename, const string& title, uint8_t numChannel, uint32_t numFrames, int cid, uint32_t framesize) {
     oma_info_t info;
     info.codec = cid;
     info.samplerate = 44100;
@@ -34,27 +38,27 @@ TOma::~TOma() {
     oma_close(File);
 }
 
-std::unique_ptr<ICompressedIO::TFrame> TOma::ReadFrame() {
+unique_ptr<ICompressedIO::TFrame> TOma::ReadFrame() {
     abort();
     return nullptr;
 }
 
-void TOma::WriteFrame(std::vector<char> data) {
+void TOma::WriteFrame(vector<char> data) {
     if (oma_write(File, &data[0], 1) == -1) {
         fprintf(stderr, "write error\n");
         abort();
     }
 }
 
-std::string TOma::GetName() const {
+string TOma::GetName() const {
     abort();
     return {};
 }
 
-int TOma::GetChannelNum() const {
+uint8_t TOma::GetChannelNum() const {
     return 2; //for ATRAC3
 }
-long long TOma::GetLengthInSamples() const {
+uint64_t TOma::GetLengthInSamples() const {
     abort();
     return 0;
 }

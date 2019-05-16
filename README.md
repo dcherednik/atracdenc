@@ -5,7 +5,7 @@ Building:
 
 You need:
 * C++11 compiler.
-* cmake > 2.8
+* cmake >= 3.0
 * libsndfiles 
 
 binary:

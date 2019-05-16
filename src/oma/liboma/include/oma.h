@@ -55,7 +55,7 @@ enum {
 };
 
 typedef struct oma_info oma_info_t;
-typedef long long block_count_t;
+typedef int block_count_t;
 
 #ifdef __cplusplus
 extern "C" {

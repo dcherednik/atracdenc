@@ -23,12 +23,15 @@
 #include <string.h>
 
 using std::string;
+using std::array;
+using std::vector;
+using std::unique_ptr;
 
 TAea::TMeta TAea::ReadMeta(const string& filename) {
     FILE* fp = fopen(filename.c_str(), "rb");
     if (!fp)
         throw TAeaIOError("Can't open file to read", errno);
-    std::array<char, AeaMetaSize> buf;
+    array<char, AeaMetaSize> buf;
     if (fread(&buf[0], TAea::AeaMetaSize, 1, fp) != 1) {
         const int errnum = errno;
         fclose(fp);
@@ -42,11 +45,11 @@ TAea::TMeta TAea::ReadMeta(const string& filename) {
 
 }
 
-TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, int channelNum, uint32_t numFrames) {
+TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, uint8_t channelNum, uint32_t numFrames) {
     FILE* fp = fopen(filename.c_str(), "wb");
     if (!fp)
         throw TAeaIOError("Can't open file to write", errno);
-    std::array<char, AeaMetaSize> buf;
+    array<char, AeaMetaSize> buf;
     memset(&buf[0], 0, AeaMetaSize);
     buf[0] = 0x00;
     buf[1] = 0x08;
@@ -74,23 +77,23 @@ TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, int ch
 
 
 TAea::TAea(const string& filename)
-    : Meta(ReadMeta(filename)) {
-    }
+    : Meta(ReadMeta(filename))
+{}
 
-TAea::TAea(const string& filename, const string& title, int channelNum, uint32_t numFrames)
-    : Meta(CreateMeta(filename, title, channelNum, numFrames)) {
-    }
+TAea::TAea(const string& filename, const string& title, uint8_t channelNum, uint32_t numFrames)
+    : Meta(CreateMeta(filename, title, channelNum, numFrames))
+{}
 
 TAea::~TAea() {
     fclose(Meta.AeaFile);
 }
 
-std::string TAea::GetName() const {
+string TAea::GetName() const {
     return string(&Meta.AeaHeader[4]);
 }
 
-std::unique_ptr<TAea::TFrame> TAea::ReadFrame() {
-    std::unique_ptr<TAea::TFrame>frame(new TFrame(212));
+unique_ptr<TAea::TFrame> TAea::ReadFrame() {
+    unique_ptr<TAea::TFrame>frame(new TFrame(212));
     if(fread(frame->Get(), frame->Size(), 1, Meta.AeaFile) != 1) {
         const int errnum = errno;
         fclose(Meta.AeaFile);
@@ -107,7 +110,7 @@ void TAea::WriteFrame(std::unique_ptr<TAea::TFrame>&& frame) {
     }
 }
 */
-void TAea::WriteFrame(std::vector<char> data) {
+void TAea::WriteFrame(vector<char> data) {
     if (FirstWrite) {
         FirstWrite = false;
         return;
@@ -120,13 +123,18 @@ void TAea::WriteFrame(std::vector<char> data) {
     }
 }
 
-int TAea::GetChannelNum() const {
+uint8_t TAea::GetChannelNum() const {
     return Meta.AeaHeader[264];
 }
-long long TAea::GetLengthInSamples() const {
+
+uint64_t TAea::GetLengthInSamples() const {
+#ifdef PLATFORM_WINDOWS
+    const int fd = _fileno(Meta.AeaFile);
+#else
     const int fd = fileno(Meta.AeaFile);
+#endif
     struct stat sb;
     fstat(fd, &sb);
     const uint32_t nChannels = Meta.AeaHeader[264] ? Meta.AeaHeader[264] : 1;
-    return 512 * ((sb.st_size - TAea::AeaMetaSize) / 212 / nChannels - 5); 
+    return (uint64_t)512 * ((sb.st_size - TAea::AeaMetaSize) / 212 / nChannels - 5); 
 }

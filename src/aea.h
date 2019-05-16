@@ -53,17 +53,15 @@ class TAea : public IAtrac1IO {
         std::array<char, AeaMetaSize> AeaHeader;
     } Meta;
     static TAea::TMeta ReadMeta(const std::string& filename);
-    static TAea::TMeta CreateMeta(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
+    static TAea::TMeta CreateMeta(const std::string& filename, const std::string& title, uint8_t numChannel, uint32_t numFrames);
     bool FirstWrite = true;
 public:
-		TAea(const std::string& filename);
-        TAea(const std::string& filename, const std::string& title, int numChannel, uint32_t numFrames);
-		~TAea();
-        std::unique_ptr<TFrame> ReadFrame() override; 
-        void WriteFrame(std::vector<char> data) override;
-        std::string GetName() const override;
-        int GetChannelNum() const override;
-        long long GetLengthInSamples() const override;
+    TAea(const std::string& filename);
+    TAea(const std::string& filename, const std::string& title, uint8_t numChannel, uint32_t numFrames);
+    ~TAea();
+    std::unique_ptr<TFrame> ReadFrame() override; 
+    void WriteFrame(std::vector<char> data) override;
+    std::string GetName() const override;
+    uint8_t GetChannelNum() const override;
+    uint64_t GetLengthInSamples() const override;
 };
-
-

@@ -276,7 +276,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                                                        const vector<uint32_t>& allocTable,
                                                        NBitStream::TBitStream* bitStream)
 {
-    const uint16_t bitsUsedOld = bitStream ? bitStream->GetSizeInBits() : 0;
+    const uint16_t bitsUsedOld = bitStream ? (uint16_t)bitStream->GetSizeInBits() : 0;
     const std::vector<TTonalBlock>& tonalComponents = sce.TonalBlocks;
     const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
     const uint8_t numQmfBand = subbandInfo.GetQmfNum();
@@ -317,13 +317,14 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
             continue;
         }
         assert(curGroup.SubGroupMap.size());
+        assert(curGroup.SubGroupMap.size() < UINT8_MAX);
         for (uint8_t subgroup = 0; subgroup < curGroup.SubGroupMap.size(); ++subgroup) {
             const uint8_t subGroupStartPos = curGroup.SubGroupMap[subgroup];
             const uint8_t subGroupEndPos = (subgroup < curGroup.SubGroupMap.size() - 1) ?
-                curGroup.SubGroupMap[subgroup+1] : curGroup.SubGroupPtr.size();
+                curGroup.SubGroupMap[subgroup+1] : (uint8_t)curGroup.SubGroupPtr.size();
             assert(subGroupEndPos > subGroupStartPos);
             //number of coded values are same in group
-            const uint8_t codedValues = curGroup.SubGroupPtr[0]->ScaledBlock.Values.size();
+            const uint8_t codedValues = (uint8_t)curGroup.SubGroupPtr[0]->ScaledBlock.Values.size();
 
             //Number of tonal component for each 64spec block. Used to set qmf band flags and simplify band encoding loop
             union {
@@ -394,7 +395,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                     const TFloat mul = MaxQuant[std::min((uint32_t)(i>>3), (uint32_t)7)];
                     assert(codedValues == curGroup.SubGroupPtr[k]->ScaledBlock.Values.size());
                     for (uint32_t z = 0; z < curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(); ++z) {
-                        mantisas[z] = round(curGroup.SubGroupPtr[k]->ScaledBlock.Values[z] * mul);
+                        mantisas[z] = lrint(curGroup.SubGroupPtr[k]->ScaledBlock.Values[z] * mul);
                     }
                     //VLCEnc
 

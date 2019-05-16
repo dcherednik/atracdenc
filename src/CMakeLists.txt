@@ -27,6 +27,7 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 
 if (WIN32)
     add_compile_definitions(PLATFORM_WINDOWS)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     include_directories("platform/win/getopt")
     set(SOURCE_PCM_IO_LIB
         platform/win/pcm_io_mf/pcm_io_mf.cpp

@@ -139,17 +139,21 @@ static void PrepareAtrac1Encoder(const string& inFile,
         CheckInputFormat(wavPtr);
         wavIO->reset(wavPtr);
     }
-    const int numChannels = (*wavIO)->GetChannelNum();
+    const uint8_t numChannels = (*wavIO)->GetChannelNum();
     *totalSamples = (*wavIO)->GetTotalSamples();
     //TODO: recheck it
-    const uint32_t numFrames = numChannels * (*totalSamples) / TAtrac1Data::NumSamples;
-    TCompressedIOPtr aeaIO = TCompressedIOPtr(new TAea(outFile, "test", numChannels, numFrames));
+    const uint64_t numFrames = numChannels * (*totalSamples) / TAtrac1Data::NumSamples;
+    if (numFrames >= UINT32_MAX) {
+        std::cerr << "Number of input samples exceeds output format limitation,"
+            "the result will be incorrect" << std::endl;
+    }
+    TCompressedIOPtr aeaIO = TCompressedIOPtr(new TAea(outFile, "test", numChannels, (uint32_t)numFrames));
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr((*wavIO)->GetPCMReader<TFloat>())));
     if (!noStdOut)
         cout << "Input file: " << inFile
-             << "\n Channels: " << numChannels
+             << "\n Channels: " << (int)numChannels
              << "\n SampleRate: " << (*wavIO)->GetSampleRate()
              << "\n TotalSamples: " << totalSamples
              << endl;
@@ -166,7 +170,7 @@ static void PrepareAtrac1Decoder(const string& inFile,
 {
     TCompressedIOPtr aeaIO = TCompressedIOPtr(new TAea(inFile));
     *totalSamples = aeaIO->GetLengthInSamples();
-    uint32_t length = aeaIO->GetLengthInSamples();
+    uint64_t length = aeaIO->GetLengthInSamples();
     if (!noStdOut)
         cout << "Name: " << aeaIO->GetName()
              << "\n Channels: " << aeaIO->GetChannelNum()
@@ -193,10 +197,15 @@ static void PrepareAtrac3Encoder(const string& inFile,
         std::cout << "bitrate " << encoderSettings.ConteinerParams->Bitrate << std::endl;
     const int numChannels = encoderSettings.SourceChannels;
     *totalSamples = wavIO->GetTotalSamples();
+    const uint64_t numFrames = numChannels * ((*totalSamples) / 512);
+    if (numFrames >= UINT32_MAX) {
+        std::cerr << "Number of input samples exceeds output format limitation,"
+            "the result will be incorrect" << std::endl;
+    }
     TCompressedIOPtr omaIO = TCompressedIOPtr(new TOma(outFile,
                                                        "test",
                                                        numChannels,
-                                                       numChannels * (*totalSamples) / 512, OMAC_ID_ATRAC3,
+                                                       (int32_t)numFrames, OMAC_ID_ATRAC3,
                                                        encoderSettings.ConteinerParams->FrameSz));
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,

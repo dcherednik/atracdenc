@@ -36,7 +36,7 @@ TWav::TWav(const std::string& path)
     : Impl(CreatePCMIOReadImpl(path))
 { }
 
-TWav::TWav(const std::string& path, int channels, int sampleRate)
+TWav::TWav(const std::string& path, uint8_t channels, uint16_t sampleRate)
     : Impl(CreatePCMIOWriteImpl(path, channels, sampleRate))
 { }
 
@@ -47,12 +47,12 @@ uint64_t TWav::GetTotalSamples() const {
     return Impl->GetTotalSamples();
 }
 
-uint32_t TWav::GetChannelNum() const {
-    return Impl->GetChannelsNum();
+uint8_t TWav::GetChannelNum() const {
+    return (uint8_t)Impl->GetChannelsNum();
 }
 
-uint32_t TWav::GetSampleRate() const {
-    return Impl->GetSampleRate();
+uint16_t TWav::GetSampleRate() const {
+    return (uint16_t)Impl->GetSampleRate();
 }
 
 //bool TWav::IsFormatSupported() const {

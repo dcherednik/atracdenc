@@ -43,10 +43,10 @@ namespace NAtracDEnc {
 inline uint16_t RelationToIdx(TFloat x) {
     if (x <= 0.5) {
         x = 1.0 / std::max(x, (TFloat)0.00048828125);
-        return 4 + GetFirstSetBit(std::trunc(x));
+        return 4 + GetFirstSetBit((int32_t)std::trunc(x));
     } else {
         x = std::min(x, (TFloat)16.0);
-        return 4 - GetFirstSetBit(std::trunc(x));
+        return 4 - GetFirstSetBit((int32_t)std::trunc(x));
     }
 }
 
