@@ -16,23 +16,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#pragma once
+#ifndef ATRAC3PLUSPQF_H
+#define ATRAC3PLUSPQF_H
 
-#define CONFIG_DOUBLE
+#include <stdint.h>
 
-#ifndef NOMINMAX
-#define NOMINMAX
+typedef struct at3plus_pqf_a_ctx *at3plus_pqf_a_ctx_t;
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-#ifdef CONFIG_DOUBLE
-#    define kiss_fft_scalar double
-typedef double TFloat;
-#else
-#    define kiss_fft_scalar float
-typedef float TFloat;
+extern const uint16_t at3plus_pqf_frame_sz;
+extern const uint16_t at3plus_pqf_proto_sz;
+
+at3plus_pqf_a_ctx_t at3plus_pqf_create_a_ctx(void);
+void at3plus_pqf_free_a_ctx(at3plus_pqf_a_ctx_t ctx);
+void at3plus_pqf_do_analyse(at3plus_pqf_a_ctx_t ctx, const float* in, float* out);
+
+// Debug functions
+const float* at3plus_pqf_get_proto(void);
+
+#ifdef __cplusplus
+}
 #endif
 
-
-#ifndef M_PI
-#define M_PI (3.14159265358979323846)
 #endif
