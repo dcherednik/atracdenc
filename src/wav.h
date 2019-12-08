@@ -26,22 +26,9 @@
 #include "pcmengin.h"
 
 class TFileAlreadyExists : public std::exception {
-
 };
 
-class TWavIOError : public std::exception {
-    const int ErrNum = 0;
-    const char* Text;
-public:
-    TWavIOError(const char* str, int err)
-        : ErrNum(err)
-        , Text(str)
-    {
-        (void)ErrNum;
-    }
-    virtual const char* what() const throw() {
-        return Text;
-    }
+class TNoDataToRead : public std::exception {
 };
 
 template<class T>
@@ -109,9 +96,12 @@ IPCMReader<T>* TWav::GetPCMReader() const {
     return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
         if (data.Channels() != Impl->GetChannelsNum())
             throw TWrongReadBuffer(); 
-        if (size_t read = Impl->Read(data, size) != size) {
-            assert(read < size);
-            //fprintf(stderr, "to zero: %d\n", size-read);
+
+        size_t read;
+        if ((read = Impl->Read(data, size)) != size) {
+            if (!read)
+                throw TNoDataToRead();
+
             data.Zero(read, size - read);
         }
     });

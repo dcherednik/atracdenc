@@ -385,17 +385,17 @@ int main_(int argc, char* const* argv)
     }
     catch (TAeaIOError err) {
         cerr << "Aea IO fatal error: " << err.what() << endl;
-		return 1;
+        return 1;
     }
-    catch (TWavIOError err) {
-        cerr << "Wav IO fatal error: " << err.what() << endl;
-		return 1;
+    catch (TNoDataToRead err) {
+        cerr << "No more data to read from input" << endl;
+        return 0;
     }
-	catch (const std::exception& ex) {
-		cerr << "Encode/Decode error: " << ex.what() << endl;
-		return 1;
-	}
-	return 0;
+    catch (const std::exception& ex) {
+        cerr << "Encode/Decode error: " << ex.what() << endl;
+        return 1;
+    }
+    return 0;
 }
 
 int main(int argc, char* const* argv) {
