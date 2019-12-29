@@ -30,7 +30,9 @@ if (WIN32)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     include_directories("platform/win/getopt")
     set(SOURCE_PCM_IO_LIB
-        platform/win/pcm_io_mf/pcm_io_mf.cpp
+        platform/win/pcm_io/mf/pcm_io_mf.cpp
+		platform/win/pcm_io/win32/pcm_io_win32.cpp
+		platform/win/pcm_io/pcm_io.cpp
     )
 else()
     INCLUDE(FindLibSndFile)
@@ -46,7 +48,10 @@ if (${BIGENDIAN})
   add_compile_definitions(BIGENDIAN_ORDER)
 endif()
 
-include_directories("oma/liboma/include")
+include_directories(
+    "lib"
+    "oma/liboma/include"
+)
 
 set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
 set_source_files_properties(fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)

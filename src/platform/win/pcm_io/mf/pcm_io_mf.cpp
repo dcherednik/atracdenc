@@ -19,6 +19,9 @@
 #include "../../../wav.h"
 #include "../../../env.h"
 
+#include "pcm_io_mf.h"
+#include "../pcm_io_impl.h"
+
 #include <comdef.h>
 
 #include <initguid.h>
@@ -213,7 +216,7 @@ public:
         hr = MFCreateSourceReaderFromURL(wpath.c_str(), NULL, &Reader_);
 
         if (FAILED(hr)) {
-            throw THException(hr, "unable to open input file");
+            throw THException(hr, "qqq unable to open input file");
         }
 
         hr = ConfigureAudioStream(Reader_, &MediaType_);
@@ -282,7 +285,7 @@ public:
 
         if (OutFile == INVALID_HANDLE_VALUE) {
             hr = HRESULT_FROM_WIN32(GetLastError());
-            throw THException(hr, "unable to open output file");
+            throw THException(hr, "qqq2 unable to open output file");
         }
 
         hr = WriteToFile(OutFile, header, sizeof(header));
@@ -347,19 +350,6 @@ public:
         return static_cast<size_t>(totalSamples);
     }
 
-    void ConvertToPcmBuffer(const BYTE* audioData, TPCMBuffer<TFloat>& buf, size_t sz, size_t shift) {
-        if (ChannelsNum_ == 1) {
-            for (size_t i = 0; i < sz; i++) {
-                *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 2 + 0)) / (TFloat)32768.0;
-            }
-        } else {
-            for (size_t i = 0; i < sz; i++) {
-                *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 4 + 0)) / (TFloat)32768.0;
-                *(buf[i + shift] + 1) = (*(int16_t*)(audioData + i * 4 + 2)) / (TFloat)32768.0;
-            }
-        }
-    }
-
     size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) override {
         HRESULT hr = S_OK;
 
@@ -374,11 +364,11 @@ public:
                     abort();
                 }
                 curPos = (Buf_.size() - ConsummerPos_) / BytesPerSample_;
-                ConvertToPcmBuffer(Buf_.data() + ConsummerPos_, buf, curPos, 0);
+                ConvertToPcmBufferFromLE(Buf_.data() + ConsummerPos_, buf, curPos, 0, ChannelsNum_);
                 ConsummerPos_ = 0;
             } else {
                 // We have all data in our buffer, just convert it and shift consumer position
-                ConvertToPcmBuffer(Buf_.data() + ConsummerPos_, buf, sz, 0);
+                ConvertToPcmBufferFromLE(Buf_.data() + ConsummerPos_, buf, sz, 0, ChannelsNum_);
                 ConsummerPos_ += sizeBytes;
                 return sz;
             }
@@ -430,10 +420,10 @@ public:
 
             if (sizeBytes > (readyToRead + (curPos * BytesPerSample_))) {
                 const size_t ready = readyToRead / BytesPerSample_;
-                ConvertToPcmBuffer(audioData, buf, ready, curPos);
+                ConvertToPcmBufferFromLE(audioData, buf, ready, curPos, ChannelsNum_);
                 curPos += ready;
             } else {
-                ConvertToPcmBuffer(audioData, buf, sz - curPos, curPos);
+                ConvertToPcmBufferFromLE(audioData, buf, sz - curPos, curPos, ChannelsNum_);
                 size_t leftBytes = readyToRead - (sz - curPos) * BytesPerSample_;
                 Buf_.resize(leftBytes);
                 std::memcpy(Buf_.data(), audioData + (sz - curPos) * BytesPerSample_, leftBytes);
@@ -484,10 +474,10 @@ private:
     HANDLE OutFile = NULL;
 };
 
-IPCMProviderImpl* CreatePCMIOReadImpl(const std::string& path) {
+IPCMProviderImpl* CreatePCMIOMFReadImpl(const std::string& path) {
     return new TPCMIOMediaFoundationFile(path);
 }
 
-IPCMProviderImpl* CreatePCMIOWriteImpl(const std::string& path, int channels, int sampleRate) {
+IPCMProviderImpl* CreatePCMIOMFWriteImpl(const std::string& path, int channels, int sampleRate) {
     return new TPCMIOMediaFoundationFile(path, channels, sampleRate);
 }

@@ -19,6 +19,8 @@
 #include "../include/oma.h"
 #include "oma_internal.h"
 
+#include <endian.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -41,14 +43,6 @@ enum {
     OMAERR_VAL = -5,
     OMAERR_EOF = -6
 };
-
-static uint32_t swapbyte32(uint32_t in) {
-#ifdef BIGENDIAN_ORDER
-    return in;
-#else
-    return ((in & 0xff) << 24 ) | ((in & 0xff00) << 8) | ((in & 0xff0000) >> 8) | ((in & 0xff000000) >> 24);
-#endif
-}
 
 #ifdef _MSC_VER
 __declspec(thread) int err;
@@ -127,7 +121,7 @@ static int oma_write_atrac3_header(uint32_t *params, oma_info_t *info) {
     fprintf(stderr, "framesize: %d\n", framesz);
     if (framesz > 0x3FF)
         return -1;
-    *params = swapbyte32((OMAC_ID_ATRAC3 << 24) | (js << 17) | ((uint32_t)samplerate_idx << 13) | framesz);
+    *params = swapbyte32_on_le((OMAC_ID_ATRAC3 << 24) | (js << 17) | ((uint32_t)samplerate_idx << 13) | framesz);
     return 0;
 }
 
@@ -163,7 +157,7 @@ static int oma_write_atrac3p_header(uint32_t *params, oma_info_t *info) {
     if (ch_id < 0)
         return -1;
 
-    *params = swapbyte32((OMAC_ID_ATRAC3PLUS << 24) | ((int32_t)samplerate_idx << 13) | ((ch_id + 1) << 10) | framesz);
+    *params = swapbyte32_on_le((OMAC_ID_ATRAC3PLUS << 24) | ((int32_t)samplerate_idx << 13) | ((ch_id + 1) << 10) | framesz);
     return 0;
 }
 
