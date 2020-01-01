@@ -20,7 +20,7 @@
 #include "mf/pcm_io_mf.h"
 #include "win32/pcm_io_win32.h"
 
-#include <endian.h>
+#include <endian_tools.h>
 
 #include <iostream>
 #include <windows.h>

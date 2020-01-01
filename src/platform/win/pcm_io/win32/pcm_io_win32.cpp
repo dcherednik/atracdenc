@@ -19,7 +19,7 @@
 #include "../../../wav.h"
 #include "../../../env.h"
 
-#include <endian.h>
+#include <endian_tools.h>
 
 #include "pcm_io_win32.h"
 #include "../pcm_io_impl.h"

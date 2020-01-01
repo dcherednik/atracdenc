@@ -19,7 +19,7 @@
 #include "../include/oma.h"
 #include "oma_internal.h"
 
-#include <endian.h>
+#include <endian_tools.h>
 
 #include <stdio.h>
 #include <stdlib.h>
