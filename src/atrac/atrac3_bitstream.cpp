@@ -95,6 +95,25 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
     return bitsUsed;
 }
 
+static inline int ToInt(double x) {
+#if defined(_MSC_VER) && defined(_WIN32)
+    int n;
+    __asm {
+        fld x
+        fistp n
+    }
+    return n;
+#else
+    return lrint(x);
+#endif
+}
+
+static inline void CalcMantisas(const TFloat* values, const uint32_t first, const uint32_t last, const TFloat mul, int* mantisas) {
+    for (uint32_t j = 0, f = first; f < last; f++, j++) {
+        mantisas[f] = ToInt(values[j] * mul);
+    }
+}
+
 std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                         const vector<uint32_t>& precisionPerEachBlocks, int* mantisas)
 {
@@ -114,9 +133,8 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
             const uint32_t blockSize = last - first;
             const TFloat mul = MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
             if (calcMant) {
-                for (uint32_t j = 0, f = first; f < last; f++, j++) {
-                    mantisas[f] = lrint(scaledBlocks[i].Values[j] * mul);
-                }
+                const TFloat* values = scaledBlocks[i].Values.data();
+                CalcMantisas(values, first, last, mul, mantisas);
             }
             bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr) :
                 VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
