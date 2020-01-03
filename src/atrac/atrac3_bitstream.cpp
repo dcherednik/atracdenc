@@ -96,7 +96,7 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
 }
 
 static inline int ToInt(double x) {
-#if defined(_MSC_VER) && defined(_WIN32)
+#if defined(_MSC_VER) && !defined(_WIN64)
     int n;
     __asm {
         fld x
