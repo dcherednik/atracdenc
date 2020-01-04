@@ -35,7 +35,7 @@ TEST(TBitStream, SimpleWriteRead) {
     EXPECT_EQ(true, bs.Read(1));
 }
 
-TEST(TBisStream, OverlapWriteRead) {
+TEST(TBitStream, OverlapWriteRead) {
     TBitStream bs;
     bs.Write(101, 22);
     EXPECT_EQ(22, bs.GetSizeInBits());
@@ -51,7 +51,7 @@ TEST(TBisStream, OverlapWriteRead) {
     EXPECT_EQ(323, bs.Read(22));
 }
 
-TEST(TBisStream, OverlapWriteRead2) {
+TEST(TBitStream, OverlapWriteRead2) {
     TBitStream bs;
     bs.Write(2, 2);
     bs.Write(7, 4);
@@ -62,7 +62,7 @@ TEST(TBisStream, OverlapWriteRead2) {
     EXPECT_EQ(10003, bs.Read(16));
 }
 
-TEST(TBisStream, OverlapWriteRead3) {
+TEST(TBitStream, OverlapWriteRead3) {
     TBitStream bs;
     bs.Write(40, 6);
     bs.Write(3, 2);
@@ -120,7 +120,7 @@ TEST(TBisStream, OverlapWriteRead3) {
 }
 
 
-TEST(TBisStream, SignWriteRead) {
+TEST(TBitStream, SignWriteRead) {
     TBitStream bs;
     bs.Write(MakeSign(-2, 3), 3);
     bs.Write(MakeSign(-1, 3), 3);

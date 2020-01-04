@@ -56,14 +56,13 @@ include_directories(
 set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
 set_source_files_properties(fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
 set(SOURCE_OMA_LIB oma/liboma/src/liboma.c)
-set(SOURCE_EXE
-    main.cpp
+set(SOURCE_BITSTREAM_LIB bitstream/bitstream.cpp)
+set(SOURCE_ATRACDENC_IMPL
     wav.cpp
     aea.cpp
     env.cpp
     transient_detector.cpp
     atrac1denc.cpp
-    bitstream/bitstream.cpp
     atrac/atrac1.cpp
     atrac/atrac1_dequantiser.cpp
     atrac/atrac_scale.cpp
@@ -74,11 +73,16 @@ set(SOURCE_EXE
     atrac/atrac3.cpp
     atrac/atrac3_bitstream.cpp
     mdct/mdct.cpp
-    )
+)
 
 add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
 add_library(oma STATIC ${SOURCE_OMA_LIB})
+add_library(bitstream STATIC ${SOURCE_BITSTREAM_LIB})
+add_library(atracdenc_impl STATIC ${SOURCE_ATRACDENC_IMPL})
+set(SOURCE_EXE
+    main.cpp
+)
 add_executable(atracdenc ${SOURCE_EXE})
-target_link_libraries(atracdenc fft_impl pcm_io oma ${SNDFILE_LIBRARIES})
+target_link_libraries(atracdenc fft_impl pcm_io oma bitstream atracdenc_impl ${SNDFILE_LIBRARIES})
 

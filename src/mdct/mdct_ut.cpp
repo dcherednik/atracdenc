@@ -49,7 +49,7 @@ static vector<TFloat> midct(TFloat* x, int N) {
     return res;
 }
 
-TEST(TBitStream, MDCT32) {
+TEST(TMdctTest, MDCT32) {
     const int N = 32;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -64,7 +64,7 @@ TEST(TBitStream, MDCT32) {
     }
 }
 
-TEST(TBitStream, MDCT64) {
+TEST(TMdctTest, MDCT64) {
     const int N = 64;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -79,7 +79,7 @@ TEST(TBitStream, MDCT64) {
     }
 }
 
-TEST(TBitStream, MDCT128) {
+TEST(TMdctTest, MDCT128) {
     const int N = 128;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -94,7 +94,7 @@ TEST(TBitStream, MDCT128) {
     }
 }
 
-TEST(TBitStream, MDCT256) {
+TEST(TMdctTest, MDCT256) {
     const int N = 256;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -109,7 +109,7 @@ TEST(TBitStream, MDCT256) {
     }
 }
 
-TEST(TBitStream, MDCT256_RAND) {
+TEST(TMdctTest, MDCT256_RAND) {
     const int N = 256;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -124,7 +124,7 @@ TEST(TBitStream, MDCT256_RAND) {
     }
 }
 
-TEST(TBitStream, MIDCT32) {
+TEST(TMdctTest, MIDCT32) {
     const int N = 32;
     TMIDCT<N> transform;
     vector<TFloat> src(N);
@@ -139,7 +139,7 @@ TEST(TBitStream, MIDCT32) {
     }
 }
 
-TEST(TBitStream, MIDCT64) {
+TEST(TMdctTest, MIDCT64) {
     const int N = 64;
     TMIDCT<N> transform;
     vector<TFloat> src(N);
@@ -154,7 +154,7 @@ TEST(TBitStream, MIDCT64) {
     }
 }
 
-TEST(TBitStream, MIDCT128) {
+TEST(TMdctTest, MIDCT128) {
     const int N = 128;
     TMIDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -169,7 +169,7 @@ TEST(TBitStream, MIDCT128) {
     }
 }
 
-TEST(TBitStream, MIDCT256) {
+TEST(TMdctTest, MIDCT256) {
     const int N = 256;
     TMIDCT<N> transform(N);
     vector<TFloat> src(N);
@@ -184,7 +184,7 @@ TEST(TBitStream, MIDCT256) {
     }
 }
 
-TEST(TBitStream, MIDCT256_RAND) {
+TEST(TMdctTest, MIDCT256_RAND) {
     const int N = 256;
     TMIDCT<N> transform(N);
     vector<TFloat> src(N);
