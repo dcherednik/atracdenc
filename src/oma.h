@@ -19,13 +19,14 @@
 #pragma once
 
 #include "compressed_io.h"
+
 #include "oma/liboma/include/oma.h"
 
 class TOma : public ICompressedIO {
     OMAFILE* File;
 public:
-    TOma(const std::string& filename, const std::string& title, uint8_t numChannel, uint32_t numFrames, int cid,
-        uint32_t framesize);
+    TOma(const std::string& filename, const std::string& title, uint8_t numChannel,
+        uint32_t numFrames, int cid, uint32_t framesize, bool jointStereo);
     ~TOma();
     std::unique_ptr<TFrame> ReadFrame() override;
     void WriteFrame(std::vector<char> data) override;

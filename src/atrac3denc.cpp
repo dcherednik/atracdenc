@@ -274,6 +274,19 @@ void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
     }
 }
 
+void TAtrac3Processor::Matrixing()
+{
+    for (uint32_t subband = 0; subband < 4; subband++) {
+        TFloat* pair[2] = {PcmBuffer.GetSecond(subband * 2), PcmBuffer.GetSecond(subband * 2 + 1)};
+        TFloat tmp[2];
+        for (uint32_t sample = 0; sample < 256; sample++) {
+            tmp[0] = pair[0][sample];
+            tmp[1] = pair[1][sample];
+            pair[0][sample] = (tmp[0] + tmp[1]) / 2.0;
+            pair[1][sample] = (tmp[0] - tmp[1]) / 2.0;
+        }
+    }
+}
 
 TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
 {
@@ -289,7 +302,6 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
 
         assert(SingleChannelElements.size() == meta.Channels);
         for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
-            vector<TFloat> specs(1024);
             TFloat src[NumSamples];
 
             for (size_t i = 0; i < NumSamples; ++i) {
@@ -300,7 +312,14 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
                 TFloat* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
                 SplitFilterBank[channel].Split(&src[0], p);
             }
-            
+        }
+
+        if (Params.ConteinerParams->Js) {
+            Matrixing();
+        }
+
+        for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
+            vector<TFloat> specs(1024);
             TSce* sce = &SingleChannelElements[channel];
 
             sce->SubbandInfo.Reset();

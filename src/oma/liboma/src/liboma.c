@@ -118,7 +118,6 @@ static int oma_write_atrac3_header(uint32_t *params, oma_info_t *info) {
     if (samplerate_idx == -1)
         return -1;
     const uint32_t framesz = info->framesize / 8;
-    fprintf(stderr, "framesize: %d\n", framesz);
     if (framesz > 0x3FF)
         return -1;
     *params = swapbyte32_on_le((OMAC_ID_ATRAC3 << 24) | (js << 17) | ((uint32_t)samplerate_idx << 13) | framesz);

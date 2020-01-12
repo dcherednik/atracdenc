@@ -455,6 +455,14 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
     return bitsPerEachBlock;
 }
 
+void WriteJsParams(NBitStream::TBitStream* bs)
+{
+    bs->Write(0, 1);
+    bs->Write(7, 3);
+    for (int i = 0; i < 4; i++) {
+        bs->Write(3, 2);
+    }
+}
 
 void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>& singleChannelElements)
 {
@@ -468,12 +476,13 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
 
         NBitStream::TBitStream* bitStream = &bitStreams[channel];
 
-        if (Params.Js) {
-            //TODO
-            abort();
+        if (Params.Js && channel == 1) {
+            WriteJsParams(bitStream);
+            bitStream->Write(3, 2);
         } else {
             bitStream->Write(0x28, 6); //0x28 - id
         }
+
         const uint8_t numQmfBand = subbandInfo.GetQmfNum();
         bitStream->Write(numQmfBand - 1, 2);
 
@@ -504,8 +513,13 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
             abort();
         std::vector<char> channelData = bitStream->GetBytes();
         assert(bitStream->GetSizeInBits() <= 8 * (size_t)Params.FrameSz / 2);
-        channelData.resize(Params.FrameSz >> 1);
-        OutBuffer.insert(OutBuffer.end(), channelData.begin(), channelData.end());
+        if (Params.Js && channel == 1) {
+            channelData.resize(Params.FrameSz >> 1);
+            OutBuffer.insert(OutBuffer.end(), channelData.rbegin(), channelData.rend());
+        } else {
+            channelData.resize(Params.FrameSz >> 1);
+            OutBuffer.insert(OutBuffer.end(), channelData.begin(), channelData.end());
+        }
     }
 
     //No mone mode for atrac3, just make duplicate of first channel

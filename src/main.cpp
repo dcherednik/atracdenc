@@ -206,7 +206,8 @@ static void PrepareAtrac3Encoder(const string& inFile,
                                                        "test",
                                                        numChannels,
                                                        (int32_t)numFrames, OMAC_ID_ATRAC3,
-                                                       encoderSettings.ConteinerParams->FrameSz));
+                                                       encoderSettings.ConteinerParams->FrameSz,
+                                                       encoderSettings.ConteinerParams->Js));
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));
@@ -275,7 +276,6 @@ int main_(int argc, char* const* argv)
                 break;
             case O_BITRATE:
                 bitrate = checkedStoi(optarg, 32, 384, 0);
-                std::cout << "BITRATE" << bitrate << std::endl;
                 break;
             case O_BFUIDXCONST:
                 bfuIdxConst = checkedStoi(optarg, 1, 32, 0);

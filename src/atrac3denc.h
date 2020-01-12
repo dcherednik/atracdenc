@@ -19,7 +19,6 @@
 #pragma once
 #include "config.h"
 #include "pcmengin.h"
-#include "oma.h"
 #include "aea.h"
 #include "atrac/atrac3.h"
 #include "atrac/atrac3_qmf.h"
@@ -113,6 +112,7 @@ public:
     void ResetTransientParamsHistory(int channel, int band);
     void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);
     const TTransientParam& GetTransientParamsHistory(int channel, int band) const;
+    void Matrixing();
 
 public:
     TAtrac3Processor(TCompressedIOPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
