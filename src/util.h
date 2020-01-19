@@ -61,6 +61,10 @@ inline uint16_t GetFirstSetBit(uint32_t x) {
     return multiplyDeBruijnBitPosition[(uint32_t)(x * 0x07C4ACDDU) >> 27];
 }
 
+inline uint32_t Div8Ceil(uint32_t in) {
+    return 1 + (in - 1) / 8;
+}
+
 template<class T>
 inline T CalcMedian(T* in, uint32_t len) {
     std::vector<T> tmp(in, in+len);

@@ -300,8 +300,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
     return [this, bitStreamWriter](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
-        assert(SingleChannelElements.size() == meta.Channels);
-        for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
+        for (uint32_t channel = 0; channel < meta.Channels; channel++) {
             TFloat src[NumSamples];
 
             for (size_t i = 0; i < NumSamples; ++i) {
@@ -314,11 +313,11 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
             }
         }
 
-        if (Params.ConteinerParams->Js) {
+        if (Params.ConteinerParams->Js && meta.Channels == 2) {
             Matrixing();
         }
 
-        for (uint32_t channel = 0; channel < SingleChannelElements.size(); channel++) {
+        for (uint32_t channel = 0; channel < meta.Channels; channel++) {
             vector<TFloat> specs(1024);
             TSce* sce = &SingleChannelElements[channel];
 
@@ -338,6 +337,14 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
             sce->ScaledBlocks = Scaler.ScaleFrame(specs, TBlockSize());
 
+        }
+
+        if (Params.ConteinerParams->Js && meta.Channels == 1) {
+            // In case of JointStereo and one input channel (mono input) we need to construct one empty SCE to produce
+            // correct bitstream
+            SingleChannelElements.resize(2);
+            // Set 1 subband
+            SingleChannelElements[1].SubbandInfo.Info.resize(1);
         }
 
         bitStreamWriter->WriteSoundUnit(SingleChannelElements);

@@ -19,6 +19,7 @@
 #include "atrac3_bitstream.h"
 #include "atrac_psy_common.h"
 #include "../bitstream/bitstream.h"
+#include "../util.h"
 #include <cassert>
 #include <algorithm>
 #include <iostream>
@@ -161,10 +162,16 @@ static inline bool CheckBfus(uint8_t* numBfu, const vector<uint32_t>& precisionP
     return false;
 }
 
+static const std::pair<uint8_t, vector<uint32_t>> DUMMY_ALLOC{1, vector<uint32_t>{0}};
+
 std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(const TSingleChannelElement& sce,
-                                                                              uint16_t bitsUsed, int mt[MaxSpecs])
+                                                                              const uint16_t targetBits, int mt[MaxSpecs])
 {
     const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
+    if (scaledBlocks.empty()) {
+        return DUMMY_ALLOC;
+    }
+
     TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
 
     uint8_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
@@ -173,8 +180,6 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
     bool cont = true;
     while (cont) {
         precisionPerEachBlocks.resize(numBfu);
-        const uint32_t bitsAvaliablePerBfus = 8 * Params.FrameSz/2 - bitsUsed - 
-            5 - 1;
         TFloat maxShift = 15;
         TFloat minShift = -3;
         for (;;) {
@@ -186,7 +191,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
             //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << std::endl;
             consumption.second += bitsUsedByTonal;
 
-            if (consumption.second < bitsAvaliablePerBfus) {
+            if (consumption.second < targetBits) {
                 if (maxShift - minShift < 0.1) {
                     precisionPerEachBlocks = tmpAlloc;
                     mode = consumption.first;
@@ -194,7 +199,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
                     break;
                 }
                 maxShift = shift - 0.01;
-            } else if (consumption.second > bitsAvaliablePerBfus) {
+            } else if (consumption.second > targetBits) {
                 minShift = shift + 0.01;
             } else {
                 precisionPerEachBlocks = tmpAlloc;
@@ -209,12 +214,10 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
 }
 
 void TAtrac3BitStreamWriter::EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
-                                         uint16_t bitsUsed)
+                                         const std::pair<uint8_t, vector<uint32_t>>& allocation, const int mt[MaxSpecs])
 {
-    int mt[MaxSpecs];
-    const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
 
-    const auto& allocation = CreateAllocation(sce, bitsUsed, mt);
+    const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
     const vector<uint32_t>& precisionPerEachBlocks = allocation.second;
     EncodeTonalComponents(sce, precisionPerEachBlocks, bitStream);
     const uint32_t numBlocks = precisionPerEachBlocks.size(); //number of blocks to save
@@ -464,12 +467,34 @@ void WriteJsParams(NBitStream::TBitStream* bs)
     }
 }
 
+static int32_t CalcMsBytesShift(uint32_t frameSz,
+                                const vector<TAtrac3BitStreamWriter::TSingleChannelElement>& elements,
+                                const int32_t b[2])
+{
+    const int32_t totalUsedBits = 0 - b[0] - b[1];
+    assert(totalUsedBits > 0);
+
+    const uint32_t maxAllowedShift = frameSz / 2 - Div8Ceil(totalUsedBits);
+
+    if (elements[1].ScaledBlocks.empty()) {
+        return maxAllowedShift;
+    } else {
+        return std::min(frameSz / 3, maxAllowedShift);
+    }
+}
+
 void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>& singleChannelElements)
 {
 
     assert(singleChannelElements.size() == 1 || singleChannelElements.size() == 2);
+
+    const int halfFrameSz = Params.FrameSz >> 1;
+
     NBitStream::TBitStream bitStreams[2];
-    uint16_t usedBits[2];
+
+    int32_t bitsToAlloc[2] = {-6, -6}; // 6 bits used always to write num blocks and coding mode
+                                       // See EncodeSpecs
+
     for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
         const TSingleChannelElement& sce = singleChannelElements[channel];
         const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
@@ -484,6 +509,7 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
         }
 
         const uint8_t numQmfBand = subbandInfo.GetQmfNum();
+        assert(numQmfBand > 0);
         bitStream->Write(numQmfBand - 1, 2);
 
         //write gain info
@@ -499,25 +525,41 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
                 assert(s < 8);
             }
         }
-        const uint16_t bitsUsedByGainInfoAndHeader = (uint16_t)bitStream->GetSizeInBits();
-        usedBits[channel] = bitsUsedByGainInfoAndHeader;
-        assert(bitStream->GetSizeInBits() == usedBits[channel]);
+
+        const int16_t bitsUsedByGainInfoAndHeader = (int16_t)bitStream->GetSizeInBits();
+        bitsToAlloc[channel] -= bitsUsedByGainInfoAndHeader;
+        assert(bitStream->GetSizeInBits() == bitsUsedByGainInfoAndHeader);
+    }
+
+    int mt[2][MaxSpecs];
+    std::pair<uint8_t, vector<uint32_t>> allocations[2];
+
+    const int32_t msBytesShift = Params.Js ? CalcMsBytesShift(Params.FrameSz, singleChannelElements, bitsToAlloc) : 0; // positive - gain to m, negative to s. Must be zero if no joint stereo mode
+
+    bitsToAlloc[0] += 8 * (halfFrameSz + msBytesShift);
+    bitsToAlloc[1] += 8 * (halfFrameSz - msBytesShift);
+
+    for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
+        const TSingleChannelElement& sce = singleChannelElements[channel];
+        allocations[channel] = CreateAllocation(sce, bitsToAlloc[channel], mt[channel]);
     }
 
     for (uint32_t channel = 0; channel < singleChannelElements.size(); channel++) {
         const TSingleChannelElement& sce = singleChannelElements[channel];
         NBitStream::TBitStream* bitStream = &bitStreams[channel];
-        EncodeSpecs(sce, bitStream, usedBits[channel]);
+
+        EncodeSpecs(sce, bitStream, allocations[channel], mt[channel]);
 
         if (!Container)
             abort();
+
         std::vector<char> channelData = bitStream->GetBytes();
-        assert(bitStream->GetSizeInBits() <= 8 * (size_t)Params.FrameSz / 2);
+
         if (Params.Js && channel == 1) {
-            channelData.resize(Params.FrameSz >> 1);
+            channelData.resize(halfFrameSz - msBytesShift);
             OutBuffer.insert(OutBuffer.end(), channelData.rbegin(), channelData.rend());
         } else {
-            channelData.resize(Params.FrameSz >> 1);
+            channelData.resize(halfFrameSz + msBytesShift);
             OutBuffer.insert(OutBuffer.end(), channelData.begin(), channelData.end());
         }
     }
@@ -525,10 +567,11 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
     //No mone mode for atrac3, just make duplicate of first channel
     if (singleChannelElements.size() == 1 && !Params.Js) {
         int sz = OutBuffer.size();
-        assert(sz == Params.FrameSz >> 1);
+        assert(sz == halfFrameSz);
         OutBuffer.resize(sz << 1);
         std::copy_n(OutBuffer.begin(), sz, OutBuffer.begin() + sz);
     }
+
     Container->WriteFrame(OutBuffer);
     OutBuffer.clear();
 }

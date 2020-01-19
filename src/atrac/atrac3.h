@@ -212,16 +212,13 @@ public:
     };
     static const TContainerParams* GetContainerParamsForBitrate(uint32_t bitrate);
 
-    class SubbandInfo {
-    public:
+    struct SubbandInfo {
         static const uint32_t MaxGainPointsNum = 8;
         struct TGainPoint {
             uint32_t Level;
             uint32_t Location;
         };
-    private:
         std::vector<std::vector<TGainPoint>> Info;
-    public:
         SubbandInfo()
         {
             Info.resize(4);

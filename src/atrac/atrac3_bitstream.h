@@ -67,14 +67,14 @@ private:
                                              uint32_t bfuNum, TFloat spread, TFloat shift);
 
     std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
-                                                               uint16_t bitsUsed, int mt[MaxSpecs]);
+                                                               uint16_t targetBits, int mt[MaxSpecs]);
 
     std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                           const std::vector<uint32_t>& precisionPerEachBlocks,
                                                           int* mantisas);
 
     void EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
-                     uint16_t bitsUsed);
+                     const std::pair<uint8_t, std::vector<uint32_t>>&, const int mt[MaxSpecs]);
 
     uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                                  const std::vector<uint32_t>& allocTable,
