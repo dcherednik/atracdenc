@@ -528,7 +528,6 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
 
         const int16_t bitsUsedByGainInfoAndHeader = (int16_t)bitStream->GetSizeInBits();
         bitsToAlloc[channel] -= bitsUsedByGainInfoAndHeader;
-        assert(bitStream->GetSizeInBits() == bitsUsedByGainInfoAndHeader);
     }
 
     int mt[2][MaxSpecs];
