@@ -76,7 +76,12 @@ set(SOURCE_ATRACDENC_IMPL
 )
 
 add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
+
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
+if (NOT WIN32)
+target_link_libraries(pcm_io ${SNDFILE_LIBRARIES})
+endif()
+
 add_library(oma STATIC ${SOURCE_OMA_LIB})
 add_library(bitstream STATIC ${SOURCE_BITSTREAM_LIB})
 add_library(atracdenc_impl STATIC ${SOURCE_ATRACDENC_IMPL})
