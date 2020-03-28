@@ -48,7 +48,7 @@ typedef std::unique_ptr<IProcessor<TFloat>> TAtracProcessorPtr;
 static void printUsage(const char* myName)
 {
     cout << "\tusage: " << myName << " <-e <atrac1|atrac3>|-d> <-i input> <-o output>\n" << endl;
-    cout << "-e atrac1|atrac3 encode mode (PCM -> ATRAC), -i wav file, -o aea/oma file" << endl;
+    cout << "-e atrac1|atrac3|atrac3_lp4 encode mode (PCM -> ATRAC), -i wav file, -o aea/oma file" << endl;
     cout << "-d decode mode (ATRAC -> PCM), -i aea file, -o wav file" << endl;
     cout << "-h get help" << endl;
 
@@ -65,7 +65,7 @@ static void printProgress(int percent)
 
 static string GetHelp()
 {
-    return "\n--encode [atrac1|atrac3] -e <atrac1|atrac3> \t - encode mode (default codec is ATRAC1)"
+    return "\n--encode [atrac1|atrac3|atrac3_lp4] -e <atrac1|atrac3> \t - encode mode (default codec is ATRAC1)"
         "\n--decode -d \t - decode mode (only ATRAC1 supported)"
         "\n -i input file"
         "\n -o output file"
@@ -250,6 +250,9 @@ int main_(int argc, char* const* argv)
                 if (optarg) {
                     if (strcmp(optarg, "atrac3") == 0) {
                         mode |= E_ATRAC3;
+                    } else if (strcmp(optarg, "atrac3_lp4") == 0) {
+                        mode |= E_ATRAC3;
+                        bitrate = 64;
                     } else if (strcmp(optarg, "atrac1") == 0) {
                         // this is the default
                     } else {
