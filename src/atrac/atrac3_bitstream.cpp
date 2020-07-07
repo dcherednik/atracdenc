@@ -150,9 +150,10 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
 
 //true - should reencode
 //false - not need to
-static inline bool CheckBfus(uint8_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
+static inline bool CheckBfus(uint16_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
 {
-    uint8_t curLastBfu = *numBfu - 1;
+    assert(*numBfu);
+    uint16_t curLastBfu = *numBfu - 1;
     //assert(curLastBfu < precisionPerEachBlocks.size());
     assert(*numBfu == precisionPerEachBlocks.size());
     if (precisionPerEachBlocks[curLastBfu] == 0) {
@@ -174,7 +175,17 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
 
     TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
 
-    uint8_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
+    uint16_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
+
+    // Limit number of BFU if target bitrate is not enough
+    // 3 bits to write each bfu without data
+    // 5 bits we need for tonal header
+    // 32 * 3 + 5 = 101
+    if (targetBits < 101) {
+        uint16_t lim = (targetBits - 5) / 3;
+        numBfu = std::min(numBfu, lim);
+    }
+
     vector<uint32_t> precisionPerEachBlocks(numBfu);
     uint8_t mode;
     bool cont = true;
@@ -188,14 +199,18 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
             auto consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt);
 
             auto bitsUsedByTonal = EncodeTonalComponents(sce, tmpAlloc, nullptr);
-            //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << std::endl;
+            //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << " target: " << targetBits << " shift " << shift << " max | min " << maxShift << " " << minShift << std::endl;
             consumption.second += bitsUsedByTonal;
 
             if (consumption.second < targetBits) {
                 if (maxShift - minShift < 0.1) {
                     precisionPerEachBlocks = tmpAlloc;
                     mode = consumption.first;
-                    cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);
+                    if (numBfu > 1) {
+                        cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);
+                    } else {
+                        cont = false;
+                    }
                     break;
                 }
                 maxShift = shift - 0.01;
@@ -467,19 +482,33 @@ void WriteJsParams(NBitStream::TBitStream* bs)
     }
 }
 
-static int32_t CalcMsBytesShift(uint32_t frameSz,
+//  0.5 - M only (mono)
+//  0.0 - Uncorrelated
+// -0.5 - S only
+static TFloat CalcMSRatio(TFloat mEnergy, TFloat sEnergy) {
+    TFloat total = sEnergy + mEnergy;
+    if (total > 0)
+        return mEnergy / total - 0.5;
+
+    // No signal - nothing to shift
+    return 0;
+}
+
+static int32_t CalcMSBytesShift(uint32_t frameSz,
                                 const vector<TAtrac3BitStreamWriter::TSingleChannelElement>& elements,
                                 const int32_t b[2])
 {
     const int32_t totalUsedBits = 0 - b[0] - b[1];
     assert(totalUsedBits > 0);
 
-    const uint32_t maxAllowedShift = frameSz / 2 - Div8Ceil(totalUsedBits);
+    const int32_t maxAllowedShift = (frameSz / 2 - Div8Ceil(totalUsedBits));
 
     if (elements[1].ScaledBlocks.empty()) {
         return maxAllowedShift;
     } else {
-        return std::min(frameSz / 3, maxAllowedShift);
+        TFloat ratio = CalcMSRatio(elements[0].Energy, elements[1].Energy);
+        //std::cerr << ratio << std::endl;
+        return std::max(std::min(ToInt(frameSz * ratio), maxAllowedShift), -maxAllowedShift);
     }
 }
 
@@ -533,7 +562,7 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
     int mt[2][MaxSpecs];
     std::pair<uint8_t, vector<uint32_t>> allocations[2];
 
-    const int32_t msBytesShift = Params.Js ? CalcMsBytesShift(Params.FrameSz, singleChannelElements, bitsToAlloc) : 0; // positive - gain to m, negative to s. Must be zero if no joint stereo mode
+    const int32_t msBytesShift = Params.Js ? CalcMSBytesShift(Params.FrameSz, singleChannelElements, bitsToAlloc) : 0; // positive - gain to m, negative to s. Must be zero if no joint stereo mode
 
     bitsToAlloc[0] += 8 * (halfFrameSz + msBytesShift);
     bitsToAlloc[1] += 8 * (halfFrameSz - msBytesShift);

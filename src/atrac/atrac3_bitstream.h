@@ -45,6 +45,7 @@ public:
         TAtrac3Data::SubbandInfo SubbandInfo;
         std::vector<TTonalBlock> TonalBlocks;
         std::vector<TScaledBlock> ScaledBlocks;
+        TFloat Energy;
     };
 private:
 

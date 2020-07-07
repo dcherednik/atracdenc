@@ -23,7 +23,6 @@
 
 
 TEST(Util, SwapArrayTest) {
-
     TFloat arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
     SwapArray(arr, 8);
     for (size_t i = 0; i < 8; ++i) {
@@ -41,4 +40,14 @@ TEST(Util, GetFirstSetBitTest) {
     EXPECT_EQ(3, GetFirstSetBit(8));
     EXPECT_EQ(3, GetFirstSetBit(9));
     EXPECT_EQ(3, GetFirstSetBit(10));
+}
+
+TEST(Util, CalcEnergy) {
+
+    EXPECT_NEAR((TFloat)0.0, CalcEnergy(std::vector<TFloat>{0.0}), 0.000000000001);
+    EXPECT_NEAR((TFloat)1.0, CalcEnergy(std::vector<TFloat>{1.0}), 0.000000000001);
+    EXPECT_NEAR((TFloat)2.0, CalcEnergy(std::vector<TFloat>{1.0, 1.0}), 0.000000000001);
+    EXPECT_NEAR((TFloat)5.0, CalcEnergy(std::vector<TFloat>{2.0, 1.0}), 0.000000000001);
+    EXPECT_NEAR((TFloat)5.0, CalcEnergy(std::vector<TFloat>{1.0, 2.0}), 0.000000000001);
+    EXPECT_NEAR((TFloat)8.0, CalcEnergy(std::vector<TFloat>{2.0, 2.0}), 0.000000000001);
 }

@@ -21,6 +21,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 #include "config.h"
 #include <cstring>
@@ -72,3 +73,12 @@ inline T CalcMedian(T* in, uint32_t len) {
     uint32_t pos = (len - 1) / 2;
     return tmp[pos];
 }
+
+template<class T>
+inline T CalcEnergy(const std::vector<T>& in) {
+    return std::accumulate(in.begin(), in.end(), 0.0,
+        [](const T& a, const T& b) {
+            return a + b * b;
+        });
+}
+
