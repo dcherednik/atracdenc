@@ -191,15 +191,15 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
     bool cont = true;
     while (cont) {
         precisionPerEachBlocks.resize(numBfu);
-        TFloat maxShift = 15;
-        TFloat minShift = -3;
+        TFloat maxShift = 20;
+        TFloat minShift = -8;
         for (;;) {
             TFloat shift = (maxShift + minShift) / 2;
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift);
             auto consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt);
 
             auto bitsUsedByTonal = EncodeTonalComponents(sce, tmpAlloc, nullptr);
-            //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << " target: " << targetBits << " shift " << shift << " max | min " << maxShift << " " << minShift << std::endl;
+//            std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << " target: " << targetBits << " shift " << shift << " max | min " << maxShift << " " << minShift << " numBfu: " << numBfu << std::endl;
             consumption.second += bitsUsedByTonal;
 
             if (consumption.second < targetBits) {
