@@ -22,15 +22,13 @@
 
 #include "oma/liboma/include/oma.h"
 
-class TOma : public ICompressedIO {
+class TOma : public ICompressedOutput {
     OMAFILE* File;
 public:
     TOma(const std::string& filename, const std::string& title, uint8_t numChannel,
         uint32_t numFrames, int cid, uint32_t framesize, bool jointStereo);
     ~TOma();
-    std::unique_ptr<TFrame> ReadFrame() override;
     void WriteFrame(std::vector<char> data) override;
     std::string GetName() const override;
     uint8_t GetChannelNum() const override;
-    uint64_t GetLengthInSamples() const override;
 };

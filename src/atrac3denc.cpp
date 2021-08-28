@@ -88,7 +88,7 @@ void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorAr
     }
 }
 
-TAtrac3Processor::TAtrac3Processor(TCompressedIOPtr&& oma, TAtrac3EncoderSettings&& encoderSettings)
+TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSettings&& encoderSettings)
     : Oma(std::move(oma))
     , Params(std::move(encoderSettings))
     , TransientDetectors(2 * 4, TTransientDetector(8, 256)) //2 - channels, 4 - bands
@@ -96,7 +96,7 @@ TAtrac3Processor::TAtrac3Processor(TCompressedIOPtr&& oma, TAtrac3EncoderSetting
     , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
 {}
 
-TAtrac3Processor::~TAtrac3Processor()
+TAtrac3Encoder::~TAtrac3Encoder()
 {}
 
 TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtrac3Data::SubbandInfo& si)
@@ -129,27 +129,27 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
     }
 }
 
-TFloat TAtrac3Processor::LimitRel(TFloat x)
+TFloat TAtrac3Encoder::LimitRel(TFloat x)
 {
     return std::min(std::max(x, GainLevel[15]), GainLevel[0]);
 }
 
-void TAtrac3Processor::ResetTransientParamsHistory(int channel, int band)
+void TAtrac3Encoder::ResetTransientParamsHistory(int channel, int band)
 {
     TransientParamsHistory[channel][band] = {-1 , 1, -1, 1, -1, 1};
 }
 
-void TAtrac3Processor::SetTransientParamsHistory(int channel, int band, const TTransientParam& params)
+void TAtrac3Encoder::SetTransientParamsHistory(int channel, int band, const TTransientParam& params)
 {
     TransientParamsHistory[channel][band] = params;
 }
 
-const TAtrac3Processor::TTransientParam& TAtrac3Processor::GetTransientParamsHistory(int channel, int band) const
+const TAtrac3Encoder::TTransientParam& TAtrac3Encoder::GetTransientParamsHistory(int channel, int band) const
 {
     return TransientParamsHistory[channel][band];
 }
 
-TAtrac3Processor::TTransientParam TAtrac3Processor::CalcTransientParam(const std::vector<TFloat>& gain, const TFloat lastMax)
+TAtrac3Encoder::TTransientParam TAtrac3Encoder::CalcTransientParam(const std::vector<TFloat>& gain, const TFloat lastMax)
 {
     int32_t attack0Location = -1; // position where gain is risen up, -1 - no attack
     TFloat attack0Relation = 1;
@@ -207,7 +207,7 @@ TAtrac3Processor::TTransientParam TAtrac3Processor::CalcTransientParam(const std
     return {attack0Location, attack0Relation, attack1Location, attack1Relation, releaseLocation, releaseRelation};
 }
 
-void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
+void TAtrac3Encoder::CreateSubbandInfo(TFloat* in[4],
                                          uint32_t channel,
                                          TTransientDetector* transientDetector,
                                          TAtrac3Data::SubbandInfo* subbandInfo)
@@ -274,7 +274,7 @@ void TAtrac3Processor::CreateSubbandInfo(TFloat* in[4],
     }
 }
 
-void TAtrac3Processor::Matrixing()
+void TAtrac3Encoder::Matrixing()
 {
     for (uint32_t subband = 0; subband < 4; subband++) {
         TFloat* pair[2] = {PcmBuffer.GetSecond(subband * 2), PcmBuffer.GetSecond(subband * 2 + 1)};
@@ -288,7 +288,7 @@ void TAtrac3Processor::Matrixing()
     }
 }
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
+TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
 {
     TOma* omaptr = dynamic_cast<TOma*>(Oma.get());
     if (!omaptr) {
@@ -353,10 +353,4 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetEncodeLambda()
     };
 }
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac3Processor::GetDecodeLambda()
-{
-    abort();
-    return {};
-}
-
-}//namespace NAtracDEnc
+} //namespace NAtracDEnc

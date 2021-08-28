@@ -41,12 +41,22 @@ public:
         size_t Size() const { return Sz; }
         char* Get() { return Data; }
     };
-    virtual void WriteFrame(std::vector<char> data) = 0;
-    virtual std::unique_ptr<TFrame> ReadFrame() = 0;
     virtual std::string GetName() const = 0;
     virtual uint8_t GetChannelNum() const = 0;
-    virtual uint64_t GetLengthInSamples() const = 0;
     virtual ~ICompressedIO() {}
 };
 
-typedef std::unique_ptr<ICompressedIO> TCompressedIOPtr;
+class ICompressedInput : public ICompressedIO {
+public:
+    virtual std::unique_ptr<TFrame> ReadFrame() = 0;
+    virtual uint64_t GetLengthInSamples() const = 0;
+};
+
+class ICompressedOutput : public ICompressedIO {
+public:
+    virtual void WriteFrame(std::vector<char> data) = 0;
+};
+
+typedef std::unique_ptr<ICompressedInput> TCompressedInputPtr;
+typedef std::unique_ptr<ICompressedOutput> TCompressedOutputPtr;
+

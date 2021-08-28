@@ -160,7 +160,6 @@ public:
 template<class T>
 class IProcessor {
 public:
-    virtual typename TPCMEngine<T>::TProcessLambda GetDecodeLambda() = 0;
-    virtual typename TPCMEngine<T>::TProcessLambda GetEncodeLambda() = 0;
+    virtual typename TPCMEngine<T>::TProcessLambda GetLambda() = 0;
     virtual ~IProcessor() {}
 };

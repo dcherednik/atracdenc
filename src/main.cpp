@@ -147,7 +147,7 @@ static void PrepareAtrac1Encoder(const string& inFile,
         std::cerr << "Number of input samples exceeds output format limitation,"
             "the result will be incorrect" << std::endl;
     }
-    TCompressedIOPtr aeaIO = TCompressedIOPtr(new TAea(outFile, "test", numChannels, (uint32_t)numFrames));
+    TCompressedOutputPtr aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr((*wavIO)->GetPCMReader<TFloat>())));
@@ -157,7 +157,7 @@ static void PrepareAtrac1Encoder(const string& inFile,
              << "\n SampleRate: " << (*wavIO)->GetSampleRate()
              << "\n TotalSamples: " << totalSamples
              << endl;
-    atracProcessor->reset(new TAtrac1Processor(std::move(aeaIO), std::move(encoderSettings)));
+    atracProcessor->reset(new TAtrac1Encoder(std::move(aeaIO), std::move(encoderSettings)));
 }
 
 static void PrepareAtrac1Decoder(const string& inFile,
@@ -168,7 +168,7 @@ static void PrepareAtrac1Decoder(const string& inFile,
                                  TPcmEnginePtr* pcmEngine,
                                  TAtracProcessorPtr* atracProcessor)
 {
-    TCompressedIOPtr aeaIO = TCompressedIOPtr(new TAea(inFile));
+    TCompressedInputPtr aeaIO = CreateAeaInput(inFile);
     *totalSamples = aeaIO->GetLengthInSamples();
     uint64_t length = aeaIO->GetLengthInSamples();
     if (!noStdOut)
@@ -180,7 +180,7 @@ static void PrepareAtrac1Decoder(const string& inFile,
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             aeaIO->GetChannelNum(),
                                             TPCMEngine<TFloat>::TWriterPtr((*wavIO)->GetPCMWriter<TFloat>())));
-    atracProcessor->reset(new TAtrac1Processor(std::move(aeaIO), NAtrac1::TAtrac1EncodeSettings()));
+    atracProcessor->reset(new TAtrac1Decoder(std::move(aeaIO)));
 }
 
 static void PrepareAtrac3Encoder(const string& inFile,
@@ -202,7 +202,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
         std::cerr << "Number of input samples exceeds output format limitation,"
             "the result will be incorrect" << std::endl;
     }
-    TCompressedIOPtr omaIO = TCompressedIOPtr(new TOma(outFile,
+    TCompressedOutputPtr omaIO = TCompressedOutputPtr(new TOma(outFile,
                                                        "test",
                                                        numChannels,
                                                        (int32_t)numFrames, OMAC_ID_ATRAC3,
@@ -211,7 +211,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));
-    atracProcessor->reset(new TAtrac3Processor(std::move(omaIO), std::move(encoderSettings)));
+    atracProcessor->reset(new TAtrac3Encoder(std::move(omaIO), std::move(encoderSettings)));
 }
 
 int main_(int argc, char* const* argv)
@@ -373,8 +373,7 @@ int main_(int argc, char* const* argv)
         return 1;
     }
 
-    auto atracLambda = (mode == E_DECODE) ? atracProcessor->GetDecodeLambda() :
-        atracProcessor->GetEncodeLambda();
+    auto atracLambda = atracProcessor->GetLambda();
 
     uint64_t processed = 0;
     try {

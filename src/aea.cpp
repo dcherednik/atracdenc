@@ -21,18 +21,67 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <memory>
 
 using std::string;
 using std::array;
 using std::vector;
 using std::unique_ptr;
 
-TAea::TMeta TAea::ReadMeta(const string& filename) {
+class TAeaCommon {
+protected:
+    static constexpr uint32_t AeaMetaSize = 2048;
+    struct TMeta {
+        FILE* AeaFile;
+        std::array<char, AeaMetaSize> AeaHeader;
+    } Meta;
+public:
+    TAeaCommon(const TMeta& meta)
+        : Meta(meta)
+    {}
+    uint8_t GetChannelNum() const;
+    string GetName() const;
+    virtual ~TAeaCommon();
+};
+
+uint8_t TAeaCommon::GetChannelNum() const {
+    return Meta.AeaHeader[264];
+}
+
+string TAeaCommon::GetName() const {
+    return string(&Meta.AeaHeader[4]);
+}
+
+TAeaCommon::~TAeaCommon() {
+    fclose(Meta.AeaFile);
+}
+
+class TAeaInput : public ICompressedInput, public TAeaCommon {
+    static TAeaCommon::TMeta ReadMeta(const string& filename);
+public:
+    TAeaInput(const string& filename);
+    unique_ptr<TFrame> ReadFrame() override; 
+    uint64_t GetLengthInSamples() const override;
+
+    uint8_t GetChannelNum() const override {
+        return TAeaCommon::GetChannelNum();
+    }
+
+    string GetName() const override {
+        return TAeaCommon::GetName(); 
+    }
+};
+
+TAeaInput::TAeaInput(const string& filename)
+    : TAeaCommon(ReadMeta(filename))
+{}
+
+TAeaCommon::TMeta TAeaInput::ReadMeta(const string& filename) {
     FILE* fp = fopen(filename.c_str(), "rb");
     if (!fp)
         throw TAeaIOError("Can't open file to read", errno);
     array<char, AeaMetaSize> buf;
-    if (fread(&buf[0], TAea::AeaMetaSize, 1, fp) != 1) {
+    if (fread(&buf[0], AeaMetaSize, 1, fp) != 1) {
         const int errnum = errno;
         fclose(fp);
         throw TAeaIOError("Can't read AEA header", errnum);
@@ -42,13 +91,58 @@ TAea::TMeta TAea::ReadMeta(const string& filename) {
         return {fp, buf};
     }
     throw TAeaFormatError();
-
 }
 
-TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, uint8_t channelNum, uint32_t numFrames) {
+uint64_t TAeaInput::GetLengthInSamples() const {
+#ifdef PLATFORM_WINDOWS
+    const int fd = _fileno(Meta.AeaFile);
+#else
+    const int fd = fileno(Meta.AeaFile);
+#endif
+    struct stat sb;
+    fstat(fd, &sb);
+    const uint32_t nChannels = Meta.AeaHeader[264] ? Meta.AeaHeader[264] : 1;
+    return (uint64_t)512 * ((sb.st_size - AeaMetaSize) / 212 / nChannels - 5); 
+}
+
+unique_ptr<ICompressedIO::TFrame> TAeaInput::ReadFrame() {
+    unique_ptr<ICompressedIO::TFrame>frame(new TFrame(212));
+    if(fread(frame->Get(), frame->Size(), 1, Meta.AeaFile) != 1) {
+        const int errnum = errno;
+        fclose(Meta.AeaFile);
+        throw TAeaIOError("Can't read AEA frame", errnum);
+    }
+    return frame;
+}
+
+class TAeaOutput : public ICompressedOutput, public TAeaCommon {
+    static TAeaCommon::TMeta CreateMeta(const string& filename, const string& title,
+        uint8_t numChannel, uint32_t numFrames);
+
+    bool FirstWrite = true;
+public:
+    TAeaOutput(const string& filename, const string& title, uint8_t numChannel, uint32_t numFrames);
+    void WriteFrame(vector<char> data) override;
+
+    uint8_t GetChannelNum() const override {
+        return TAeaCommon::GetChannelNum();
+    }
+    string GetName() const override {
+        return TAeaCommon::GetName(); 
+    }
+};
+
+TAeaOutput::TAeaOutput(const string& filename, const string& title, uint8_t numChannels, uint32_t numFrames)
+    : TAeaCommon(CreateMeta(filename, title, numChannels, numFrames))
+{}
+
+TAeaCommon::TMeta TAeaOutput::CreateMeta(const string& filename, const string& title,
+    uint8_t channelsNum, uint32_t numFrames)
+{
     FILE* fp = fopen(filename.c_str(), "wb");
     if (!fp)
         throw TAeaIOError("Can't open file to write", errno);
+
     array<char, AeaMetaSize> buf;
     memset(&buf[0], 0, AeaMetaSize);
     buf[0] = 0x00;
@@ -59,63 +153,32 @@ TAea::TMeta TAea::CreateMeta(const string& filename, const string& title, uint8_
     buf[19] = 0;
 //    buf[210] = 0x08;
     *(uint32_t*)&buf[260] = numFrames;
-    buf[264] = (char)channelNum;
-    if (fwrite(&buf[0], TAea::AeaMetaSize, 1, fp) != 1) {
+    buf[264] = (char)channelsNum;
+
+    if (fwrite(&buf[0], AeaMetaSize, 1, fp) != 1) {
         const int errnum = errno;
         fclose(fp);
-        throw TAeaIOError("Can't read AEA header", errnum);
+        throw TAeaIOError("Can't write AEA header", errnum);
     }
+
     static char dummy[212];
     if (fwrite(&dummy[0], 212, 1, fp) != 1) {
         const int errnum = errno;
         fclose(fp);
-        throw TAeaIOError("Can't read AEA header", errnum);
+        throw TAeaIOError("Can't write dummy frame", errnum);
     }
 
     return {fp, buf};
 }
 
-
-TAea::TAea(const string& filename)
-    : Meta(ReadMeta(filename))
-{}
-
-TAea::TAea(const string& filename, const string& title, uint8_t channelNum, uint32_t numFrames)
-    : Meta(CreateMeta(filename, title, channelNum, numFrames))
-{}
-
-TAea::~TAea() {
-    fclose(Meta.AeaFile);
-}
-
-string TAea::GetName() const {
-    return string(&Meta.AeaHeader[4]);
-}
-
-unique_ptr<TAea::TFrame> TAea::ReadFrame() {
-    unique_ptr<TAea::TFrame>frame(new TFrame(212));
-    if(fread(frame->Get(), frame->Size(), 1, Meta.AeaFile) != 1) {
-        const int errnum = errno;
-        fclose(Meta.AeaFile);
-        throw TAeaIOError("Can't read AEA frame", errnum);
-    }
-    return frame;
-}
-/*
-void TAea::WriteFrame(std::unique_ptr<TAea::TFrame>&& frame) {
-    if (fwrite(frame.get(), frame->size(), 1, Meta.AeaFile) != 1) {
-        const int errnum = errno;
-        fclose(Meta.AeaFile);
-        throw TAeaIOError("Can't write AEA frame", errnum);
-    }
-}
-*/
-void TAea::WriteFrame(vector<char> data) {
+void TAeaOutput::WriteFrame(vector<char> data) {
     if (FirstWrite) {
         FirstWrite = false;
         return;
     }
+
     data.resize(212);
+
     if (fwrite(data.data(), data.size(), 1, Meta.AeaFile) != 1) {
         const int errnum = errno;
         fclose(Meta.AeaFile);
@@ -123,18 +186,12 @@ void TAea::WriteFrame(vector<char> data) {
     }
 }
 
-uint8_t TAea::GetChannelNum() const {
-    return Meta.AeaHeader[264];
+TCompressedInputPtr CreateAeaInput(const std::string& filename) {
+    return unique_ptr<TAeaInput>(new TAeaInput(filename));
 }
 
-uint64_t TAea::GetLengthInSamples() const {
-#ifdef PLATFORM_WINDOWS
-    const int fd = _fileno(Meta.AeaFile);
-#else
-    const int fd = fileno(Meta.AeaFile);
-#endif
-    struct stat sb;
-    fstat(fd, &sb);
-    const uint32_t nChannels = Meta.AeaHeader[264] ? Meta.AeaHeader[264] : 1;
-    return (uint64_t)512 * ((sb.st_size - TAea::AeaMetaSize) / 212 / nChannels - 5); 
+TCompressedOutputPtr CreateAeaOutput(const string& filename, const string& title,
+    uint8_t numChannels, uint32_t numFrames)
+{
+    return unique_ptr<TAeaOutput>(new TAeaOutput(filename, title, numChannels, numFrames));
 }

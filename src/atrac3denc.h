@@ -79,8 +79,8 @@ protected:
     TAtrac3MDCT::TGainModulatorArray MakeGainModulatorArray(const TAtrac3Data::SubbandInfo& si);
 };
 
-class TAtrac3Processor : public IProcessor<TFloat>, public TAtrac3MDCT {
-    TCompressedIOPtr Oma;
+class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
+    TCompressedOutputPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
     TDelayBuffer<TFloat, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
 
@@ -115,9 +115,8 @@ public:
     void Matrixing();
 
 public:
-    TAtrac3Processor(TCompressedIOPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
-    ~TAtrac3Processor();
-    TPCMEngine<TFloat>::TProcessLambda GetDecodeLambda() override;
-    TPCMEngine<TFloat>::TProcessLambda GetEncodeLambda() override;
+    TAtrac3Encoder(TCompressedOutputPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
+    ~TAtrac3Encoder();
+    TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
 };
 }

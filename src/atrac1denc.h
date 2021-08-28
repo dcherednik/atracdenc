@@ -56,8 +56,8 @@ public:
     {}
 };
 
-class TAtrac1Processor : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
-    TCompressedIOPtr Aea;
+class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
+    TCompressedOutputPtr Aea;
     const NAtrac1::TAtrac1EncodeSettings Settings;
 
     TFloat PcmBufLow[2][256 + 16];
@@ -67,7 +67,6 @@ class TAtrac1Processor : public IProcessor<TFloat>, public TAtrac1MDCT, public v
     int32_t PcmValueMax = 1;
     int32_t PcmValueMin = -1;
 
-    Atrac1SynthesisFilterBank<TFloat> SynthesisFilterBank[2];
     Atrac1SplitFilterBank<TFloat> SplitFilterBank[2];
 
     class TTransientDetectors {
@@ -97,14 +96,30 @@ class TAtrac1Processor : public IProcessor<TFloat>, public TAtrac1MDCT, public v
             }
         }
     };
-    TAtrac1Processor::TTransientDetectors TransientDetectors;
+    TAtrac1Encoder::TTransientDetectors TransientDetectors;
  
     TScaler<TAtrac1Data> Scaler;
 
 public:
-    TAtrac1Processor(TCompressedIOPtr&& aea, NAtrac1::TAtrac1EncodeSettings&& settings);
-    TPCMEngine<TFloat>::TProcessLambda GetDecodeLambda() override;
-
-    TPCMEngine<TFloat>::TProcessLambda GetEncodeLambda() override;
+    TAtrac1Encoder(TCompressedOutputPtr&& aea, NAtrac1::TAtrac1EncodeSettings&& settings);
+    TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
 };
+
+class TAtrac1Decoder : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
+    TCompressedInputPtr Aea;
+    const NAtrac1::TAtrac1EncodeSettings Settings;
+
+    TFloat PcmBufLow[2][256 + 16];
+    TFloat PcmBufMid[2][256 + 16];
+    TFloat PcmBufHi[2][512 + 16];
+
+    int32_t PcmValueMax = 1;
+    int32_t PcmValueMin = -1;
+
+    Atrac1SynthesisFilterBank<TFloat> SynthesisFilterBank[2];
+public:
+    TAtrac1Decoder(TCompressedInputPtr&& aea);
+    TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
+};
+
 }

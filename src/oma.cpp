@@ -40,11 +40,6 @@ TOma::~TOma() {
     oma_close(File);
 }
 
-unique_ptr<ICompressedIO::TFrame> TOma::ReadFrame() {
-    abort();
-    return nullptr;
-}
-
 void TOma::WriteFrame(vector<char> data) {
     if (oma_write(File, &data[0], 1) == -1) {
         fprintf(stderr, "write error\n");
@@ -59,8 +54,4 @@ string TOma::GetName() const {
 
 uint8_t TOma::GetChannelNum() const {
     return 2; //for ATRAC3
-}
-uint64_t TOma::GetLengthInSamples() const {
-    abort();
-    return 0;
 }

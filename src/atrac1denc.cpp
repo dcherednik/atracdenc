@@ -32,9 +32,14 @@ using namespace NAtrac1;
 using namespace NMDCT;
 using std::vector;
 
-TAtrac1Processor::TAtrac1Processor(TCompressedIOPtr&& aea, TAtrac1EncodeSettings&& settings)
+TAtrac1Encoder::TAtrac1Encoder(TCompressedOutputPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
+{
+}
+
+TAtrac1Decoder::TAtrac1Decoder(TCompressedInputPtr&& aea)
+    : Aea(std::move(aea))
 {
 }
 
@@ -126,12 +131,12 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
     }
 }
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
+TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
     return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         TFloat sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
-            std::unique_ptr<TAea::TFrame> frame(Aea->ReadFrame());
+            std::unique_ptr<ICompressedIO::TFrame> frame(Aea->ReadFrame());
 
             TBitStream bitstream(frame->Get(), frame->Size());
 
@@ -157,14 +162,11 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetDecodeLambda() {
 }
 
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac1Processor::GetEncodeLambda() {
+TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
     vector<IAtrac1BitAlloc*> bitAlloc;
     for (size_t i = 0; i < srcChannels; i++) {
-        TAea* atrac1container = dynamic_cast<TAea*>(Aea.get());
-        if (atrac1container == nullptr)
-            abort();
-        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(atrac1container, Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
+        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
     return [this, srcChannels, bitAlloc](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {

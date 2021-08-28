@@ -47,9 +47,9 @@ public:
 };
 
 class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
-    TAea* Container;
+    ICompressedOutput* Container;
 public:
-    explicit TAtrac1BitStreamWriter(TAea* container);
+    explicit TAtrac1BitStreamWriter(ICompressedOutput* container);
 
     void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
                         uint32_t bfuAmountIdx, const TBlockSize& blockSize);
@@ -63,7 +63,7 @@ class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster
     uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
     uint32_t CheckBfuUsage(bool* changed, uint32_t curBfuId, const std::vector<uint32_t>& bitsPerEachBlock);
 public:
-    explicit TAtrac1SimpleBitAlloc(TAea* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
+    explicit TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
         : TAtrac1BitStreamWriter(container)
         , BfuIdxConst(bfuIdxConst)
         , FastBfuNumSearch(fastBfuNumSearch)

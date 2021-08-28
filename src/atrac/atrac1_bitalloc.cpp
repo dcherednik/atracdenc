@@ -218,7 +218,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
     return BfuAmountTab[bfuIdx];
 }
 
-TAtrac1BitStreamWriter::TAtrac1BitStreamWriter(TAea* container)
+TAtrac1BitStreamWriter::TAtrac1BitStreamWriter(ICompressedOutput* container)
     : Container(container)
 {
     NEnv::SetRoundFloat();
