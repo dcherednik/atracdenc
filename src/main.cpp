@@ -385,11 +385,11 @@ int main_(int argc, char* const* argv)
         if (!noStdOut)
             cout << "\nDone" << endl;
     }
-    catch (TAeaIOError err) {
+    catch (const TAeaIOError& err) {
         cerr << "Aea IO fatal error: " << err.what() << endl;
         return 1;
     }
-    catch (TNoDataToRead err) {
+    catch (const TNoDataToRead&) {
         cerr << "No more data to read from input" << endl;
         return 0;
     }
