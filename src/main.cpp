@@ -25,6 +25,7 @@
 #include "pcmengin.h"
 #include "wav.h"
 #include "aea.h"
+#include "rm.h"
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"
@@ -76,6 +77,15 @@ static string GetHelp()
         "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window "
                                                                                                               "(ATRAC1)";
         /*"\n --nogaincontrol disable gain control (ATRAC3)"*/
+}
+
+static string GetFileExt(const string& path) {
+    size_t dotPos = path.rfind('.');
+    std::string ext;
+    if (dotPos != std::string::npos && dotPos < path.size()) {
+        ext = path.substr(dotPos + 1);
+    }
+    return ext;
 }
 
 static int checkedStoi(const char* data, int min, int max, int def)
@@ -197,17 +207,30 @@ static void PrepareAtrac3Encoder(const string& inFile,
         std::cout << "bitrate " << encoderSettings.ConteinerParams->Bitrate << std::endl;
     const int numChannels = encoderSettings.SourceChannels;
     *totalSamples = wavIO->GetTotalSamples();
-    const uint64_t numFrames = numChannels * ((*totalSamples) / 512);
+    const uint64_t numFrames = (*totalSamples) / 1024;
     if (numFrames >= UINT32_MAX) {
         std::cerr << "Number of input samples exceeds output format limitation,"
             "the result will be incorrect" << std::endl;
     }
-    TCompressedOutputPtr omaIO = TCompressedOutputPtr(new TOma(outFile,
-                                                       "test",
-                                                       numChannels,
-                                                       (int32_t)numFrames, OMAC_ID_ATRAC3,
-                                                       encoderSettings.ConteinerParams->FrameSz,
-                                                       encoderSettings.ConteinerParams->Js));
+
+    const string ext = GetFileExt(outFile);
+
+    TCompressedOutputPtr omaIO;
+
+    if (ext == "rm") {
+        omaIO = CreateRmOutput(outFile, "test", numChannels,
+            numFrames, encoderSettings.ConteinerParams->FrameSz,
+            encoderSettings.ConteinerParams->Js);
+    } else {
+
+        omaIO.reset(new TOma(outFile,
+            "test",
+            numChannels,
+            (int32_t)numFrames, OMAC_ID_ATRAC3,
+            encoderSettings.ConteinerParams->FrameSz,
+            encoderSettings.ConteinerParams->Js));
+    }
+
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));

@@ -53,7 +53,7 @@ private:
         std::vector<uint8_t> SubGroupMap;
         std::vector<const TTonalBlock*> SubGroupPtr;
     };
-    TOma* Container;
+    ICompressedOutput* Container;
     const TContainerParams Params;
     const uint32_t BfuIdxConst;
     std::vector<char> OutBuffer;
@@ -85,7 +85,7 @@ private:
                                    const std::vector<uint32_t>& allocTable,
                                    NBitStream::TBitStream* bitStream);
 public:
-    TAtrac3BitStreamWriter(TOma* container, const TContainerParams& params, uint32_t bfuIdxConst) //no mono mode for atrac3
+    TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst) //no mono mode for atrac3
         : Container(container)
         , Params(params)
         , BfuIdxConst(bfuIdxConst)

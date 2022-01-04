@@ -69,6 +69,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/atrac_psy_common.cpp
     atrac/atrac1_bitalloc.cpp
     oma.cpp
+    rm.cpp
     atrac3denc.cpp
     atrac/atrac3.cpp
     atrac/atrac3_bitstream.cpp

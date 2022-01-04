@@ -290,13 +290,7 @@ void TAtrac3Encoder::Matrixing()
 
 TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
 {
-    TOma* omaptr = dynamic_cast<TOma*>(Oma.get());
-    if (!omaptr) {
-        std::cerr << "Wrong container" << std::endl;
-        abort();
-    }
-
-    TAtrac3BitStreamWriter* bitStreamWriter = new TAtrac3BitStreamWriter(omaptr, *Params.ConteinerParams, Params.BfuIdxConst);
+    std::shared_ptr<TAtrac3BitStreamWriter> bitStreamWriter(new TAtrac3BitStreamWriter(Oma.get(), *Params.ConteinerParams, Params.BfuIdxConst));
     return [this, bitStreamWriter](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
