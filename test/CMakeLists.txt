@@ -33,6 +33,7 @@ set(atracdenc_ut
 )
 
 add_executable(atracdenc_ut ${atracdenc_ut})
+
 target_link_libraries(atracdenc_ut
     bitstream
     fft_impl
@@ -41,3 +42,5 @@ target_link_libraries(atracdenc_ut
     oma
 )
 
+enable_testing()
+add_test(ut atracdenc_ut)
