@@ -62,7 +62,7 @@ jobs:
     #    and modify them (or add more) to build your code if your project
     #    uses a compiled language
 
-    #- run: |
+    - run: sudo apt-get update && sudo apt-get install -yq libsndfile1 libsndfile1-dev
     #   make bootstrap
     #   make release
 
