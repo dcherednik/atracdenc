@@ -49,6 +49,9 @@ jobs:
         # By default, queries listed here will override any specified in a config file.
         # Prefix the list here with "+" to use these queries and those in the config file.
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
+        
+    - run: |
+        sudo apt-get update && sudo apt-get install -yq libsndfile1 libsndfile1-dev
 
     # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
     # If this step fails, then you should remove it and run the build manually (see below)
@@ -62,8 +65,7 @@ jobs:
     #    and modify them (or add more) to build your code if your project
     #    uses a compiled language
 
-    - run: |
-        sudo apt-get update && sudo apt-get install -yq libsndfile1 libsndfile1-dev
+
     #   make bootstrap
     #   make release
 
