@@ -283,13 +283,13 @@ uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalBlo
     uint8_t tcsgn = 0;
     //for each group
     for (uint8_t i = 0; i < 64; ++i) {
-        uint8_t start_pos;
-        uint8_t cur_pos = 0;
+        size_t start_pos;
+        size_t cur_pos = 0;
         //scan tonal components
         while (cur_pos < groups[i].SubGroupPtr.size()) {
             start_pos = cur_pos;
             ++tcsgn;
-            groups[i].SubGroupMap.push_back(cur_pos);
+            groups[i].SubGroupMap.push_back(static_cast<uint8_t>(cur_pos));
             uint8_t groupLimiter = 0;
             //allow not grather than 8 components in one subgroup limited by 64 specs
             do {
@@ -354,7 +354,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
         }
         assert(curGroup.SubGroupMap.size());
         assert(curGroup.SubGroupMap.size() < UINT8_MAX);
-        for (uint8_t subgroup = 0; subgroup < curGroup.SubGroupMap.size(); ++subgroup) {
+        for (size_t subgroup = 0; subgroup < curGroup.SubGroupMap.size(); ++subgroup) {
             const uint8_t subGroupStartPos = curGroup.SubGroupMap[subgroup];
             const uint8_t subGroupEndPos = (subgroup < curGroup.SubGroupMap.size() - 1) ?
                 curGroup.SubGroupMap[subgroup+1] : (uint8_t)curGroup.SubGroupPtr.size();
@@ -410,7 +410,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 bitsUsed += 3;
                 if (bitStream)
                     bitStream->Write(codedComponents, 3);
-                uint8_t k = lastPos;
+                uint16_t k = lastPos;
                 for (; k < lastPos + codedComponents; ++k) {
                     assert(curGroup.SubGroupPtr[k]->ValPtr->Pos >= j * 64);
                     uint16_t relPos = curGroup.SubGroupPtr[k]->ValPtr->Pos - j * 64;
@@ -437,7 +437,6 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
 
                     assert(i);
                     bitsUsed += VLCEnc(i>>3, mantisas, curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(), bitStream);
-
 
                 }
                 lastPos = k;

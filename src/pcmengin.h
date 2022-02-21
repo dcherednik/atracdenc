@@ -51,15 +51,18 @@ template <class T>
 class TPCMBuffer {
     std::vector<T> Buf_;
     uint16_t NumChannels;
+
 public:
-    TPCMBuffer(const int32_t bufSize, const uint32_t numChannels)
+    TPCMBuffer(uint16_t bufSize, uint8_t numChannels)
        : NumChannels(numChannels)
     {
-        Buf_.resize(bufSize*numChannels);
+        Buf_.resize((size_t)bufSize * numChannels);
     }
+
     size_t Size() {
         return Buf_.size() / NumChannels;
     }
+
     T* operator[](size_t pos) {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size()) {
@@ -68,6 +71,7 @@ public:
         }
         return &Buf_[rpos];
     }
+
     const T* operator[](size_t pos) const {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size()) {
@@ -76,9 +80,11 @@ public:
         }
         return &Buf_[rpos];
     }
+
     uint16_t Channels() const {
         return NumChannels;
     }
+
     void Zero(size_t pos, size_t len) {
         assert((pos + len) * NumChannels <= Buf_.size());
         memset(&Buf_[pos*NumChannels], 0, len*NumChannels);
@@ -115,45 +121,52 @@ private:
     TReaderPtr Reader;
     uint64_t Processed = 0;
 public:
-        TPCMEngine(const int32_t bufSize, const int32_t numChannels)
+        TPCMEngine(uint16_t bufSize, uint8_t numChannels)
            : Buffer(bufSize, numChannels) {
         }
-        TPCMEngine(const int32_t bufSize, const int32_t numChannels, TWriterPtr&& writer)
+
+        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TWriterPtr&& writer)
             : Buffer(bufSize, numChannels)
             , Writer(std::move(writer)) {
         }
-        TPCMEngine(const int32_t bufSize, const int32_t numChannels, TReaderPtr&& reader)
+
+        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TReaderPtr&& reader)
             : Buffer(bufSize, numChannels)
             , Reader(std::move(reader)) {
         }
-        TPCMEngine(const int32_t bufSize, const int32_t numChannels, TWriterPtr&& writer, TReaderPtr&& reader)
+
+        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TWriterPtr&& writer, TReaderPtr&& reader)
             : Buffer(bufSize, numChannels)
             , Writer(std::move(writer))
             , Reader(std::move(reader)) {
         }
+
         typedef std::function<void(T* data, const ProcessMeta& meta)> TProcessLambda; 
 
         uint64_t ApplyProcess(size_t step, TProcessLambda lambda) {
             if (step > Buffer.Size()) {
                 throw TPCMBufferTooSmall();
             }
+
             if (Reader) {
                 const uint32_t sizeToRead = Buffer.Size();
                 Reader->Read(Buffer, sizeToRead);
             }
+
             size_t lastPos = 0;
             ProcessMeta meta = {Buffer.Channels()};
             for (size_t i = 0; i + step <= Buffer.Size(); i+=step) {
                 lambda(Buffer[i], meta);
                 lastPos = i + step;
             }
+
             assert(lastPos == Buffer.Size());
             if (Writer) {
                 Writer->Write(Buffer, lastPos);
             }
+
             Processed += lastPos;
             return Processed;
-
         }
 };
 
