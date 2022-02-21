@@ -26,17 +26,17 @@
 namespace NAtracDEnc {
 
 class TTransientDetector {
-    const uint32_t ShortSz;
-    const uint32_t BlockSz;
-    const uint32_t NShortBlocks;
-    static const uint32_t PrevBufSz = 20;
-    static const uint32_t FIRLen = 21;
+    const uint16_t ShortSz;
+    const uint16_t BlockSz;
+    const uint16_t NShortBlocks;
+    static const uint16_t PrevBufSz = 20;
+    static const uint16_t FIRLen = 21;
     void HPFilter(const TFloat* in, TFloat* out);
     std::vector<TFloat> HPFBuffer;
     TFloat LastEnergy = 0.0;
-    uint32_t LastTransientPos = 0;
+    uint16_t LastTransientPos = 0;
 public:
-    TTransientDetector(uint32_t shortSz, uint32_t blockSz)
+    TTransientDetector(uint16_t shortSz, uint16_t blockSz)
         : ShortSz(shortSz)
         , BlockSz(blockSz)
         , NShortBlocks(blockSz/shortSz)
