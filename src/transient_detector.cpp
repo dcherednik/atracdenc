@@ -67,14 +67,14 @@ void TTransientDetector::HPFilter(const TFloat* in, TFloat* out) {
 
 
 bool TTransientDetector::Detect(const TFloat* buf) {
-    const uint32_t nBlocksToAnalize = NShortBlocks + 1;
+    const uint16_t nBlocksToAnalize = NShortBlocks + 1;
     TFloat* rmsPerShortBlock = reinterpret_cast<TFloat*>(alloca(sizeof(TFloat) * nBlocksToAnalize));
     std::vector<TFloat> filtered(BlockSz);
     HPFilter(buf, filtered.data());
     bool trans = false;
     rmsPerShortBlock[0] = LastEnergy;
-    for (uint32_t i = 1; i < nBlocksToAnalize; ++i) {
-        rmsPerShortBlock[i] = 19.0 * log10(calculateRMS(&filtered[(i - 1) * ShortSz], ShortSz));
+    for (uint16_t i = 1; i < nBlocksToAnalize; ++i) {
+        rmsPerShortBlock[i] = 19.0 * log10(calculateRMS(&filtered[(size_t)(i - 1) * ShortSz], ShortSz));
         if (rmsPerShortBlock[i] - rmsPerShortBlock[i - 1] > 16) {
             trans = true;
             LastTransientPos = i;
