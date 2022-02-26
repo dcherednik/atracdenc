@@ -47,18 +47,18 @@ jobs:
           
     # install dependencies
     - name: Install dependencies on windows
-        if: startsWith(matrix.config.os,'Windows')
-        run: |
-          choco install cmake
-          cmake --version
+      if: startsWith(matrix.config.os,'Windows')
+      run: |
+        choco install cmake
+        cmake --version
 
     - name: Install dependencies on ubuntu
-        if: startsWith(matrix.config.name,'Ubuntu_Latest_GCC')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -yq libsndfile1 libsndfile1-dev cmake
-          cmake --version
-          gcc --version
+      if: startsWith(matrix.config.name,'Ubuntu_Latest_GCC')
+      run: |
+        sudo apt-get update
+        sudo apt-get install -yq libsndfile1 libsndfile1-dev cmake
+        cmake --version
+        gcc --version
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
