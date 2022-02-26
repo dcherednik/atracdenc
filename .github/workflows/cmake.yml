@@ -23,12 +23,11 @@ jobs:
         - {
             name: "Windows_Latest_MSVC",
             os: windows-latest,
-            artifact: "windows_msvc.7z",
+            artifact: "windows_msvc",
             build_type: "Release",
             cc: "cl",
             cxx: "cl",
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
-            archiver: "7z a",
             generators: "Visual Studio 16 2019"
         }
         - {
@@ -38,7 +37,6 @@ jobs:
             build_type: "Release",
             cc: "gcc",
             cxx: "g++",
-            archiver: "7z a",
             generators: "make"
         }
 
@@ -68,20 +66,12 @@ jobs:
     - name: Build
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-      
-#    - name: Pack
-#      if: startsWith(matrix.config.os,'Windows')
-#      shell: bash
-#      working-directory: ${{github.workspace}}/build
-#      run: |
-#        ls -laR
-#        ${{ matrix.config.archiver }} ../${{ matrix.config.artifact }} .
           
     - name: Upload
       if: startsWith(matrix.config.os,'Windows')
       uses: actions/upload-artifact@v2
       with:
-        path: ${{github.workspace}}/build
+        path: ${{github.workspace}}/build/src/Release
         name: ${{ matrix.config.artifact }}
 
     - name: Test
