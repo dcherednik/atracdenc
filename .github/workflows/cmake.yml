@@ -15,14 +15,46 @@ jobs:
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
     # You can convert this to a matrix build if you need cross-platform coverage.
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        config:
+          - {
+            name: "Windows Latest MSVC",
+            os: windows-latest,
+            artifact: "windows_msvc.7z",
+            build_type: "Release",
+            cc: "cl",
+            cxx: "cl",
+            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
+            archiver: "7z a",
+            generators: "Visual Studio 16 2019"
+          }
+          - {
+            name: "Ubuntu_Latest_GCC",
+            os: ubuntu-latest,
+            artifact: "ubuntu_gcc.7z",
+            build_type: "Release",
+            cc: "gcc",
+            cxx: "g++",
+            archiver: "7z a",
+            generators: "make"
+          }
 
     steps:
     - uses: actions/checkout@v2
           
     # install dependencies
-    - name: libsndfile
-      run: sudo apt-get update && sudo apt-get install -yq libsndfile1 libsndfile1-dev
+    - name: dependencies
+      run: |
+           if [ "$RUNNER_OS" == "Linux" ]; then
+               sudo apt-get update && sudo apt-get install -yq libsndfile1 libsndfile1-dev
+           elif [ "$RUNNER_OS" == "Windows" ];
+               choco install cmake
+           else
+               echo "$RUNNER_OS not supported"
+               exit 1
+           fi
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
