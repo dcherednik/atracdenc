@@ -337,6 +337,11 @@ int main_(int argc, char* const* argv)
     argc -= optind;
     argv += optind;
 
+    if (argc != 0) {
+        cerr << "Unhandled arg: " << argv[0] << endl;
+        return 1;
+    }
+
     if (inFile.empty()) {
         cerr << "No input file" << endl;
         return 1;
