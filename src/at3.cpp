@@ -82,8 +82,14 @@ public:
         struct At3WaveHeader header;
         memset(&header, 0, sizeof(header));
 
+        uint64_t file_size = sizeof(struct At3WaveHeader) + uint64_t(numFrames) * uint64_t(frameSize);
+
+        if (file_size >= UINT32_MAX) {
+            throw std::runtime_error("File size is too big for this file format");
+        }
+
         memcpy(header.riff_chunk_id, "RIFF", 4);
-        header.chunk_size = sizeof(struct At3WaveHeader) + numFrames * frameSize; // TODO
+        header.chunk_size = file_size;
         memcpy(header.riff_format, "WAVE", 4);
 
         memcpy(header.subchunk1_id, "fmt ", 4);
