@@ -26,6 +26,7 @@
 #include "wav.h"
 #include "aea.h"
 #include "rm.h"
+#include "at3.h"
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"
@@ -217,7 +218,11 @@ static void PrepareAtrac3Encoder(const string& inFile,
 
     TCompressedOutputPtr omaIO;
 
-    if (ext == "rm") {
+    if (ext == "wav" || ext == "at3") {
+        omaIO = CreateAt3Output(outFile, numChannels, numFrames,
+                encoderSettings.ConteinerParams->FrameSz,
+                encoderSettings.ConteinerParams->Js);
+    } else if (ext == "rm") {
         omaIO = CreateRmOutput(outFile, "test", numChannels,
             numFrames, encoderSettings.ConteinerParams->FrameSz,
             encoderSettings.ConteinerParams->Js);

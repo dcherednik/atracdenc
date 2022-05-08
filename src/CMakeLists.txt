@@ -70,6 +70,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/atrac1_bitalloc.cpp
     oma.cpp
     rm.cpp
+    at3.cpp
     atrac3denc.cpp
     atrac/atrac3.cpp
     atrac/atrac3_bitstream.cpp

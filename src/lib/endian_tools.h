@@ -37,6 +37,22 @@ static inline uint16_t swapbyte16_on_le(uint16_t in) {
 #endif
 }
 
+static inline uint32_t swapbyte32_on_be(uint32_t in) {
+#ifdef BIGENDIAN_ORDER
+    return ((in & 0xff) << 24) | ((in & 0xff00) << 8) | ((in & 0xff0000) >> 8) | ((in & 0xff000000) >> 24);
+#else
+    return in;
+#endif
+}
+
+static inline uint16_t swapbyte16_on_be(uint16_t in) {
+#ifdef BIGENDIAN_ORDER
+    return ((in & 0xff) << 8) | ((in & 0xff00) >> 8);
+#else
+    return in;
+#endif
+}
+
 #ifdef __cplusplus
 
 static inline int16_t conv_ntoh(int16_t in) {
