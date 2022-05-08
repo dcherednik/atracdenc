@@ -35,7 +35,13 @@
 namespace {
 
 // Based on http://soundfile.sapp.org/doc/WaveFormat/ + ffmpeg/libnetmd docs
-struct At3WaveHeader {
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+struct
+#else
+struct __attribute__((packed))
+#endif
+At3WaveHeader {
     // "RIFF" "WAVE" header
     char riff_chunk_id[4];
     uint32_t chunk_size;
@@ -68,6 +74,9 @@ struct At3WaveHeader {
     char subchunk2_id[4];
     uint32_t subchunk2_size;
 };
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
 
 class TAt3 : public ICompressedOutput {
 public:
@@ -89,32 +98,34 @@ public:
         }
 
         memcpy(header.riff_chunk_id, "RIFF", 4);
-        header.chunk_size = file_size;
+        header.chunk_size = swapbyte32_on_be(file_size);
         memcpy(header.riff_format, "WAVE", 4);
 
         memcpy(header.subchunk1_id, "fmt ", 4);
-        header.subchunk1_size = offsetof(struct At3WaveHeader, subchunk2_id) - offsetof(struct At3WaveHeader, audio_format);
+        header.subchunk1_size = swapbyte32_on_be(offsetof(struct At3WaveHeader, subchunk2_id) -
+                                                 offsetof(struct At3WaveHeader, audio_format));
 
         // libnetmd: #define NETMD_RIFF_FORMAT_TAG_ATRAC3 0x270
         // mmreg.h (mingw-w64): WAVE_FORMAT_SONY_SCX 0x270
         // riff.c (ffmpeg): AV_CODEC_ID_ATRAC3 0x0270
-        header.audio_format = 0x270;
-        header.num_channels = numChannels;
-        header.sample_rate = 44100;
-        header.byte_rate = frameSize * header.sample_rate / 1024;
-        header.block_align = frameSize;
-        header.bits_per_sample = 0;
-        header.extradata_size = offsetof(struct At3WaveHeader, subchunk2_id) - offsetof(struct At3WaveHeader, unknown0);
+        header.audio_format = swapbyte16_on_be(0x270);
+        header.num_channels = swapbyte16_on_be(numChannels);
+        header.sample_rate = swapbyte32_on_be(44100);
+        header.byte_rate = swapbyte32_on_be(frameSize * header.sample_rate / 1024);
+        header.block_align = swapbyte16_on_be(frameSize);
+        header.bits_per_sample = swapbyte16_on_be(0);
+        header.extradata_size = swapbyte16_on_be(offsetof(struct At3WaveHeader, subchunk2_id) -
+                                                 offsetof(struct At3WaveHeader, unknown0));
 
-        header.unknown0 = 1;
-        header.bytes_per_frame = 0x0010; // XXX
-        header.coding_mode = jointStereo ? 0x0001 : 0x0000;
-        header.coding_mode2 = header.coding_mode;
-        header.unknown1 = 1;
-        header.unknown2 = 0;
+        header.unknown0 = swapbyte16_on_be(1);
+        header.bytes_per_frame = swapbyte32_on_be(0x0010); // XXX
+        header.coding_mode = swapbyte16_on_be(jointStereo ? 0x0001 : 0x0000);
+        header.coding_mode2 = header.coding_mode; // already byte-swapped (if needed)
+        header.unknown1 = swapbyte16_on_be(1);
+        header.unknown2 = swapbyte16_on_be(0);
 
         memcpy(header.subchunk2_id, "data", 4);
-        header.subchunk2_size = numFrames * frameSize; // TODO
+        header.subchunk2_size = swapbyte32_on_be(numFrames * frameSize); // TODO
 
         if (fwrite(&header, 1, sizeof(header), fp) != sizeof(header)) {
             throw std::runtime_error("Cannot write WAV header to file");
