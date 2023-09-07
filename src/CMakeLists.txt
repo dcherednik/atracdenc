@@ -90,6 +90,7 @@ add_library(atracdenc_impl STATIC ${SOURCE_ATRACDENC_IMPL})
 target_link_libraries(atracdenc_impl fft_impl pcm_io oma bitstream ${SNDFILE_LIBRARIES})
 set(SOURCE_EXE
     main.cpp
+    help.cpp
 )
 add_executable(atracdenc ${SOURCE_EXE})
 target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})

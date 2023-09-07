@@ -22,6 +22,8 @@
 
 #include <getopt.h>
 
+#include "help.h"
+
 #include "pcmengin.h"
 #include "wav.h"
 #include "aea.h"
@@ -47,13 +49,12 @@ using namespace NAtracDEnc;
 typedef std::unique_ptr<TPCMEngine<TFloat>> TPcmEnginePtr;
 typedef std::unique_ptr<IProcessor<TFloat>> TAtracProcessorPtr;
 
-static void printUsage(const char* myName)
+static void printUsage(const char* myName, const string& err = string())
 {
-    cout << "\tusage: " << myName << " <-e <atrac1|atrac3>|-d> <-i input> <-o output>\n" << endl;
-    cout << "-e atrac1|atrac3|atrac3_lp4 encode mode (PCM -> ATRAC), -i wav file, -o aea/oma file" << endl;
-    cout << "-d decode mode (ATRAC -> PCM), -i aea file, -o wav file" << endl;
-    cout << "-h get help" << endl;
-
+    if (!err.empty()) {
+        cerr << err << endl;
+    }
+    cerr << "\tuse: " << myName << " -h to get help" << endl;
 }
 
 static void printProgress(int percent)
@@ -63,21 +64,6 @@ static void printProgress(int percent)
     const char symbols[4] = {'-', '\\', '|', '/'};
     cout << symbols[counter % 4]<< "  "<< percent <<"% done\r";
     fflush(stdout);
-}
-
-static string GetHelp()
-{
-    return "\n--encode [atrac1|atrac3|atrac3_lp4] -e <atrac1|atrac3> \t - encode mode (default codec is ATRAC1)"
-        "\n--decode -d \t - decode mode (only ATRAC1 supported)"
-        "\n -i input file"
-        "\n -o output file"
-        "\n --bitrate (only if supported by codec)"
-        "\nAdvanced options:\n --bfuidxconst\t Set constant amount of used BFU (ATRAC1, ATRAC3). "
-             "WARNING: It is not a lowpass filter! Do not use it to cut off hi frequency."
-        "\n --bfuidxfast\t enable fast search of BFU amount (ATRAC1)"
-        "\n --notransient[=mask] disable transient detection and use optional mask to set bands with short MDCT window "
-                                                                                                              "(ATRAC1)";
-        /*"\n --nogaincontrol disable gain control (ATRAC3)"*/
 }
 
 static string GetFileExt(const string& path) {
@@ -163,10 +149,12 @@ static void PrepareAtrac1Encoder(const string& inFile,
                                             numChannels,
                                             TPCMEngine<TFloat>::TReaderPtr((*wavIO)->GetPCMReader<TFloat>())));
     if (!noStdOut)
-        cout << "Input file: " << inFile
+        cout << "Input\n Filename: " << inFile
              << "\n Channels: " << (int)numChannels
              << "\n SampleRate: " << (*wavIO)->GetSampleRate()
-             << "\n TotalSamples: " << totalSamples
+             << "\n Duration (sec): " << *totalSamples / (*wavIO)->GetSampleRate()
+	     << "\nOutput:\n Filename: " << outFile
+	     << "\n Codec: ATRAC1"
              << endl;
     atracProcessor->reset(new TAtrac1Encoder(std::move(aeaIO), std::move(encoderSettings)));
 }
@@ -181,11 +169,12 @@ static void PrepareAtrac1Decoder(const string& inFile,
 {
     TCompressedInputPtr aeaIO = CreateAeaInput(inFile);
     *totalSamples = aeaIO->GetLengthInSamples();
-    uint64_t length = aeaIO->GetLengthInSamples();
     if (!noStdOut)
-        cout << "Name: " << aeaIO->GetName()
-             << "\n Channels: " << aeaIO->GetChannelNum()
-             << "\n Length: " << length
+        cout << "Input\n Filename: " << inFile
+             << "\n Name: " << aeaIO->GetName()
+             << "\n Channels: " << (int)aeaIO->GetChannelNum()
+	     << "\nOutput:\n Filename: " << outFile
+	     << "\n Codec: PCM"
              << endl;
     wavIO->reset(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
@@ -204,8 +193,6 @@ static void PrepareAtrac3Encoder(const string& inFile,
                                  TAtracProcessorPtr* atracProcessor)
 {
     std::cout << "WARNING: ATRAC3 is uncompleted, result will be not good )))" << std::endl;
-    if (!noStdOut)
-        std::cout << "bitrate " << encoderSettings.ConteinerParams->Bitrate << std::endl;
     const int numChannels = encoderSettings.SourceChannels;
     *totalSamples = wavIO->GetTotalSamples();
     const uint64_t numFrames = (*totalSamples) / 1024;
@@ -218,16 +205,19 @@ static void PrepareAtrac3Encoder(const string& inFile,
 
     TCompressedOutputPtr omaIO;
 
+    string contName;
     if (ext == "wav" || ext == "at3") {
+        contName = "AT3 (RIFF)";
         omaIO = CreateAt3Output(outFile, numChannels, numFrames,
                 encoderSettings.ConteinerParams->FrameSz,
                 encoderSettings.ConteinerParams->Js);
     } else if (ext == "rm") {
+        contName = "RealMedia";
         omaIO = CreateRmOutput(outFile, "test", numChannels,
             numFrames, encoderSettings.ConteinerParams->FrameSz,
             encoderSettings.ConteinerParams->Js);
     } else {
-
+        contName = "OMA";
         omaIO.reset(new TOma(outFile,
             "test",
             numChannels,
@@ -235,6 +225,17 @@ static void PrepareAtrac3Encoder(const string& inFile,
             encoderSettings.ConteinerParams->FrameSz,
             encoderSettings.ConteinerParams->Js));
     }
+
+    if (!noStdOut)
+        cout << "Input:\n Filename: " << inFile
+             << "\n Channels: " << (int)numChannels
+             << "\n SampleRate: " << wavIO->GetSampleRate()
+             << "\n Duration (sec): " << *totalSamples / wavIO->GetSampleRate()
+	     << "\nOutput:\n Filename: " << outFile
+	     << "\n Codec: ATRAC3"
+	     << "\n Container: " << contName
+             << "\n Bitrate: " << encoderSettings.ConteinerParams->Bitrate
+             << endl;
 
     pcmEngine->reset(new TPCMEngine<TFloat>(4096,
                                             numChannels,
@@ -285,7 +286,9 @@ int main_(int argc, char* const* argv)
                         // this is the default
                     } else {
                        // bad value
-                       printUsage(myName);
+                       string err = "unrecognized encoding codec: ";
+                       err.append(optarg);
+                       printUsage(myName, err);
                        return 1;
                     }
                 }

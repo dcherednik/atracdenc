@@ -256,9 +256,7 @@ struct TAtrac3EncoderSettings {
         , NoTonalComponents(noTonalComponents)
         , SourceChannels(sourceChannels)
         , BfuIdxConst(bfuIdxConst)
-    {
-        std::cout << bitrate << " " << ConteinerParams->Bitrate << std::endl;
-    }
+    { }
     const TContainerParams* ConteinerParams;
     const bool NoGainControll;
     const bool NoTonalComponents;
