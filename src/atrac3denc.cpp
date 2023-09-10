@@ -213,7 +213,7 @@ void TAtrac3Encoder::CreateSubbandInfo(TFloat* in[4],
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
 
-    auto relToIdx = [this](TFloat rel) {
+    auto relToIdx = [](TFloat rel) {
         rel = 1.0/rel;
         return (uint32_t)(RelationToIdx(rel));
     };

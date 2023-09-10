@@ -20,7 +20,7 @@
 
 #include <fenv.h>
 
-#pragma STDC FENV_ACCESS on
+#pragma STDC FENV_ACCESS ON
 
 namespace NEnv {
 

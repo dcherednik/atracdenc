@@ -59,7 +59,7 @@ void WriteRMF(FILE* f) {
 constexpr size_t CODEC_DATA_SZ = 92;
 constexpr char RA_MIME[] = "audio/x-pn-realaudio";
 constexpr char RA_DESC[] = "Audio Stream";
-static_assert(sizeof(char) == 1);
+static_assert(sizeof(char) == 1, "unexpected char size");
 constexpr size_t MDPR_HEADER_SZ = 42 + sizeof(RA_MIME) + sizeof(RA_DESC) + CODEC_DATA_SZ;
 
 void FillCodecData(char* buf, uint32_t frameSize, uint8_t numChannels, bool jointStereo, uint32_t bitrate) {
@@ -136,7 +136,7 @@ void scramble_data(const char* input, char* out, size_t bytes) {
     const uint32_t* buf = reinterpret_cast<const uint32_t*>(input);
     uint32_t* o = reinterpret_cast<uint32_t*>(out);
     uint32_t c = swapbyte32_on_le(0x537F6103U);
-    static_assert(sizeof(uint32_t) / sizeof(char) == 4);
+    static_assert(sizeof(uint32_t) / sizeof(char) == 4, "unexpected uint32_t size");
 
     for (size_t i = 0; i < bytes / 4; i++) {
         o[i] = c ^ buf[i];

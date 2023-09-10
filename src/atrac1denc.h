@@ -64,9 +64,6 @@ class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public vir
     TFloat PcmBufMid[2][256 + 16];
     TFloat PcmBufHi[2][512 + 16];
 
-    int32_t PcmValueMax = 1;
-    int32_t PcmValueMin = -1;
-
     Atrac1SplitFilterBank<TFloat> SplitFilterBank[2];
 
     class TTransientDetectors {
