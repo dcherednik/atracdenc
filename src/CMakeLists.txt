@@ -94,4 +94,4 @@ set(SOURCE_EXE
 )
 add_executable(atracdenc ${SOURCE_EXE})
 target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})
-
+install(TARGETS atracdenc)
