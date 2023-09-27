@@ -1,0 +1,62 @@
+.\" Define V font for inline verbatim, using C font in formats
+.\" that render this, and otherwise B font.
+.ie "\f[CB]x\f[]"x" \{\
+. ftr V B
+. ftr VI BI
+. ftr VB B
+. ftr VBI BI
+.\}
+.el \{\
+. ftr V CR
+. ftr VI CI
+. ftr VB CB
+. ftr VBI CBI
+.\}
+.TH "ATRACDENC" "1" "15 September 2023" "atracdenc 0.0.4" "User Manual"
+.hy
+.SH NAME
+.PP
+atracdenc - encode to or decode from ATRAC format
+.SH SYNOPSIS
+.PP
+atracdenc [options] {-e <codec> | \[en]encode=<codec> | -d |
+\[en]decode} -i <in> -o <out>
+.PP
+.SH DESCRIPTION
+.PP
+atrcadenc is a audio converter that can encode in to ATRAC1
+or ATRAC3 compatible format and decode from ATRAC1.
+.PP
+For ATRAC1 (also known as ATRAC SP on MiniDisk devices) AEA audio
+container is used. Only one bitrate (292 kbit/s) is specifyed.
+.PP
+For ATRCA3 (also known as ATRAC LP on MiniDisk devices) OMA, AT3(riff)
+and RealMedia container is supported. In case of OMA and AT3 container compatible bitrates are 66150 (LP4), 104738, 132300 (LP2) bits/s. 
+RealMedia container supports 66150, 93713, 104738, 132300, 146081, 176400, 264600, 352800 bits/s.  
+.SH OPTIONS
+\f[B]-h\f[R] Display help.
+
+\f[B]-i\f[R] Path to the input file. In case of encoding it should be WAV, AIFF or SND 44100 Khz 16 bit PCM file. \
+Use - to read from stdin.
+
+\f[B]-o\f[R] Path to output file. Container format chousen automaticaly acording with file extension. 
+
+\f[B]-e <codec>\f[R] Encode mode. <codec> is a codec name must be on of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
+
+\f[B]--encode=<codec>\f[R] Alias for -e.
+
+\f[B]-d\f[R] Decode mode. Only ATRAC1 is supported.
+
+\f[B]--decode\f[R] Alias for -d.
+
+\f[B]--bitrate\f[R] Specify using bitrate. Make sense only for ATRAC3.
+
+.SH ADVENCED OPTIONS
+
+\f[B]--bfuidxconst\f[R] Set constant amount of used BFU (ATRAC1, ATRAC3).
+
+\f[B]--bfuidxfast\f[R] Enable fast search of BFU amount (ATRAC1)
+
+\f[B]--notransient[=mask]\f[R] Disable transient detection and use optional mask \
+to set bands with forced short MDCT window
+
