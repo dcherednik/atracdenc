@@ -6,5 +6,19 @@ if (UNIX)
     add_subdirectory(3rd/gtest-1.7.0)
     add_subdirectory(test)
     enable_testing()
+
+    if (NOT DEFINED CMAKE_INSTALL_MANDIR)
+        set(CMAKE_INSTALL_MANDIR ${CMAKE_INSTALL_PREFIX}/share/man)
+    endif()
+    add_custom_target(man-atracdenc
+        ALL
+        DEPENDS atracdenc.1.gz
+    )
+    add_custom_command(
+        OUTPUT atracdenc.1.gz
+        COMMAND mkdir -p man && gzip --no-name --to-stdout ${CMAKE_CURRENT_SOURCE_DIR}/man/atracdenc.1 >"${CMAKE_CURRENT_BINARY_DIR}/man/atracdenc.1.gz"
+        MAIN_DEPENDENCY man/atracdenc.1
+    )
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/man/atracdenc.1.gz DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
 add_subdirectory(src)
