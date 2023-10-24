@@ -55,8 +55,45 @@ Use - to read from stdin.
 
 \f[B]--bfuidxconst\f[R] Set constant amount of used BFU (ATRAC1, ATRAC3).
 
-\f[B]--bfuidxfast\f[R] Enable fast search of BFU amount (ATRAC1)
+\f[B]--bfuidxfast\f[R] Enable fast search of BFU amount (ATRAC1).
 
 \f[B]--notransient[=mask]\f[R] Disable transient detection and use optional mask \
-to set bands with forced short MDCT window
+to set bands with forced short MDCT window.
 
+.SH EXAMPLES
+.LP
+ATRAC1 compatible encoding
+.IP
+.B atracdenc \-e atrac1
+-i
+.I in.wav
+-o
+.I out.aea
+
+.LP
+ATRAC3 LP2 compatible encoding
+.IP
+.B atracdenc \-e atrac3
+-i
+.I in.wav
+-o
+.I out.oma
+
+.LP
+ATRAC3 LP4 compatible encoding (low quality)
+.IP
+.B atracdenc \-e atrac3_lp4
+-i
+.I in.wav
+-o
+.I out.oma
+
+
+.LP
+ATRAC3 + RealAudio container + max supported bitrate
+.IP
+.B atracdenc \-e atrac3 --bitrate=344
+-i
+.I in.wav
+-o
+.I out.rm
