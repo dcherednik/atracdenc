@@ -132,7 +132,7 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
 }
 
 TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
-    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
+    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
         TFloat sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
@@ -169,7 +169,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
         bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
-    return [this, srcChannels, bitAlloc](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
+    return [this, srcChannels, bitAlloc](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             TFloat src[NumSamples];
             vector<TFloat> specs(512);

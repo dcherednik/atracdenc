@@ -88,7 +88,6 @@ class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
 
     Atrac3SplitFilterBank<TFloat> SplitFilterBank[2];
     TScaler<TAtrac3Data> Scaler;
-    std::vector<TTransientDetector> TransientDetectors;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
 public:
     struct TTransientParam {
@@ -107,7 +106,6 @@ public:
     TFloat LimitRel(TFloat x);
     TTransientParam CalcTransientParam(const std::vector<TFloat>& gain, TFloat lastMax);
     void CreateSubbandInfo(TFloat* in[4], uint32_t channel,
-                           TTransientDetector* transientDetector,
                            TAtrac3Data::SubbandInfo* subbandInfo);
     void ResetTransientParamsHistory(int channel, int band);
     void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);

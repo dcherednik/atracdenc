@@ -147,7 +147,7 @@ void scramble_data(const char* input, char* out, size_t bytes) {
 
 class TRm : public ICompressedOutput {
 public:
-    TRm(const std::string& filename, const std::string& title, uint8_t numChannels,
+    TRm(const std::string& filename, const std::string& /*title*/, uint8_t numChannels,
         uint32_t numFrames, uint32_t frameSize, bool jointStereo)
         : File_(OpenFile(filename))
 	, FrameDuration_((1000.0 * 1024.0 / 44100.0)) // ms

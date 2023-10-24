@@ -91,7 +91,6 @@ void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorAr
 TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSettings&& encoderSettings)
     : Oma(std::move(oma))
     , Params(std::move(encoderSettings))
-    , TransientDetectors(2 * 4, TTransientDetector(8, 256)) //2 - channels, 4 - bands
     , SingleChannelElements(Params.SourceChannels)
     , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
 {}
@@ -209,7 +208,6 @@ TAtrac3Encoder::TTransientParam TAtrac3Encoder::CalcTransientParam(const std::ve
 
 void TAtrac3Encoder::CreateSubbandInfo(TFloat* in[4],
                                          uint32_t channel,
-                                         TTransientDetector* transientDetector,
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
 
@@ -318,7 +316,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
                 TFloat* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
-                CreateSubbandInfo(p, channel, &TransientDetectors[channel*4], &sce->SubbandInfo); //4 detectors per band
+                CreateSubbandInfo(p, channel, &sce->SubbandInfo); //4 detectors per band
             }
 
             TFloat* maxOverlapLevels = PrevPeak[channel];

@@ -1,25 +1,30 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 
-macro(use_11)
-  if (CMAKE_VERSION VERSION_LESS "3.1")
-    message ("cmake version: " ${CMAKE_VERSION} " --std arguments will be forced")
-
-    set (CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}" CACHE STRING "" FORCE)
-    set (CMAKE_C_FLAGS "-std=c11 ${CMAKE_C_FLAGS}" CACHE STRING "" FORCE)
-  else ()
-    set (CMAKE_CXX_STANDARD 11)
-    set (CMAKE_C_STANDARD 11)
-  endif ()
-endmacro(use_11)
-
-use_11()
+set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_C_STANDARD 11)
 
 #add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
 
-if (UNIX)
-  add_definitions( "-Wall -O2 -g" )
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
 endif()
+
+include(CheckCXXCompilerFlag)
+
+function(enable_cxx_compiler_flag_if_supported flag)
+    string(FIND "${CMAKE_CXX_FLAGS}" "${flag}" flag_already_set)
+    if(flag_already_set EQUAL -1)
+        check_cxx_compiler_flag("${flag}" flag_supported)
+        if(flag_supported)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flag}" PARENT_SCOPE)
+        endif()
+        unset(flag_supported CACHE)
+    endif()
+endfunction()
+
+enable_cxx_compiler_flag_if_supported("-Wall")
+enable_cxx_compiler_flag_if_supported("-Wextra")
 
 project(atracdenc)
 
@@ -95,3 +100,4 @@ set(SOURCE_EXE
 add_executable(atracdenc ${SOURCE_EXE})
 target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})
 install(TARGETS atracdenc)
+
