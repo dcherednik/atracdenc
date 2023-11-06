@@ -34,32 +34,44 @@ For ATRCA3 (also known as ATRAC LP on MiniDisk devices) OMA, AT3(riff)
 and RealMedia container is supported. In case of OMA and AT3 container compatible bitrates are 66150 (LP4), 104738, 132300 (LP2) bits/s. 
 RealMedia container supports 66150, 93713, 104738, 132300, 146081, 176400, 264600, 352800 bits/s.  
 .SH OPTIONS
-\f[B]-h\f[R] Display help.
-
-\f[B]-i\f[R] Path to the input file. In case of encoding it should be WAV, AIFF or SND 44100 Khz 16 bit PCM file. \
+.TP
+.B \-h
+Display help.
+.TP
+.B \-i
+Path to the input file. In case of encoding it should be WAV, AIFF or SND 44100 Khz 16 bit PCM file. \
 Use - to read from stdin.
-
-\f[B]-o\f[R] Path to output file. Container format chousen automaticaly acording with file extension. 
-
-\f[B]-e <codec>\f[R] Encode mode. <codec> is a codec name must be on of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
-
-\f[B]--encode=<codec>\f[R] Alias for -e.
-
-\f[B]-d\f[R] Decode mode. Only ATRAC1 is supported.
-
-\f[B]--decode\f[R] Alias for -d.
-
-\f[B]--bitrate\f[R] Specify using bitrate. Make sense only for ATRAC3.
-
+.TP
+.B \-o
+Path to output file. Container format chousen automaticaly acording with file extension. 
+.TP
+.B \-e <codec>
+Encode mode. <codec> is a codec name must be on of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
+.TP
+.B \--encode=<codec>
+Alias for -e.
+.TP
+.B \-d
+Decode mode. Only ATRAC1 is supported.
+.TP
+.B \--decode
+Alias for -d.
+.TP
+.B \--bitrate
+Specify using bitrate. Make sense only for ATRAC3.
+.TP
 .SH ADVENCED OPTIONS
-
-\f[B]--bfuidxconst\f[R] Set constant amount of used BFU (ATRAC1, ATRAC3).
-
-\f[B]--bfuidxfast\f[R] Enable fast search of BFU amount (ATRAC1).
-
-\f[B]--notransient[=mask]\f[R] Disable transient detection and use optional mask \
+.TP
+.B \--bfuidxconst
+Set constant amount of used BFU (ATRAC1, ATRAC3).
+.TP
+.B \--bfuidxfast
+Enable fast search of BFU amount (ATRAC1).
+.TP
+.B \--notransient[=mask]
+Disable transient detection and use optional mask \
 to set bands with forced short MDCT window.
-
+.TP
 .SH EXAMPLES
 .LP
 ATRAC1 compatible encoding
