@@ -39,7 +39,7 @@ ATRAC3:
 ./atracdenc -e atrac3 -i ~/01.wav -o /tmp/01.oma
 ```
 
-More information on the [atracdenc man page](man/atracdenc.1)
+More information on the [atracdenc man page](https://code.mastervirt.ru/atracdenc/about/man/atracdenc.1)
 
 Limitations:
  - Bit allocation based on the tonality of the signal (see http://www.minidisc.org/aes_atrac.html)
