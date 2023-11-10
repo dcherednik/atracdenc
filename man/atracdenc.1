@@ -12,7 +12,7 @@
 . ftr VB CB
 . ftr VBI CBI
 .\}
-.TH "ATRACDENC" "1" "15 September 2023" "atracdenc 0.0.4" "User Manual"
+.TH "ATRACDENC" "1" "9 November 2023" "atracdenc 0.1.0" "User Manual"
 .hy
 .SH NAME
 .PP
@@ -24,15 +24,15 @@ atracdenc [options] {-e <codec> | \[en]encode=<codec> | -d |
 .PP
 .SH DESCRIPTION
 .PP
-atrcadenc is a audio converter that can encode in to ATRAC1
+atracdenc is an audio converter that can encode into ATRAC1
 or ATRAC3 compatible format and decode from ATRAC1.
 .PP
 For ATRAC1 (also known as ATRAC SP on MiniDisk devices) AEA audio
-container is used. Only one bitrate (292 kbit/s) is specifyed.
+container is used. Only one bitrate (292 kbit/s) is specified.
 .PP
 For ATRCA3 (also known as ATRAC LP on MiniDisk devices) OMA, AT3(riff)
-and RealMedia container is supported. In case of OMA and AT3 container compatible bitrates are 66150 (LP4), 104738, 132300 (LP2) bits/s. 
-RealMedia container supports 66150, 93713, 104738, 132300, 146081, 176400, 264600, 352800 bits/s.  
+and RealMedia container is supported. In the case of OMA and AT3 container, compatible bitrates are 66150 (LP4), 104738 and 132300 (LP2) bits/s. 
+The RealMedia container supports 66150, 93713, 104738, 132300, 146081, 176400, 264600 and 352800 bits/s.
 .SH OPTIONS
 .TP
 .B \-h
@@ -43,10 +43,10 @@ Path to the input file. In case of encoding it should be WAV, AIFF or SND 44100 
 Use - to read from stdin.
 .TP
 .B \-o
-Path to output file. Container format chousen automaticaly acording with file extension. 
+Path to the output file. The container format is chosen automaticaly according to the file extension. 
 .TP
 .B \-e <codec>
-Encode mode. <codec> is a codec name must be on of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
+Encode mode. <codec> is a codec name must be one of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
 .TP
 .B \--encode=<codec>
 Alias for -e.
@@ -58,9 +58,9 @@ Decode mode. Only ATRAC1 is supported.
 Alias for -d.
 .TP
 .B \--bitrate
-Specify using bitrate. Make sense only for ATRAC3.
+Specify using bitrate (kbit/s). It make sense only for ATRAC3.
 .TP
-.SH ADVENCED OPTIONS
+.SH ADVANCED OPTIONS
 .TP
 .B \--bfuidxconst
 Set constant amount of used BFU (ATRAC1, ATRAC3).
@@ -69,8 +69,8 @@ Set constant amount of used BFU (ATRAC1, ATRAC3).
 Enable fast search of BFU amount (ATRAC1).
 .TP
 .B \--notransient[=mask]
-Disable transient detection and use optional mask \
-to set bands with forced short MDCT window.
+Disable transient detection and use an optional mask \
+to set bands with a forced short MDCT window.
 .TP
 .SH EXAMPLES
 .LP
