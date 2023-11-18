@@ -24,8 +24,8 @@ using std::string;
 using std::vector;
 using std::unique_ptr;
 
-TOma::TOma(const string& filename, const string& title, uint8_t numChannel,
-    uint32_t numFrames, int cid, uint32_t framesize, bool jointStereo) {
+TOma::TOma(const string& filename, const string&, uint8_t /*numChannel*/,
+    uint32_t /*numFrames*/, int cid, uint32_t framesize, bool jointStereo) {
     oma_info_t info;
     info.codec = cid;
     info.samplerate = 44100;

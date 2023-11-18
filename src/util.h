@@ -26,6 +26,14 @@
 #include "config.h"
 #include <cstring>
 
+#ifdef NDEBUG
+#define ASSERT(x) do { ((void)(x));} while (0)
+#else
+#include <cassert>
+#define ASSERT(x) assert(x)
+#endif
+
+
 template<class T>
 inline void SwapArray(T* p, const size_t len) {
     for (size_t i = 0, j = len - 1; i < len / 2; ++i, --j) {
