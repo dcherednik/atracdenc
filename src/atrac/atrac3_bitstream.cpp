@@ -20,7 +20,6 @@
 #include "atrac_psy_common.h"
 #include "../bitstream/bitstream.h"
 #include "../util.h"
-#include <cassert>
 #include <algorithm>
 #include <iostream>
 #include <vector>
@@ -56,7 +55,7 @@ uint32_t TAtrac3BitStreamWriter::CLCEnc(const uint32_t selector, const int manti
         for (uint32_t i = 0; i < blockSize / 2; ++i) {
             uint32_t code = MantissaToCLcIdx(mantissas[i * 2]) << 2;
             code |= MantissaToCLcIdx(mantissas[i * 2 + 1]);
-            assert(numBits == 4);
+            ASSERT(numBits == 4);
             bitStream->Write(code, numBits);
         }
     }
@@ -66,7 +65,7 @@ uint32_t TAtrac3BitStreamWriter::CLCEnc(const uint32_t selector, const int manti
 uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int mantissas[MaxSpecsPerBlock],
                                         const uint32_t blockSize, NBitStream::TBitStream* bitStream)
 {
-    assert(selector > 0);
+    ASSERT(selector > 0);
     const THuffEntry* huffTable = HuffTables[selector - 1].Table;
     const uint8_t tableSz = HuffTables[selector - 1].Sz;
     uint32_t bitsUsed = 0;
@@ -76,14 +75,14 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
             uint32_t huffS = (m < 0) ? (((uint32_t)(-m)) << 1) | 1 : ((uint32_t)m) << 1;
             if (huffS)
                 huffS -= 1;
-            assert(huffS < 256);
-            assert(huffS < tableSz);
+            ASSERT(huffS < 256);
+            ASSERT(huffS < tableSz);
             bitsUsed += huffTable[huffS].Bits;
             if (bitStream)
                 bitStream->Write(huffTable[huffS].Code, huffTable[huffS].Bits);
         }
     } else {
-        assert(tableSz == 9); 
+        ASSERT(tableSz == 9); 
         for (uint32_t i = 0; i < blockSize / 2; ++i) {
             const int ma = mantissas[i * 2];
             const int mb = mantissas[i * 2 + 1];
@@ -152,10 +151,10 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
 //false - not need to
 static inline bool CheckBfus(uint16_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
 {
-    assert(*numBfu);
+    ASSERT(*numBfu);
     uint16_t curLastBfu = *numBfu - 1;
     //assert(curLastBfu < precisionPerEachBlocks.size());
-    assert(*numBfu == precisionPerEachBlocks.size());
+    ASSERT(*numBfu == precisionPerEachBlocks.size());
     if (precisionPerEachBlocks[curLastBfu] == 0) {
         *numBfu = curLastBfu;
         return true;
@@ -238,7 +237,7 @@ void TAtrac3BitStreamWriter::EncodeSpecs(const TSingleChannelElement& sce, NBitS
     const uint32_t numBlocks = precisionPerEachBlocks.size(); //number of blocks to save
     const uint32_t codingMode = allocation.first;//0 - VLC, 1 - CLC
 
-    assert(numBlocks <= 32);
+    ASSERT(numBlocks <= 32);
     bitStream->Write(numBlocks-1, 5);
     bitStream->Write(codingMode, 1);
     for (uint32_t i = 0; i < numBlocks; ++i) {
@@ -271,9 +270,9 @@ uint8_t TAtrac3BitStreamWriter::GroupTonalComponents(const std::vector<TTonalBlo
                                                      TTonalComponentsSubGroup groups[64])
 {
     for (const TTonalBlock& tc : tonalComponents) {
-        assert(tc.ScaledBlock.Values.size() < 8);
-        assert(tc.ScaledBlock.Values.size() > 0);
-        assert(tc.ValPtr->Bfu < allocTable.size());
+        ASSERT(tc.ScaledBlock.Values.size() < 8);
+        ASSERT(tc.ScaledBlock.Values.size() > 0);
+        ASSERT(tc.ValPtr->Bfu < allocTable.size());
         auto quant = std::max((uint32_t)2, std::min(allocTable[tc.ValPtr->Bfu] + 1, (uint32_t)7));
         //std::cerr << " | " << tc.ValPtr->Pos << " | " << (int)tc.ValPtr->Bfu << " | " << quant << std::endl;
         groups[quant * 8 + tc.ScaledBlock.Values.size()].SubGroupPtr.push_back(&tc);
@@ -322,7 +321,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
     TTonalComponentsSubGroup groups[64];
     const uint8_t tcsgn = GroupTonalComponents(tonalComponents, allocTable, groups);
 
-    assert(tcsgn < 32);
+    ASSERT(tcsgn < 32);
 
     bitsUsed += 5;
     if (bitStream)
@@ -330,7 +329,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
 
     if (tcsgn == 0) {
         for (int i = 0; i < 64; ++i)
-            assert(groups[i].SubGroupPtr.size() == 0);
+            ASSERT(groups[i].SubGroupPtr.size() == 0);
         return bitsUsed;
     }
     //Coding mode:
@@ -349,16 +348,16 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
     for (uint8_t i = 0; i < 64; ++i) {
         const TTonalComponentsSubGroup& curGroup = groups[i];
         if (curGroup.SubGroupPtr.size() == 0) {
-            assert(curGroup.SubGroupMap.size() == 0);
+            ASSERT(curGroup.SubGroupMap.size() == 0);
             continue;
         }
-        assert(curGroup.SubGroupMap.size());
-        assert(curGroup.SubGroupMap.size() < UINT8_MAX);
+        ASSERT(curGroup.SubGroupMap.size());
+        ASSERT(curGroup.SubGroupMap.size() < UINT8_MAX);
         for (size_t subgroup = 0; subgroup < curGroup.SubGroupMap.size(); ++subgroup) {
             const uint8_t subGroupStartPos = curGroup.SubGroupMap[subgroup];
             const uint8_t subGroupEndPos = (subgroup < curGroup.SubGroupMap.size() - 1) ?
                 curGroup.SubGroupMap[subgroup+1] : (uint8_t)curGroup.SubGroupPtr.size();
-            assert(subGroupEndPos > subGroupStartPos);
+            ASSERT(subGroupEndPos > subGroupStartPos);
             //number of coded values are same in group
             const uint8_t codedValues = (uint8_t)curGroup.SubGroupPtr[0]->ScaledBlock.Values.size();
 
@@ -367,16 +366,16 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 uint8_t c[16];
                 uint32_t i[4] = {0};
             } bandFlags;
-            assert(numQmfBand <= 4);
+            ASSERT(numQmfBand <= 4);
             for (uint8_t j = subGroupStartPos; j < subGroupEndPos; ++j) {
                 //assert num of coded values are same in group
-                assert(codedValues == curGroup.SubGroupPtr[j]->ScaledBlock.Values.size());
+                ASSERT(codedValues == curGroup.SubGroupPtr[j]->ScaledBlock.Values.size());
                 uint8_t specBlock = (curGroup.SubGroupPtr[j]->ValPtr->Pos) >> 6;
-                assert((specBlock >> 2) < numQmfBand);
+                ASSERT((specBlock >> 2) < numQmfBand);
                 bandFlags.c[specBlock]++;
             }
 
-            assert(numQmfBand == 4);
+            ASSERT(numQmfBand == 4);
 
             tcgnCheck++;
             
@@ -387,14 +386,13 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 }
             }
             //write number of coded values for components in current group
-            assert(codedValues > 0);
+            ASSERT(codedValues > 0);
             bitsUsed += 3;
             if (bitStream)
                 bitStream->Write(codedValues - 1, 3);
             //write quant index
-            assert((i >> 3) > 1);
-            assert((i >> 3) < 8);
-            assert(i);
+            ASSERT((i >> 3) > 1);
+            ASSERT((i >> 3) < 8);
             bitsUsed += 3;
             if (bitStream)
                 bitStream->Write(i >> 3, 3);
@@ -406,36 +404,36 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 }
 
                 const uint8_t codedComponents = bandFlags.c[j];
-                assert(codedComponents < 8);
+                ASSERT(codedComponents < 8);
                 bitsUsed += 3;
                 if (bitStream)
                     bitStream->Write(codedComponents, 3);
                 uint16_t k = lastPos;
                 for (; k < lastPos + codedComponents; ++k) {
-                    assert(curGroup.SubGroupPtr[k]->ValPtr->Pos >= j * 64);
+                    ASSERT(curGroup.SubGroupPtr[k]->ValPtr->Pos >= j * 64);
                     uint16_t relPos = curGroup.SubGroupPtr[k]->ValPtr->Pos - j * 64;
-                    assert(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex < 64);
+                    ASSERT(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex < 64);
 
                     bitsUsed += 6;
                     if (bitStream)
                         bitStream->Write(curGroup.SubGroupPtr[k]->ScaledBlock.ScaleFactorIndex, 6);
 
-                    assert(relPos < 64);
+                    ASSERT(relPos < 64);
                     
                     bitsUsed += 6;
                     if (bitStream)
                         bitStream->Write(relPos, 6);
 
-                    assert(curGroup.SubGroupPtr[k]->ScaledBlock.Values.size() < 8);
+                    ASSERT(curGroup.SubGroupPtr[k]->ScaledBlock.Values.size() < 8);
                     int mantisas[256];
                     const TFloat mul = MaxQuant[std::min((uint32_t)(i>>3), (uint32_t)7)];
-                    assert(codedValues == curGroup.SubGroupPtr[k]->ScaledBlock.Values.size());
+                    ASSERT(codedValues == curGroup.SubGroupPtr[k]->ScaledBlock.Values.size());
                     for (uint32_t z = 0; z < curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(); ++z) {
                         mantisas[z] = lrint(curGroup.SubGroupPtr[k]->ScaledBlock.Values[z] * mul);
                     }
                     //VLCEnc
 
-                    assert(i);
+                    ASSERT(i);
                     bitsUsed += VLCEnc(i>>3, mantisas, curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(), bitStream);
 
                 }
@@ -443,12 +441,12 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 checkPos = lastPos;
             }
 
-            assert(subGroupEndPos == checkPos);
+            ASSERT(subGroupEndPos == checkPos);
         }
     }
-    assert(tcgnCheck == tcsgn);
+    ASSERT(tcgnCheck == tcsgn);
     if (bitStream)
-        assert(bitStream->GetSizeInBits() - bitsUsedOld == bitsUsed);
+        ASSERT(bitStream->GetSizeInBits() - bitsUsedOld == bitsUsed);
     return bitsUsed;
 }
 
@@ -498,7 +496,7 @@ static int32_t CalcMSBytesShift(uint32_t frameSz,
                                 const int32_t b[2])
 {
     const int32_t totalUsedBits = 0 - b[0] - b[1];
-    assert(totalUsedBits > 0);
+    ASSERT(totalUsedBits > 0);
 
     const int32_t maxAllowedShift = (frameSz / 2 - Div8Ceil(totalUsedBits));
 
@@ -514,7 +512,7 @@ static int32_t CalcMSBytesShift(uint32_t frameSz,
 void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>& singleChannelElements)
 {
 
-    assert(singleChannelElements.size() == 1 || singleChannelElements.size() == 2);
+    ASSERT(singleChannelElements.size() == 1 || singleChannelElements.size() == 2);
 
     const int halfFrameSz = Params.FrameSz >> 1;
 
@@ -537,20 +535,20 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
         }
 
         const uint8_t numQmfBand = subbandInfo.GetQmfNum();
-        assert(numQmfBand > 0);
+        ASSERT(numQmfBand > 0);
         bitStream->Write(numQmfBand - 1, 2);
 
         //write gain info
         for (uint32_t band = 0; band < numQmfBand; ++band) {
             const vector<TAtrac3Data::SubbandInfo::TGainPoint>& GainPoints = subbandInfo.GetGainPoints(band);
-            assert(GainPoints.size() < TAtrac3Data::SubbandInfo::MaxGainPointsNum);
+            ASSERT(GainPoints.size() < TAtrac3Data::SubbandInfo::MaxGainPointsNum);
             bitStream->Write(GainPoints.size(), 3);
             int s = 0;
             for (const TAtrac3Data::SubbandInfo::TGainPoint& point : GainPoints) {
                 bitStream->Write(point.Level, 4);
                 bitStream->Write(point.Location, 5);
                 s++;
-                assert(s < 8);
+                ASSERT(s < 8);
             }
         }
 
@@ -594,7 +592,7 @@ void TAtrac3BitStreamWriter::WriteSoundUnit(const vector<TSingleChannelElement>&
     //No mone mode for atrac3, just make duplicate of first channel
     if (singleChannelElements.size() == 1 && !Params.Js) {
         int sz = OutBuffer.size();
-        assert(sz == halfFrameSz);
+        ASSERT(sz == halfFrameSz);
         OutBuffer.resize(sz << 1);
         std::copy_n(OutBuffer.begin(), sz, OutBuffer.begin() + sz);
     }
