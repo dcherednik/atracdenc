@@ -23,12 +23,14 @@ function(enable_cxx_compiler_flag_if_supported flag)
     endif()
 endfunction()
 
-enable_cxx_compiler_flag_if_supported("-Wall")
-enable_cxx_compiler_flag_if_supported("-Wextra")
 
-project(atracdenc)
+
+project("atracdenc" CXX C)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
+
+enable_cxx_compiler_flag_if_supported("-Wall")
+enable_cxx_compiler_flag_if_supported("-Wextra")
 
 if (WIN32)
     add_compile_definitions(PLATFORM_WINDOWS)
@@ -100,4 +102,3 @@ set(SOURCE_EXE
 add_executable(atracdenc ${SOURCE_EXE})
 target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})
 install(TARGETS atracdenc)
-
