@@ -21,7 +21,6 @@
 
 #include <vector>
 
-
 TEST(Util, SwapArrayTest) {
     TFloat arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
     SwapArray(arr, 8);

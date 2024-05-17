@@ -21,5 +21,30 @@ target_link_libraries(atracdenc_ut
     GTest::gtest_main
 )
 
+configure_file(
+    ../src/atrac/atrac3plus_pqf/ut/test_data/ipqftest_pcm_mr.dat
+    ${CMAKE_CURRENT_BINARY_DIR}/test_data/ipqftest_pcm_mr.dat
+    COPYONLY
+)
+
+configure_file(
+    ../src/atrac/atrac3plus_pqf/ut/test_data/ipqftest_pcm_out.dat
+    ${CMAKE_CURRENT_BINARY_DIR}/test_data/ipqftest_pcm_out.dat
+    COPYONLY
+)
+
+set(at3plus_pqf_ut
+    ../src/atrac/atrac3plus_pqf/ut/ipqf_ut.cpp
+    ../src/atrac/atrac3plus_pqf/ut/atrac3plusdsp.c
+)
+
+add_executable(at3plus_pqf_ut ${at3plus_pqf_ut})
+
+target_link_libraries(at3plus_pqf_ut
+    m
+    GTest::gtest_main
+)
+
 enable_testing()
 add_test(ut atracdenc_ut)
+add_test(at3plus_pqf_ut at3plus_pqf_ut)
