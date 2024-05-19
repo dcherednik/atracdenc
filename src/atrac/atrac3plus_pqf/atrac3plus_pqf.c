@@ -28,7 +28,7 @@
 #include <math.h>
 
 #include "atrac3plus_pqf.h"
-#include "atrac3plus_pqf_prototype.h"
+#include "atrac3plus_pqf_data.h"
 
 /*
  * Number of subbands to split input signal
@@ -44,111 +44,84 @@
 #define PROTO_SZ 384
 
 #define FRAME_SZ ((SUBBANDS_NUM * SUBBAND_SIZE))
-#define EXTRA_SZ ((PROTO_SZ - SUBBANDS_NUM))
+#define OVERLAP_SZ ((PROTO_SZ - SUBBANDS_NUM))
 
-const uint16_t at3plus_pqf_frame_sz = FRAME_SZ;
-const uint16_t at3plus_pqf_proto_sz = PROTO_SZ;
 
-static float C[PROTO_SZ];
-static float M[256];
+static float fir[PROTO_SZ];
+
+static void dct4(float* out, const float* x, int N, float scale) {
+    for (int k = 0; k < N; k++) {
+        double sum = 0;
+        for (int n = 0; n < N; n++) {
+            sum += ((double)x[n] * cosl((M_PI/(double)N) * ((double)n + 0.5) * ((double)k + 0.5)));
+        }
+        out[N - 1 - k] = sum * scale;
+    }
+}
 
 struct at3plus_pqf_a_ctx {
-    float buf[FRAME_SZ + EXTRA_SZ];
+    float buf[FRAME_SZ + OVERLAP_SZ];
 };
 
 static void init(void)
 {
-    int i;
-    int j;
-    const float* const t = at3plus_pqf_prototype;
     static int inited = 0;
 
     if (inited)
         return;
+
     inited = 1;
 
-    for (i = 0; i < 16; i++) {
-        for (j = 0; j < 16; j++) {
-            M[i*16 + j] = (float)cos(((2 * i + 1) * j & 127) * M_PI / 32);
-        }
-    }
-
-    for (i = 0; i < 6; i++) {
-        for (j = 0; j < 32; j++) {
-            if (i & 1) {
-                C[j * 12 + i] = 1.489 * t[j * 2 + 64 * i];
-                C[j * 12 + 6 + i] = 1.489 * t[j * 2 + 1 + 64 * i];
-            } else {
-                C[j * 12 + i] = -1.489 * t[j * 2 + 64 * i];
-                C[j * 12 + 6 + i] = -1.489 * t[j * 2 + 1 + 64 * i];
-            }
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < ATRAC3P_PQF_FIR_LEN; j++) {
+	    if (i >= 8) {
+	        fir[j + 96  + (i - 8) * 12] = ff_ipqf_coeffs1[j][i];
+	        fir[j + 288 + (i - 8) * 12] = ff_ipqf_coeffs2[j][i];
+	    } else {
+	        fir[j + 192 + i * 12] = ff_ipqf_coeffs2[j][i];
+	        fir[j + 0   + i * 12] = ff_ipqf_coeffs1[j][i];
+	    }
         }
     }
 }
 
-static void vectoring(const float* x, float* y)
+static void vectoring(const float* const x, float* y)
 {
-    int i;
-    int j;
-    const float* c = C;
-
-    for ( i = 0; i < SUBBANDS_NUM * 2; i++, c += 12, x += 1, y += 1 ) {
-        y[0] = 0;
-        for (j = 0; j < 12; j++) {
-            y[0] += c[j] * x[j * 32];
+    for (int i = 0; i < 32; i++) {
+        y[i] = 0;
+        for (int j = 0; j < ATRAC3P_PQF_FIR_LEN; j++) {
+            y[i] += fir[i * 12 + j] * x[j * 32 + i];
         }
     }
 }
 
-static void matrixing(const float* mi, const float* y, float* samples )
+static void matrixing(const float* y, float* samples )
 {
-    int  i;
-    for (i = 0; i < SUBBANDS_NUM; i++, mi += 16, samples += SUBBAND_SIZE) {
-        samples[0] =          y[8]        + mi[ 1] * (y[7]+y[9])
-                   + mi[ 2] * (y[6]+y[10]) + mi[ 3] * (y[5]+y[11])
-                   + mi[ 4] * (y[4]+y[12]) + mi[ 5] * (y[3]+y[13])
-                   + mi[ 6] * (y[2]+y[14]) + mi[ 7] * (y[ 1]+y[15])
-                   + mi[ 8] * (y[ 0]+y[16])
-                   + mi[15] * (y[23]-y[25]) + mi[14] * (y[22]-y[26])
-                   + mi[13] * (y[21]-y[27]) + mi[12] * (y[20]-y[28])
-                   + mi[11] * (y[19]-y[29]) + mi[10] * (y[18]-y[30])
-                   + mi[ 9] * (y[17]-y[31]);
+    float yy[SUBBANDS_NUM];
+    float res[SUBBANDS_NUM];
+
+    for (int i = 0; i < 8; i++) {
+        yy[i] = y[i + 8] + y[7 - i];
+        yy[i + 8] = y[i + 16] + y[31 - i];
     }
-}
 
-static void a_init(at3plus_pqf_a_ctx_t ctx)
-{
-    float y[SUBBANDS_NUM * 2];
-    float out[FRAME_SZ];
-    float* x;
-    int n, i;
+    dct4(res, yy, SUBBANDS_NUM, 128.0 * 512.0);
 
-    float* buf = ctx->buf;
-    init();
-
-    memcpy ( buf + FRAME_SZ, buf, EXTRA_SZ * sizeof(*buf) );
-    x      = buf + FRAME_SZ;
- 
-    for ( n = 0; n < SUBBAND_SIZE; n++ ) {
-        x -= SUBBANDS_NUM;
-
-        for (i = 0; i < SUBBANDS_NUM; i++)
-            x[i] = 0.0;
-
-        vectoring(x, y);
-        matrixing (M, y, &out[n]);
+    for (int i = 0; i < SUBBANDS_NUM; i++) {
+        samples[i * SUBBAND_SIZE] = res[SUBBANDS_NUM - 1 - i];
     }
 }
 
 at3plus_pqf_a_ctx_t at3plus_pqf_create_a_ctx()
 {
-    int i = 0;
     at3plus_pqf_a_ctx_t ctx = (at3plus_pqf_a_ctx_t)malloc(sizeof(struct at3plus_pqf_a_ctx));
-    for (i = 0; i < FRAME_SZ + EXTRA_SZ; i++) {
+
+    for (int i = 0; i < FRAME_SZ + OVERLAP_SZ; i++) {
         ctx->buf[i] = 0.0;
     }
 
-    a_init(ctx);
+    init();
+
     return ctx;
 }
 
@@ -160,29 +133,18 @@ void at3plus_pqf_free_a_ctx(at3plus_pqf_a_ctx_t ctx)
 void at3plus_pqf_do_analyse(at3plus_pqf_a_ctx_t ctx, const float* in, float* out)
 {
     float y[SUBBANDS_NUM * 2];
-    float* x;
-    const float* pcm;
-    int n, i;
 
-    float* buf = ctx->buf;
+    float* const buf = ctx->buf;
 
-    memcpy(buf + FRAME_SZ, buf, EXTRA_SZ * sizeof(float));
-    x = buf + FRAME_SZ;
+    const float* x = buf;
 
-    pcm = in + (SUBBANDS_NUM - 1);
+    memcpy(buf + OVERLAP_SZ, in, sizeof(in[0]) * FRAME_SZ);
 
-    for (n = 0; n < SUBBAND_SIZE; n++, pcm += SUBBANDS_NUM * 2) {
-        x -= SUBBANDS_NUM;
-        for (i = 0; i < SUBBANDS_NUM; i++) {
-            x[i] = *pcm--;
-        }
+    for (int i = 0; i < SUBBAND_SIZE; i++) {
         vectoring(x, y);
-        matrixing (M, y, &out[n]);
+        matrixing (y, &out[i]);
+        x += SUBBANDS_NUM;
     }
-}
 
-const float* at3plus_pqf_get_proto(void)
-{
-    return at3plus_pqf_prototype;
+    memcpy(buf, buf + FRAME_SZ, sizeof(buf[0]) * OVERLAP_SZ);
 }
-

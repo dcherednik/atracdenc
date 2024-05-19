@@ -36,6 +36,8 @@ extern "C"
 {
 #endif /* __cplusplus */
 
+extern const float ipqf_coeffs1[ATRAC3P_PQF_FIR_LEN][16];
+extern const float ipqf_coeffs2[ATRAC3P_PQF_FIR_LEN][16];
 void ff_atrac3p_ipqf(Atrac3pIPQFChannelCtx *hist, const float *in, float *out);
 
 #ifdef __cplusplus

@@ -27,15 +27,9 @@ typedef struct at3plus_pqf_a_ctx *at3plus_pqf_a_ctx_t;
 extern "C" {
 #endif
 
-extern const uint16_t at3plus_pqf_frame_sz;
-extern const uint16_t at3plus_pqf_proto_sz;
-
 at3plus_pqf_a_ctx_t at3plus_pqf_create_a_ctx(void);
 void at3plus_pqf_free_a_ctx(at3plus_pqf_a_ctx_t ctx);
 void at3plus_pqf_do_analyse(at3plus_pqf_a_ctx_t ctx, const float* in, float* out);
-
-// Debug functions
-const float* at3plus_pqf_get_proto(void);
 
 #ifdef __cplusplus
 }
