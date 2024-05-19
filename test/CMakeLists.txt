@@ -36,6 +36,7 @@ configure_file(
 set(at3plus_pqf_ut
     ../src/atrac/atrac3plus_pqf/ut/ipqf_ut.cpp
     ../src/atrac/atrac3plus_pqf/ut/atrac3plusdsp.c
+    ../src/atrac/atrac3plus_pqf/atrac3plus_pqf.c
 )
 
 add_executable(at3plus_pqf_ut ${at3plus_pqf_ut})
