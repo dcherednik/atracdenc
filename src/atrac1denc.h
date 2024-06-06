@@ -64,7 +64,7 @@ class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public vir
     TFloat PcmBufMid[2][256 + 16];
     TFloat PcmBufHi[2][512 + 16];
 
-    Atrac1SplitFilterBank<TFloat> SplitFilterBank[2];
+    Atrac1AnalysisFilterBank<TFloat> AnalysisFilterBank[2];
 
     class TTransientDetectors {
         std::vector<TTransientDetector> transientDetectorLow;

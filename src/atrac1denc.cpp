@@ -177,7 +177,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
                 src[i] = data[i * srcChannels + channel];
             }
 
-            SplitFilterBank[channel].Split(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
+            AnalysisFilterBank[channel].Analysis(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
             uint32_t windowMask = 0;
             if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {

@@ -301,7 +301,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
 
             {
                 TFloat* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
-                SplitFilterBank[channel].Split(&src[0], p);
+                AnalysisFilterBank[channel].Analysis(&src[0], p);
             }
         }
 

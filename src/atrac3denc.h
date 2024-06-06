@@ -86,7 +86,7 @@ class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
 
     TFloat PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 
-    Atrac3SplitFilterBank<TFloat> SplitFilterBank[2];
+    Atrac3AnalysisFilterBank<TFloat> AnalysisFilterBank[2];
     TScaler<TAtrac3Data> Scaler;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
 public:

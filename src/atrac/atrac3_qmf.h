@@ -23,7 +23,7 @@
 namespace NAtracDEnc {
 
 template<class TIn>
-class Atrac3SplitFilterBank {
+class Atrac3AnalysisFilterBank {
     const static int nInSamples = 1024;
     TQmf<TIn, nInSamples> Qmf1;
     TQmf<TIn, nInSamples / 2> Qmf2;
@@ -31,14 +31,14 @@ class Atrac3SplitFilterBank {
     std::vector<TFloat> Buf1;
     std::vector<TFloat> Buf2;
 public:
-    Atrac3SplitFilterBank() {
+    Atrac3AnalysisFilterBank() {
         Buf1.resize(nInSamples);
         Buf2.resize(nInSamples);
     }
-    void Split(TIn* pcm, TFloat* subs[4]) {
-        Qmf1.Split(pcm, Buf1.data(), Buf2.data());
-        Qmf2.Split(Buf1.data(), subs[0], subs[1]);
-        Qmf3.Split(Buf2.data(), subs[3], subs[2]);
+    void Analysis(TIn* pcm, TFloat* subs[4]) {
+        Qmf1.Analysis(pcm, Buf1.data(), Buf2.data());
+        Qmf2.Analysis(Buf1.data(), subs[0], subs[1]);
+        Qmf3.Analysis(Buf2.data(), subs[3], subs[2]);
     }
 };
 

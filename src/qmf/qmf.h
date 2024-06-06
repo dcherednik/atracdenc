@@ -41,7 +41,7 @@ public:
         }
     }
 
-    void Split(TPCM* in, TFloat* lower, TFloat* upper) {
+    void Analysis(TPCM* in, TFloat* lower, TFloat* upper) {
         TFloat temp;
         for (size_t i = 0; i < 46; i++)
             PcmBuffer[i] = PcmBuffer[nIn + i];
@@ -61,7 +61,7 @@ public:
         }
     }
 
-    void Merge(TPCM* out, TFloat* lower, TFloat* upper) {
+    void Synthesis(TPCM* out, TFloat* lower, TFloat* upper) {
         memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(TFloat));
         TFloat* newPart = &PcmBufferMerge[46];
         for (int i = 0; i < nIn; i+=4) {
