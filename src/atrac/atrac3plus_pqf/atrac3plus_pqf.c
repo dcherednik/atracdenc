@@ -30,6 +30,8 @@
 #include "atrac3plus_pqf.h"
 #include "atrac3plus_pqf_data.h"
 
+#include "../../mdct/dct.h"
+
 /*
  * Number of subbands to split input signal
  */
@@ -49,18 +51,9 @@
 
 static float fir[PROTO_SZ];
 
-static void dct4(float* out, const float* x, int N, float scale) {
-    for (int k = 0; k < N; k++) {
-        double sum = 0;
-        for (int n = 0; n < N; n++) {
-            sum += ((double)x[n] * cosl((M_PI/(double)N) * ((double)n + 0.5) * ((double)k + 0.5)));
-        }
-        out[N - 1 - k] = sum * scale;
-    }
-}
-
 struct at3plus_pqf_a_ctx {
     float buf[FRAME_SZ + OVERLAP_SZ];
+    atde_dct_ctx_t dct_ctx;
 };
 
 static void init(void)
@@ -95,7 +88,7 @@ static void vectoring(const float* const x, float* y)
     }
 }
 
-static void matrixing(const float* y, float* samples )
+static void matrixing(atde_dct_ctx_t ctx, const float* y, float* samples )
 {
     float yy[SUBBANDS_NUM];
     float res[SUBBANDS_NUM];
@@ -105,7 +98,7 @@ static void matrixing(const float* y, float* samples )
         yy[i + 8] = y[i + 16] + y[31 - i];
     }
 
-    dct4(res, yy, SUBBANDS_NUM, 128.0 * 512.0);
+    atde_do_dct4_16(ctx, yy, res);
 
     for (int i = 0; i < SUBBANDS_NUM; i++) {
         samples[i * SUBBAND_SIZE] = res[SUBBANDS_NUM - 1 - i];
@@ -120,6 +113,8 @@ at3plus_pqf_a_ctx_t at3plus_pqf_create_a_ctx()
         ctx->buf[i] = 0.0;
     }
 
+    ctx->dct_ctx = atde_create_dct4_16(128 * 512.0);
+
     init();
 
     return ctx;
@@ -127,6 +122,8 @@ at3plus_pqf_a_ctx_t at3plus_pqf_create_a_ctx()
 
 void at3plus_pqf_free_a_ctx(at3plus_pqf_a_ctx_t ctx)
 {
+    atde_free_dct_ctx(ctx->dct_ctx);
+
     free(ctx);
 }
 
@@ -142,7 +139,7 @@ void at3plus_pqf_do_analyse(at3plus_pqf_a_ctx_t ctx, const float* in, float* out
 
     for (int i = 0; i < SUBBAND_SIZE; i++) {
         vectoring(x, y);
-        matrixing (y, &out[i]);
+        matrixing (ctx->dct_ctx, y, &out[i]);
         x += SUBBANDS_NUM;
     }
 

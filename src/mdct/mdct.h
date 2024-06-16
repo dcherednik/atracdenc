@@ -39,16 +39,16 @@ protected:
 };
 
 
-template<size_t TN>
+template<size_t TN, typename TIO = TFloat>
 class TMDCT : public TMDCTBase {
-    std::vector<TFloat> Buf;
+    std::vector<TIO> Buf;
 public:
     TMDCT(float scale = 1.0)
         : TMDCTBase(TN, scale)
         , Buf(TN/2)
     {
     }
-    const std::vector<TFloat>& operator()(TFloat* in) {
+    const std::vector<TIO>& operator()(const TIO* in) {
 
         const size_t n2 = N >> 1;
         const size_t n4 = N >> 2;
@@ -104,15 +104,15 @@ public:
     }
 };
 
-template<size_t TN>
+template<size_t TN, typename TIO = TFloat>
 class TMIDCT : public TMDCTBase {
-    std::vector<TFloat> Buf;
+    std::vector<TIO> Buf;
 public:
     TMIDCT(float scale = TN)
         : TMDCTBase(TN, scale/2)
         , Buf(TN)
     {}
-    const std::vector<TFloat>& operator()(TFloat* in) {
+    const std::vector<TIO>& operator()(const TIO* in) {
 
         const size_t n2 = N >> 1;
         const size_t n4 = N >> 2;

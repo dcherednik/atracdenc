@@ -17,6 +17,7 @@
  */
 
 #include "mdct.h"
+#include "dct.h"
 #include <iostream>
 
 namespace NMDCT {
@@ -51,3 +52,31 @@ TMDCTBase::~TMDCTBase()
 }
 
 } // namespace NMDCT
+
+struct atde_dct_ctx {
+    atde_dct_ctx(float scale)
+        : mdct(scale)
+    {}
+    NMDCT::TMIDCT<32, float> mdct;
+};
+
+atde_dct_ctx_t atde_create_dct4_16(float scale)
+{
+    return new atde_dct_ctx(32.0 * scale);
+}
+
+void atde_free_dct_ctx(atde_dct_ctx_t ctx)
+{
+    delete ctx;
+}
+
+void atde_do_dct4_16(atde_dct_ctx_t ctx, const float* in, float* out)
+{
+    //TODO: rewrire more optimal
+    const auto& x = ctx->mdct(in);
+
+    for (int i = 0; i < 16; i++) {
+        out[i] = x[i + 8] * -1.0;
+    }
+}
+
