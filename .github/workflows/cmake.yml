@@ -54,7 +54,7 @@ jobs:
       if: startsWith(matrix.config.name,'Ubuntu_Latest_GCC')
       run: |
         sudo apt-get update
-        sudo apt-get install -yq libsndfile1 libsndfile1-dev cmake googletest
+        sudo apt-get install -yq libsndfile1 libsndfile1-dev cmake googletest libgtest-dev
         cmake --version
         gcc --version
 
