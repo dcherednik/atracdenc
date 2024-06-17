@@ -22,7 +22,7 @@
 #include "atrac1.h"
 #include <math.h>
 #include <cassert>
-#include "../bitstream/bitstream.h"
+#include "bitstream/bitstream.h"
 #include "../env.h"
 
 namespace NAtracDEnc {

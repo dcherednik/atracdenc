@@ -20,7 +20,7 @@
 
 #include "compressed_io.h"
 
-#include "oma/liboma/include/oma.h"
+#include "lib/liboma/include/oma.h"
 
 class TOma : public ICompressedOutput {
     OMAFILE* File;

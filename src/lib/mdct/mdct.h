@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "../config.h"
-#include "../fft/kissfft_impl/kiss_fft.h"
+#include "config.h"
+#include "fft/kissfft_impl/kiss_fft.h"
 #include <vector>
 #include <type_traits>
 

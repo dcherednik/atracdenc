@@ -18,7 +18,6 @@
 
 #pragma once
 #include "atrac_scale.h"
-#include "../bitstream/bitstream.h"
 #include "../aea.h"
 #include "../atrac/atrac1.h"
 #include <vector>
