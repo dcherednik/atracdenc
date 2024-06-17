@@ -17,7 +17,6 @@
  */
 
 #include "../include/oma.h"
-#include "oma_internal.h"
 
 #include <endian_tools.h>
 
@@ -29,6 +28,11 @@
 
 
 #define OMA_HEADER_SIZE 96
+
+struct omafile_ctx {
+    FILE* file;
+    oma_info_t info;
+};
 
 static const int liboma_samplerates[8] = { 32000, 44100, 48000, 88200, 96000, 0 };
 static const char* codec_name[6] = { "ATRAC3", "ATRAC3PLUS", "MPEG1LAYER3", "LPCM", "", "OMAC_ID_WMA" };

@@ -22,6 +22,7 @@
 #include <cstdint>
 
 #include "atrac1.h"
+#include "lib/bitstream/bitstream.h"
 #include "../config.h"
 
 namespace NAtracDEnc {

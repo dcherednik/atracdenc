@@ -18,7 +18,7 @@
 
 #include "atrac3_bitstream.h"
 #include "atrac_psy_common.h"
-#include "../bitstream/bitstream.h"
+#include "bitstream/bitstream.h"
 #include "../util.h"
 #include <algorithm>
 #include <iostream>

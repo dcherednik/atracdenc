@@ -30,7 +30,7 @@
 #include "atrac3plus_pqf.h"
 #include "atrac3plus_pqf_data.h"
 
-#include "../../mdct/dct.h"
+#include "lib/mdct/dct.h"
 
 /*
  * Number of subbands to split input signal

@@ -56,14 +56,15 @@ if (${BIGENDIAN})
 endif()
 
 include_directories(
+    "."
     "lib"
-    "oma/liboma/include"
+    "lib/liboma/include"
 )
 
 set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
 set_source_files_properties(fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
-set(SOURCE_OMA_LIB oma/liboma/src/liboma.c)
-set(SOURCE_BITSTREAM_LIB bitstream/bitstream.cpp)
+set(SOURCE_OMA_LIB lib/liboma/src/liboma.c)
+set(SOURCE_BITSTREAM_LIB lib/bitstream/bitstream.cpp)
 set(SOURCE_ATRACDENC_IMPL
     wav.cpp
     aea.cpp
@@ -81,7 +82,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac3denc.cpp
     atrac/atrac3.cpp
     atrac/atrac3_bitstream.cpp
-    mdct/mdct.cpp
+    lib/mdct/mdct.cpp
 )
 
 add_library(fft_impl STATIC ${SOURCE_FFT_LIB})

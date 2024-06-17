@@ -21,8 +21,7 @@
 #include <array>
 #include <map>
 #include <math.h>
-#include "../bitstream/bitstream.h"
-#include "../config.h"
+#include "config.h"
 namespace NAtracDEnc {
 namespace NAtrac1 {
 
