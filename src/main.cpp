@@ -32,6 +32,7 @@
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"
+#include "atrac3p.h"
 
 #ifdef PLATFORM_WINDOWS
 #include <windows.h>
@@ -88,6 +89,13 @@ static int checkedStoi(const char* data, int min, int max, int def)
         return def;
     }
 }
+
+enum EMode {
+    E_ENCODE = 1,
+    E_DECODE = 2,
+    E_ATRAC3 = 4,
+    E_ATRAC3PLUS = 8
+};
 
 enum EOptions
 {
@@ -243,6 +251,59 @@ static void PrepareAtrac3Encoder(const string& inFile,
     atracProcessor->reset(new TAtrac3Encoder(std::move(omaIO), std::move(encoderSettings)));
 }
 
+static void PrepareAtrac3PEncoder(const string& inFile,
+                                  const string& outFile,
+                                  const bool noStdOut,
+                                  int numChannels,
+                                  uint64_t* totalSamples,
+                                  const TWavPtr& wavIO,
+                                  TPcmEnginePtr* pcmEngine,
+                                  TAtracProcessorPtr* atracProcessor)
+{
+    *totalSamples = wavIO->GetTotalSamples();
+    const uint64_t numFrames = (*totalSamples) / 2048;
+    if (numFrames >= UINT32_MAX) {
+        std::cerr << "Number of input samples exceeds output format limitation,"
+            "the result will be incorrect" << std::endl;
+    }
+
+    const string ext = GetFileExt(outFile);
+
+    TCompressedOutputPtr omaIO;
+
+    string contName;
+    if (ext == "wav" || ext == "at3") {
+        throw std::runtime_error("Not implemented");
+    } else if (ext == "rm") {
+        throw std::runtime_error("RealMedia container is not supported for ATRAC3PLUS");
+    } else {
+        contName = "OMA";
+        omaIO.reset(new TOma(outFile,
+            "test",
+            numChannels,
+            (int32_t)numFrames, OMAC_ID_ATRAC3PLUS,
+            2048,
+            false));
+    }
+
+    if (!noStdOut)
+        cout << "Input:\n Filename: " << inFile
+             << "\n Channels: " << (int)numChannels
+             << "\n SampleRate: " << wavIO->GetSampleRate()
+             << "\n Duration (sec): " << *totalSamples / wavIO->GetSampleRate()
+	     << "\nOutput:\n Filename: " << outFile
+	     << "\n Codec: ATRAC3Plus"
+	     << "\n Container: " << contName
+             //<< "\n Bitrate: " << encoderSettings.ConteinerParams->Bitrate
+             << endl;
+
+    pcmEngine->reset(new TPCMEngine<TFloat>(4096,
+                                            numChannels,
+                                            TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));
+    atracProcessor->reset(new TAt3PEnc(std::move(omaIO), numChannels));
+}
+
+
 int main_(int argc, char* const* argv)
 {
     const char* myName = argv[0];
@@ -282,6 +343,8 @@ int main_(int argc, char* const* argv)
                     } else if (strcmp(optarg, "atrac3_lp4") == 0) {
                         mode |= E_ATRAC3;
                         bitrate = 64;
+                    } else if (strcmp(optarg, "atrac3plus") == 0) {
+                        mode |= E_ATRAC3PLUS;
                     } else if (strcmp(optarg, "atrac1") == 0) {
                         // this is the default
                     } else {
@@ -397,6 +460,14 @@ int main_(int argc, char* const* argv)
                 PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac3Data::NumSamples;;
+            }
+            break;
+            case (E_ENCODE | E_ATRAC3PLUS):
+            {
+                wavIO = OpenWavFile(inFile);
+                PrepareAtrac3PEncoder(inFile, outFile, noStdOut, wavIO->GetChannelNum(),
+                    &totalSamples, wavIO, &pcmEngine, &atracProcessor);
+                pcmFrameSz = 2048;
             }
             break;
             default:
