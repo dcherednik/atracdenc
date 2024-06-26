@@ -59,10 +59,20 @@ include_directories(
     "."
     "lib"
     "lib/liboma/include"
+    "lib/fft/kissfft_impl"
 )
 
-set(SOURCE_FFT_LIB lib/fft/kissfft_impl/kiss_fft.c)
-set_source_files_properties(lib/fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
+set(SOURCE_FFT_LIB
+    lib/fft/kissfft_impl/kiss_fft.c
+    lib/fft/kissfft_impl/tools/kiss_fftr.c
+)
+set_source_files_properties(${SOURCE_FFT_LIB} PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
+add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
+
+set(GHA_FFT_LIB fft_impl)
+set(GHA_USE_DOUBLE_API YES)
+add_subdirectory(lib/libgha)
+
 set(SOURCE_OMA_LIB lib/liboma/src/liboma.c)
 set(SOURCE_BITSTREAM_LIB lib/bitstream/bitstream.cpp)
 set(SOURCE_ATRACDENC_IMPL
@@ -86,8 +96,6 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/at3p/at3p_bitstream.cpp
     lib/mdct/mdct.cpp
 )
-
-add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
 
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
 if (NOT WIN32)
