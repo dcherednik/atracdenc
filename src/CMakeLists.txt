@@ -61,8 +61,8 @@ include_directories(
     "lib/liboma/include"
 )
 
-set(SOURCE_FFT_LIB fft/kissfft_impl/kiss_fft.c)
-set_source_files_properties(fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
+set(SOURCE_FFT_LIB lib/fft/kissfft_impl/kiss_fft.c)
+set_source_files_properties(lib/fft/kissfft_impl/kiss_fft.c PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
 set(SOURCE_OMA_LIB lib/liboma/src/liboma.c)
 set(SOURCE_BITSTREAM_LIB lib/bitstream/bitstream.cpp)
 set(SOURCE_ATRACDENC_IMPL
