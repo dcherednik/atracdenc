@@ -130,7 +130,7 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
 
 TFloat TAtrac3Encoder::LimitRel(TFloat x)
 {
-    return std::min(std::max(x, GainLevel[15]), GainLevel[0]);
+    return std::min(std::max((double)x, GainLevel[15]), GainLevel[0]);
 }
 
 void TAtrac3Encoder::ResetTransientParamsHistory(int channel, int band)

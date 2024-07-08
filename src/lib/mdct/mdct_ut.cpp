@@ -17,6 +17,7 @@
  */
 
 #include "mdct.h"
+#include "mdct_ut_common.h"
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -35,7 +36,7 @@ static vector<TFloat> mdct(TFloat* x, int N) {
         res.push_back(sum);
     }
     return res;
-}  
+}
 
 static vector<TFloat> midct(TFloat* x, int N) {
     vector<TFloat> res;
@@ -59,8 +60,9 @@ TEST(TMdctTest, MDCT32) {
     const vector<TFloat> res1 = mdct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N);
     for (int i = 0; i < res1.size(); i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -74,8 +76,9 @@ TEST(TMdctTest, MDCT64) {
     const vector<TFloat> res1 = mdct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N);
     for (int i = 0; i < res1.size(); i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -89,8 +92,9 @@ TEST(TMdctTest, MDCT128) {
     const vector<TFloat> res1 = mdct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N * 4);
     for (int i = 0; i < res1.size(); i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -104,8 +108,9 @@ TEST(TMdctTest, MDCT256) {
     const vector<TFloat> res1 = mdct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N * 4);
     for (int i = 0; i < res1.size(); i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.00000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -113,14 +118,17 @@ TEST(TMdctTest, MDCT256_RAND) {
     const int N = 256;
     TMDCT<N> transform(N);
     vector<TFloat> src(N);
+    TFloat m = 0.0;
     for (int i = 0; i < N; i++) {
         src[i] = rand();
+        m = std::max(m, src[i]);
     }
     const vector<TFloat> res1 = mdct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(m * 8);
     for (int i = 0; i < res1.size(); i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.01);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -134,8 +142,9 @@ TEST(TMdctTest, MIDCT32) {
     const vector<TFloat> res1 = midct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N);
     for (int i = 0; i < N; i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -149,8 +158,9 @@ TEST(TMdctTest, MIDCT64) {
     const vector<TFloat> res1 = midct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N);
     for (int i = 0; i < N; i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -164,8 +174,9 @@ TEST(TMdctTest, MIDCT128) {
     const vector<TFloat> res1 = midct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N);
     for (int i = 0; i < N; i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.0000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -179,8 +190,9 @@ TEST(TMdctTest, MIDCT256) {
     const vector<TFloat> res1 = midct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(N * 2);
     for (int i = 0; i < N; i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.000000001);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }
 
@@ -188,13 +200,16 @@ TEST(TMdctTest, MIDCT256_RAND) {
     const int N = 256;
     TMIDCT<N> transform(N);
     vector<TFloat> src(N);
+    TFloat m = 0.0;
     for (int i = 0; i < N/2; i++) {
         src[i] = rand();
+        m = std::max(m, src[i]);
     }
     const vector<TFloat> res1 = midct(&src[0], N/2);
     const vector<TFloat> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
+    auto eps = CalcEps(m * 4);
     for (int i = 0; i < N; i++) {
-        EXPECT_NEAR(res1[i], res2[i], 0.01);
+        EXPECT_NEAR(res1[i], res2[i], eps);
     }
 }

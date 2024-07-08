@@ -78,8 +78,8 @@ protected:
 	static const uint32_t BitsPerIDWL = 4;
 	static const uint32_t BitsPerIDSF = 6;
 
-    static double ScaleTable[64];
-    static double SineWindow[32];
+    static TFloat ScaleTable[64];
+    static TFloat SineWindow[32];
     uint32_t BfuToBand(uint32_t i) {
         if (i < 20)
             return 0;

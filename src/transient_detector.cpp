@@ -51,18 +51,18 @@ void TTransientDetector::HPFilter(const TFloat* in, TFloat* out) {
         -3.36639e-17 * 2.0, -0.0438162 * 2.0, -1.54175e-17 * 2.0, 0.0931738 * 2.0,
         -5.52212e-17 * 2.0, -0.313819 * 2.0
     };
-    memcpy(HPFBuffer.data() + PrevBufSz, in, BlockSz * sizeof(double));
-    const double* inBuf = HPFBuffer.data();
+    memcpy(HPFBuffer.data() + PrevBufSz, in, BlockSz * sizeof(TFloat));
+    const TFloat* inBuf = HPFBuffer.data();
     for (size_t i = 0; i < BlockSz; ++i) {
-        double s = inBuf[i + 10];
-        double s2 = 0;
+        TFloat s = inBuf[i + 10];
+        TFloat s2 = 0;
         for (size_t j = 0; j < ((FIRLen - 1) / 2) - 1 ; j += 2) {
             s += fircoef[j] * (inBuf[i + j] + inBuf[i + FIRLen - j]);
             s2 += fircoef[j + 1] * (inBuf[i + j + 1] + inBuf[i + FIRLen - j - 1]);
         }
         out[i] = (s + s2)/2;
     }
-    memcpy(HPFBuffer.data(), in + (BlockSz - PrevBufSz),  PrevBufSz * sizeof(double));
+    memcpy(HPFBuffer.data(), in + (BlockSz - PrevBufSz),  PrevBufSz * sizeof(TFloat));
 }
 
 
