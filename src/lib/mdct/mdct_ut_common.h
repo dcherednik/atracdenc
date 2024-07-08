@@ -17,10 +17,12 @@
  */
 
 #pragma once
-#include "atrac_scale.h"
 
-namespace NAtracDEnc {
+#include "mdct.h"
 
-TFloat AnalizeScaleFactorSpread(const std::vector<TScaledBlock>& scaledBlocks);
+// Calculate value of error for given magnitude
+inline TFloat CalcEps(TFloat magn) {
+    const float snr = (sizeof(TFloat) == 4) ? -114.0 : -240.0;
+    return magn * pow(10, (snr / 20.0));
+}
 
-} //namespace NAtracDEnc
