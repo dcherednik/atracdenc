@@ -260,7 +260,7 @@ TEST(pqf, Chirp_Long) {
     ff_atrac3p_ipqf(&sctx, &subbands[0], &tmp[0]);
     ff_atrac3p_ipqf(&sctx, &subbands[2048], &tmp[2048]);
 
-    const static float err = 4096.0 / (float)(1<<21);
+    const static float err = 4096.0 / (float)(1<<22);
     for (int i = 368; i < 4096; i++) {
         EXPECT_NEAR(tmp[i], x[i-368], err);
     }
