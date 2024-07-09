@@ -32,6 +32,10 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 enable_cxx_compiler_flag_if_supported("-Wall")
 enable_cxx_compiler_flag_if_supported("-Wextra")
 
+if (ATDE_USE_FLOAT)
+    add_compile_definitions(ATDE_USE_FLOAT)
+endif()
+
 if (WIN32)
     add_compile_definitions(PLATFORM_WINDOWS)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -66,11 +70,16 @@ set(SOURCE_FFT_LIB
     lib/fft/kissfft_impl/kiss_fft.c
     lib/fft/kissfft_impl/tools/kiss_fftr.c
 )
-set_source_files_properties(${SOURCE_FFT_LIB} PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
+
+if (ATDE_USE_FLOAT)
+    set_source_files_properties(${SOURCE_FFT_LIB} PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=float)
+else()
+    set_source_files_properties(${SOURCE_FFT_LIB} PROPERTIES COMPILE_FLAGS -Dkiss_fft_scalar=double)
+    set(GHA_USE_DOUBLE_API YES)
+endif()
 add_library(fft_impl STATIC ${SOURCE_FFT_LIB})
 
 set(GHA_FFT_LIB fft_impl)
-set(GHA_USE_DOUBLE_API YES)
 add_subdirectory(lib/libgha)
 
 set(SOURCE_OMA_LIB lib/liboma/src/liboma.c)

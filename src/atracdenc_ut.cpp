@@ -17,6 +17,7 @@
  */
 
 #include "atrac1denc.h"
+#include <lib/mdct/mdct_ut_common.h>
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -24,13 +25,28 @@ using std::vector;
 using namespace NAtracDEnc;
 
 void CheckResult128(const vector<TFloat>& a, const vector<TFloat>& b) {
+    float m = 0.0;
+    for (int i = 0; i < a.size(); i++) {
+        m = fmax(m, (float)a[i]);
+    }
+
+    auto eps = CalcEps(m);
+
     for (int i = 0; i < 96; ++i ) {
-        EXPECT_NEAR(a[i], 4 * b[i+32], 0.0000001);
+        EXPECT_NEAR(a[i], 4 * b[i+32], eps);
     }
 }
+
 void CheckResult256(const vector<TFloat>& a, const vector<TFloat>& b) {
+    float m = 0.0;
+    for (int i = 0; i < a.size(); i++) {
+        m = fmax(m, (float)a[i]);
+    }
+
+    auto eps = CalcEps(m);
+
     for (int i = 0; i < 192; ++i ) {
-        EXPECT_NEAR(a[i], 2 * b[i+32], 0.0000001);
+        EXPECT_NEAR(a[i], 2 * b[i+32], eps);
     }
 }
 

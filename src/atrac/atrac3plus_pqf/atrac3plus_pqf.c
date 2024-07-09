@@ -78,7 +78,7 @@ static void init(void)
     }
 }
 
-static void vectoring(const float* const x, float* y)
+static void vectoring(const float* const x, double* y)
 {
     for (int i = 0; i < 32; i++) {
         y[i] = 0;
@@ -88,7 +88,7 @@ static void vectoring(const float* const x, float* y)
     }
 }
 
-static void matrixing(atde_dct_ctx_t ctx, const float* y, float* samples )
+static void matrixing(atde_dct_ctx_t ctx, const double* y, float* samples )
 {
     float yy[SUBBANDS_NUM];
     float res[SUBBANDS_NUM];
@@ -129,7 +129,7 @@ void at3plus_pqf_free_a_ctx(at3plus_pqf_a_ctx_t ctx)
 
 void at3plus_pqf_do_analyse(at3plus_pqf_a_ctx_t ctx, const float* in, float* out)
 {
-    float y[SUBBANDS_NUM * 2];
+    double y[SUBBANDS_NUM * 2];
 
     float* const buf = ctx->buf;
 
