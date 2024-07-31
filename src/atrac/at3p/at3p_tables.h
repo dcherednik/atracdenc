@@ -16,40 +16,25 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <atrac3p.h>
+#pragma once
 
-#include "at3p_bitstream.h"
+#include <array>
+#include <cstdint>
 
 namespace NAtracDEnc {
 
-class TAt3PEnc::TImpl {
-public:
-    TImpl(ICompressedOutput* out)
-        : BitStream(out, 2048)
-    {}
-    void EncodeFrame(const TFloat* data, int channels);
-private:
-    TAt3PBitStream BitStream;
+namespace NAt3p {
+
+struct TVlcElement {
+    int16_t Code;
+    int16_t Len;
 };
 
-void TAt3PEnc::TImpl::
-EncodeFrame(const TFloat* data, int channels)
-{
-    BitStream.WriteFrame(channels, nullptr);
-}
-
-TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels)
-    : Out(std::move(out))
-    , Channels(channels)
-{
-}
-
-TPCMEngine<TFloat>::TProcessLambda TAt3PEnc::GetLambda() {
-    Impl.reset(new TImpl(Out.get()));
-
-    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta&) {
-        Impl->EncodeFrame(data, Channels);
-    };
-}
+struct THuffTables {
+    THuffTables();
+    std::array<TVlcElement, 16> NumToneBands;
+};
 
 }
+
+} // namespace NAtracDEnc

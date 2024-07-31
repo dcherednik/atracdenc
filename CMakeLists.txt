@@ -3,7 +3,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 project(atracdenc)
 include_directories(src)
 
-option(ATDE_USE_FLOAT "use float32 precision for dsp" OFF)
+set(ATDE_USE_FLOAT ON)
 
 if (UNIX)
     find_package(GTest)

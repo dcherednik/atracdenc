@@ -3,6 +3,10 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_C_STANDARD 11)
 
+include_directories(
+    "../src/lib"
+)
+
 if (ATDE_USE_FLOAT)
     add_compile_definitions(ATDE_USE_FLOAT)
 endif()
@@ -52,6 +56,22 @@ target_link_libraries(at3plus_pqf_ut
     GTest::gtest_main
 )
 
+###
+
+set(at3plus_bitstream_ut
+    ${CMAKE_SOURCE_DIR}/src/atrac/at3p/at3p_bitstream_ut.cpp
+)
+
+add_executable(at3plus_bitstream_ut ${at3plus_bitstream_ut})
+
+target_link_libraries(at3plus_bitstream_ut
+    m
+    fft_impl
+    atracdenc_impl
+    GTest::gtest_main
+)
+
 enable_testing()
 add_test(ut atracdenc_ut)
 add_test(at3plus_pqf_ut at3plus_pqf_ut)
+add_test(at3plus_bitstream_ut at3plus_bitstream_ut)

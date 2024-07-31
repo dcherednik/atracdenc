@@ -16,13 +16,77 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-
 #include "at3p_bitstream.h"
+#include "at3p_gha.h"
+#include "at3p_tables.h"
 #include <lib/bitstream/bitstream.h>
 #include <env.h>
+#include <util.h>
+
 #include <iostream>
 
 namespace NAtracDEnc {
+
+using namespace NAt3p;
+using std::vector;
+using std::make_pair;
+using std::pair;
+
+static THuffTables HuffTabs;
+
+TTonePackResult CreateFreqBitPack(const TAt3PGhaData::TWaveParam* const param, int len)
+{
+    const int MaxBits = 10;
+
+    int bits[2] = {MaxBits, MaxBits};
+
+    std::vector<TTonePackResult::TEntry> res[2];
+    res[0].reserve(len);
+    res[1].reserve(len);
+
+    // try ascending order
+    {
+        auto& t = res[0];
+        uint16_t prevFreqIndex = param->FreqIndex & 1023;
+        t.emplace_back(TTonePackResult::TEntry{prevFreqIndex, MaxBits});
+
+        for (int i = 1; i < len; i++) {
+            uint16_t curFreqIndex = param[i].FreqIndex & 1023;
+            if (prevFreqIndex < 512) {
+                t.emplace_back(TTonePackResult::TEntry{curFreqIndex, MaxBits});
+                bits[0] += MaxBits;
+            } else {
+                uint16_t b = GetFirstSetBit(1023 - prevFreqIndex) + 1;
+                uint16_t code = curFreqIndex - (1024 - (1 << b));
+                t.emplace_back(TTonePackResult::TEntry{code, b});
+                bits[0] += b;
+            }
+            prevFreqIndex = curFreqIndex;
+        }
+    }
+
+    // try descending order
+    if (len > 1) {
+        auto& t = res[1];
+        uint16_t prevFreqIndex = param[len - 1].FreqIndex & 1023;
+        t.emplace_back(TTonePackResult::TEntry{prevFreqIndex, MaxBits});
+
+        for (int i = len - 2; i >= 0; i--) {
+            uint16_t curFreqIndex = param[i].FreqIndex & 1023;
+            uint16_t b = GetFirstSetBit(prevFreqIndex) + 1;
+            t.emplace_back(TTonePackResult::TEntry{curFreqIndex, b});
+            bits[1] += b;
+            prevFreqIndex = curFreqIndex;
+        }
+
+    }
+
+    if (len == 1 || bits[0] < bits[1]) {
+        return {res[0], bits[0], ETonePackOrder::ASC};
+    } else {
+        return {res[1], bits[1], ETonePackOrder::DESC};
+    }
+}
 
 TAt3PBitStream::TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz)
     : Container(container)
@@ -31,7 +95,115 @@ TAt3PBitStream::TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz)
     NEnv::SetRoundFloat();
 }
 
-void TAt3PBitStream::WriteFrame(int channels)
+static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3PGhaData* tonalBlock)
+{
+    //GHA amplidude mode 1
+    bs.Write(1, 1);
+
+    //Num tone bands
+    const TVlcElement& tbHuff = HuffTabs.NumToneBands[tonalBlock->NumToneBands - 1];
+    bs.Write(tbHuff.Code, tbHuff.Len);
+
+    if (channels == 2) {
+        bs.Write(0, 1);
+        bs.Write(0, 1);
+        bs.Write(0, 1);
+    }
+
+    for (int ch = 0; ch < channels; ch++) {
+        if (ch) {
+            // each channel has own envelope
+            bs.Write(0, 1);
+        }
+        // Envelope data
+        for (int i = 0; i < tonalBlock->NumToneBands; i++) {
+            if (ch && !tonalBlock->SecondChBands[i]) {
+                continue;
+            }
+
+            //TODO: Add actual Envelope
+            // start point present
+            bs.Write(0, 1);
+            // stop point present
+            bs.Write(0, 1);
+        }
+
+        // Num waves
+        int mode = 0; //TODO: Calc mode
+        bs.Write(mode, ch + 1);
+        for (int i = 0; i < tonalBlock->NumToneBands; i++) {
+            if (ch && !tonalBlock->SecondChBands[i]) {
+                continue;
+            }
+            bs.Write(tonalBlock->GetNumWaves(ch, i), 4);
+        }
+        // Tones freq
+        if (ch) {
+            // 0 - independed
+            // 1 - delta to leader
+            bs.Write(0, 1);
+        }
+
+        for (int i = 0; i < tonalBlock->NumToneBands; i++) {
+            if (ch && !tonalBlock->SecondChBands[i]) {
+                continue;
+            }
+
+            auto numWaves = tonalBlock->GetNumWaves(ch, i);
+            if (numWaves == 0) {
+                continue;
+            }
+
+            const auto w = tonalBlock->GetWaves(ch, i);
+            const auto pkt = CreateFreqBitPack(w.first, w.second);
+
+            if (numWaves > 1) {
+                bs.Write(static_cast<bool>(pkt.Order), 1);
+            }
+
+            for (const auto& d : pkt.Data) {
+                bs.Write(d.Code, d.Bits);
+            }
+        }
+
+        // Amplitude
+        mode = 0; //TODO: Calc mode
+        bs.Write(mode, ch + 1);
+
+        for (int i = 0; i < tonalBlock->NumToneBands; i++) {
+            if (ch && !tonalBlock->SecondChBands[i]) {
+                continue;
+            }
+
+            auto numWaves = tonalBlock->GetNumWaves(ch, i);
+            if (numWaves == 0) {
+                continue;
+            }
+
+            for (size_t j = 0; j < numWaves; j++)
+                bs.Write(0, 6);
+        }
+
+        // Phase
+        for (int i = 0; i < tonalBlock->NumToneBands; i++) {
+            if (ch && !tonalBlock->SecondChBands[i]) {
+                continue;
+            }
+
+            auto numWaves = tonalBlock->GetNumWaves(ch, i);
+            if (numWaves == 0) {
+                continue;
+            }
+
+            const auto w = tonalBlock->GetWaves(ch, i);
+            for (size_t j = 0; j < w.second; j++) {
+                bs.Write(w.first[j].PhaseIndex, 5);
+            }
+        }
+    }
+}
+
+void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
 {
     NBitStream::TBitStream bitStream;
     // First bit must be zero
@@ -45,10 +217,19 @@ void TAt3PBitStream::WriteFrame(int channels)
     // Skip some bits to produce correct zero bitstream
     bitStream.Write(0, 10);
     if (channels == 2) {
-        bitStream.Write(0, 14);
+        bitStream.Write(0, 12);
     } else {
-        bitStream.Write(0, 5);
+        bitStream.Write(0, 3);
     }
+
+    // Bit indicate tonal block is used
+    bitStream.Write((bool)tonalBlock, 1);
+    if (tonalBlock) {
+        WriteTonalBlock(bitStream, channels, tonalBlock);
+    }
+
+    bitStream.Write(0, 1); // no noise info
+
     // Terminator
     bitStream.Write(3, 2);
 

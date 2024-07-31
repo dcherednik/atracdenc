@@ -103,6 +103,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/atrac3_bitstream.cpp
     atrac/at3p/at3p.cpp
     atrac/at3p/at3p_bitstream.cpp
+    atrac/at3p/at3p_tables.cpp
     lib/mdct/mdct.cpp
 )
 

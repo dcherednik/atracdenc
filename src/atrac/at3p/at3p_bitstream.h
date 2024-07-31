@@ -19,13 +19,33 @@
 #pragma once
 
 #include "compressed_io.h"
+#include "at3p_gha.h"
 
 namespace NAtracDEnc {
+
+struct TAt3PGhaData;
+
+enum class ETonePackOrder : bool {
+    ASC = false,
+    DESC = true
+};
+
+struct TTonePackResult {
+    struct TEntry {
+        uint16_t Code;
+        uint16_t Bits;
+    };
+    std::vector<TEntry> Data;
+    int UsedBits;
+    ETonePackOrder Order;
+};
+
+TTonePackResult CreateFreqBitPack(const TAt3PGhaData::TWaveParam* param, int len);
 
 class TAt3PBitStream {
 public:
     TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz);
-    void WriteFrame(int channels);
+    void WriteFrame(int channels, const TAt3PGhaData* tonalData);
 private:
     ICompressedOutput* Container;
     const uint16_t FrameSz;
