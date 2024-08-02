@@ -22,5 +22,6 @@
 namespace NAtracDEnc {
 
 TFloat AnalizeScaleFactorSpread(const std::vector<TScaledBlock>& scaledBlocks);
+std::vector<float> CalcATH(int len, int sampleRate);
 
 } //namespace NAtracDEnc
