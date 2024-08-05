@@ -103,6 +103,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/atrac3_bitstream.cpp
     atrac/at3p/at3p.cpp
     atrac/at3p/at3p_bitstream.cpp
+    atrac/at3p/at3p_gha.cpp
     atrac/at3p/at3p_tables.cpp
     lib/mdct/mdct.cpp
 )
@@ -115,7 +116,7 @@ endif()
 add_library(oma STATIC ${SOURCE_OMA_LIB})
 add_library(bitstream STATIC ${SOURCE_BITSTREAM_LIB})
 add_library(atracdenc_impl STATIC ${SOURCE_ATRACDENC_IMPL})
-target_link_libraries(atracdenc_impl fft_impl pcm_io oma bitstream ${SNDFILE_LIBRARIES})
+target_link_libraries(atracdenc_impl fft_impl pcm_io oma bitstream ${SNDFILE_LIBRARIES} gha)
 set(SOURCE_EXE
     main.cpp
     help.cpp

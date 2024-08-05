@@ -7,7 +7,7 @@ using namespace NAtracDEnc;
 TEST(AT3PBitstream, ToneFreqBitPack__1) {
     std::vector<TAt3PGhaData::TWaveParam> params;
 
-    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0, {}});
+    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0});
 
     auto r = CreateFreqBitPack(params.data(), params.size());
     EXPECT_EQ(r.UsedBits, 10);
@@ -20,9 +20,9 @@ TEST(AT3PBitstream, ToneFreqBitPack__1) {
 TEST(AT3PBitstream, ToneFreqBitPack__512_1020_1023) {
     std::vector<TAt3PGhaData::TWaveParam> params;
 
-    params.push_back(TAt3PGhaData::TWaveParam{512, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1023, 0, 0, 0, {}});
+    params.push_back(TAt3PGhaData::TWaveParam{512, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1023, 0, 0, 0});
 
     auto r = CreateFreqBitPack(params.data(), params.size());
     EXPECT_EQ(r.UsedBits, 21);
@@ -39,9 +39,9 @@ TEST(AT3PBitstream, ToneFreqBitPack__512_1020_1023) {
 TEST(AT3PBitstream, ToneFreqBitPack__1_2_3) {
     std::vector<TAt3PGhaData::TWaveParam> params;
 
-    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{3, 0, 0, 0, {}});
+    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{3, 0, 0, 0});
 
     auto r = CreateFreqBitPack(params.data(), params.size());
     EXPECT_EQ(r.UsedBits, 14);
@@ -58,12 +58,12 @@ TEST(AT3PBitstream, ToneFreqBitPack__1_2_3) {
 TEST(AT3PBitstream, ToneFreqBitPack__1_2_3_1020_1021_1022) {
     std::vector<TAt3PGhaData::TWaveParam> params;
 
-    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{3, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1021, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1022, 0, 0, 0, {}});
+    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{3, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1021, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1022, 0, 0, 0});
 
     auto r = CreateFreqBitPack(params.data(), params.size());
     EXPECT_EQ(r.UsedBits, 44);
@@ -86,11 +86,11 @@ TEST(AT3PBitstream, ToneFreqBitPack__1_2_3_1020_1021_1022) {
 TEST(AT3PBitstream, ToneFreqBitPack__1_2_1020_1021_1022) {
     std::vector<TAt3PGhaData::TWaveParam> params;
 
-    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1021, 0, 0, 0, {}});
-    params.push_back(TAt3PGhaData::TWaveParam{1022, 0, 0, 0, {}});
+    params.push_back(TAt3PGhaData::TWaveParam{1, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{2, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1020, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1021, 0, 0, 0});
+    params.push_back(TAt3PGhaData::TWaveParam{1022, 0, 0, 0});
 
     auto r = CreateFreqBitPack(params.data(), params.size());
     EXPECT_EQ(r.UsedBits, 34);
