@@ -20,6 +20,7 @@
 
 #include <config.h>
 
+#include <memory>
 #include <vector>
 
 static_assert(sizeof(TFloat) == sizeof(float), "TFloat must be float32");

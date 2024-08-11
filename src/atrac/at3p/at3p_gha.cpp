@@ -24,6 +24,8 @@
 
 #include <memory>
 
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <vector>

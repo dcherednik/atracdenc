@@ -1,3 +1,4 @@
 [submodule "src/lib/libgha"]
 	path = src/lib/libgha
 	url = https://github.com/dcherednik/libgha
+	branch = at3pghadev
