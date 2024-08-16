@@ -44,7 +44,9 @@ struct TAt3PGhaData {
     std::array<TWavesChannel, 2> Waves;
 
     uint8_t NumToneBands;
-    bool SecondChBands[16];
+
+    bool ToneSharing[16];
+    bool SecondIsLeader;
 
     size_t GetNumWaves(size_t ch, size_t sb) const {
         return Waves[ch].WaveSbInfos.at(sb).WaveNums;

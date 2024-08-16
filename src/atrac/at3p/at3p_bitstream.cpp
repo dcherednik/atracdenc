@@ -95,6 +95,28 @@ TAt3PBitStream::TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz)
     NEnv::SetRoundFloat();
 }
 
+static void WriteSubbandFlags(NBitStream::TBitStream& bs, const bool* flags, int numFlags)
+{
+
+    int sum = 0;
+    for (int i = 0; i < numFlags; i++) {
+        sum += (uint32_t)flags[i];
+    }
+
+    if (sum == 0) {
+        bs.Write(0, 1);
+    } else if (sum == numFlags) {
+        bs.Write(1, 1);
+        bs.Write(0, 1);
+    } else {
+        bs.Write(1, 1);
+        bs.Write(1, 1);
+        for (int i = 0; i < numFlags; i++) {
+           bs.Write(flags[i], 1);
+        }
+    }
+}
+
 static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3PGhaData* tonalBlock)
 {
     //GHA amplidude mode 1
@@ -105,8 +127,8 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
     bs.Write(tbHuff.Code, tbHuff.Len);
 
     if (channels == 2) {
-        bs.Write(0, 1);
-        bs.Write(0, 1);
+        WriteSubbandFlags(bs, tonalBlock->ToneSharing, tonalBlock->NumToneBands);
+        WriteSubbandFlags(bs, &tonalBlock->SecondIsLeader, 1);
         bs.Write(0, 1);
     }
 
@@ -117,7 +139,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
         }
         // Envelope data
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
-            if (ch && !tonalBlock->SecondChBands[i]) {
+            if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
 
@@ -132,7 +154,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
         int mode = 0; //TODO: Calc mode
         bs.Write(mode, ch + 1);
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
-            if (ch && !tonalBlock->SecondChBands[i]) {
+            if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
             bs.Write(tonalBlock->GetNumWaves(ch, i), 4);
@@ -145,7 +167,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
         }
 
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
-            if (ch && !tonalBlock->SecondChBands[i]) {
+            if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
 
@@ -171,7 +193,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
         bs.Write(mode, ch + 1);
 
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
-            if (ch && !tonalBlock->SecondChBands[i]) {
+            if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
 
@@ -180,13 +202,15 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
                 continue;
             }
 
-            for (size_t j = 0; j < numWaves; j++)
-                bs.Write(0, 6);
+            const auto w = tonalBlock->GetWaves(ch, i);
+            for (size_t j = 0; j < numWaves; j++) {
+                bs.Write(w.first[j].AmpSf, 6);
+            }
         }
 
         // Phase
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
-            if (ch && !tonalBlock->SecondChBands[i]) {
+            if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
 
@@ -214,10 +238,20 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
     // 2 - Nobody know
     bitStream.Write(channels - 1, 2);
 
+    int num_quant_units =  14;
+    bitStream.Write(num_quant_units - 1, 5);
+
+    for (int ch = 0; ch < channels; ch++) {
+        bitStream.Write(0, 2); // channel wordlen mode
+        for (int j = 0; j < num_quant_units; j++) {
+            bitStream.Write(0, 3); // wordlen
+        }
+    }
+
     // Skip some bits to produce correct zero bitstream
-    bitStream.Write(0, 10);
+
     if (channels == 2) {
-        bitStream.Write(0, 12);
+        bitStream.Write(0, 7);
     } else {
         bitStream.Write(0, 3);
     }

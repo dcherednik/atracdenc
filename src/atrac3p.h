@@ -28,6 +28,7 @@ class TAt3PEnc : public IProcessor<TFloat> {
 public:
     TAt3PEnc(TCompressedOutputPtr&& out, int channels);
     TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
+    static constexpr int NumSamples = 2048;
 private:
     TCompressedOutputPtr Out;
     int Channels;

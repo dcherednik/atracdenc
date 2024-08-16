@@ -111,7 +111,7 @@ private:
         return AmpSfTab;
     }
 
-    uint32_t FillFolowerRes(const TGhaInfoMap& fGhaInfos, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
+    uint32_t FillFolowerRes(const TGhaInfoMap& lGha, const TGhaInfoMap& fGha, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
 
     uint32_t AmplitudeToSf(float amp);
 
@@ -358,7 +358,8 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 {
     uint32_t usedContiguousSb[2] = {0, 0};
     uint32_t numTones[2] = {0, 0};
-    //TODO: Calc used SB just during DoRound routine
+
+    // TODO: This can be improved. Bitstream allows to set leader/folower flag for each band.
     for (size_t ch = 0; ch < data.size(); ch++) {
         int cur = -1;
         for (const auto& info : data[ch].GhaInfos) {
@@ -374,13 +375,14 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
                 break;
             }
         }
-        //std::cerr << "ch: " << ch << " usedSb: " << usedContiguousSb[ch] << " numTones: " << numTones[ch] << std::endl;
     }
 
     bool leader = usedContiguousSb[1] > usedContiguousSb[0];
 
+    ResultBuf.SecondIsLeader = leader;
     ResultBuf.NumToneBands = usedContiguousSb[leader];
 
+    TGhaInfoMap::const_iterator leaderStartIt;
     TGhaInfoMap::const_iterator folowerIt;
     if (data.size() == 2) {
         TWavesChannel& fWaves = ResultBuf.Waves[1];
@@ -389,10 +391,7 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
         // Yes, see bitstream code
         fWaves.WaveSbInfos.resize(usedContiguousSb[leader]);
         folowerIt = data[!leader].GhaInfos.begin();
-
-        for (size_t i = 0; i < usedContiguousSb[leader]; i++) {
-            ResultBuf.SecondChBands[i] = false;
-        }
+        leaderStartIt = data[leader].GhaInfos.begin();
     }
 
     const auto& ghaInfos = data[leader].GhaInfos;
@@ -423,7 +422,8 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 
             // process folower if present
             if (data.size() == 2) {
-                nextFolowerSb = FillFolowerRes(data[!leader].GhaInfos, folowerIt, nextSb);
+                nextFolowerSb = FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, nextSb);
+                leaderStartIt = it;
             }
 
             nextSb = sb;
@@ -434,36 +434,53 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
     }
 
     if (data.size() == 2 && nextFolowerSb <= usedContiguousSb[leader]) {
-        FillFolowerRes(data[!leader].GhaInfos, folowerIt, nextSb);
+        FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, nextSb);
     }
 }
 
-uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& fGhaInfos, TGhaInfoMap::const_iterator& it, const uint32_t leaderSb)
+uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TGhaInfoMap& fGhaInfos, TGhaInfoMap::const_iterator& it, const uint32_t curSb)
 {
     TWavesChannel& waves = ResultBuf.Waves[1];
-    uint32_t fSb;
-    if (it != fGhaInfos.end()) {
-        fSb = ((it->first) >> 10);
-        ResultBuf.SecondChBands[fSb] = true;
-        waves.WaveSbInfos[fSb].WaveIndex = waves.WaveParams.size();
-    }
+
+    uint32_t folowerSbMode = 0; // 0 - no tones, 1 - sharing band, 2 - own tones set
+    uint32_t nextSb = 0;
+    uint32_t added = 0;
 
     while (it != fGhaInfos.end()) {
-        fSb = ((it->first) >> 10);
-        if (fSb > leaderSb) {
-            return fSb;
+        uint32_t sb = ((it->first) >> 10);
+        if (sb > curSb) {
+            nextSb = sb;
+            break;
         }
+
+        // search same indedx in the leader and set coresponding bit
+        folowerSbMode |= uint8_t(lGhaInfos.find(it->first) == lGhaInfos.end()) + 1u;
 
         const auto freqIndex = it->first & 1023;
         const auto phaseIndex = GhaPhaseToIndex(it->second.phase);
         const auto ampSf = AmplitudeToSf(it->second.magnitude);
 
-        waves.WaveSbInfos[fSb].WaveNums++;
         waves.WaveParams.push_back(TAt3PGhaData::TWaveParam{freqIndex, ampSf, 1, phaseIndex});
 
         it++;
+        added++;
     }
-    return 0;
+
+    switch (folowerSbMode) {
+        case 0:
+            ResultBuf.ToneSharing[curSb] = false;
+            waves.WaveSbInfos[curSb].WaveNums = 0;
+            break;
+        case 1:
+            ResultBuf.ToneSharing[curSb] = true;
+            waves.WaveParams.resize(waves.WaveParams.size() - added);
+            break;
+        default:
+            ResultBuf.ToneSharing[curSb] = false;
+            waves.WaveSbInfos[curSb].WaveIndex = waves.WaveParams.size() - added;
+            waves.WaveSbInfos[curSb].WaveNums = added;
+    }
+    return nextSb;
 }
 
 uint32_t TGhaProcessor::AmplitudeToSf(float amp)
