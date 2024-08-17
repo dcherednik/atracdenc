@@ -172,7 +172,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
             continue;
         }
 
-        if (totalTones > 48) {
+        if (totalTones >= 48) {
             return false;
         }
 
