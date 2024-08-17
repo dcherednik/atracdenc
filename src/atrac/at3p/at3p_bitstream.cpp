@@ -249,17 +249,18 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
     }
 
     // Skip some bits to produce correct zero bitstream
-
     if (channels == 2) {
         bitStream.Write(0, 7);
     } else {
         bitStream.Write(0, 3);
     }
 
-    // Bit indicate tonal block is used
-    bitStream.Write((bool)tonalBlock, 1);
     if (tonalBlock && tonalBlock->NumToneBands) {
+        // Bit indicate tonal block is used
+        bitStream.Write(1, 1);
         WriteTonalBlock(bitStream, channels, tonalBlock);
+    } else {
+        bitStream.Write(0, 1);
     }
 
     bitStream.Write(0, 1); // no noise info
