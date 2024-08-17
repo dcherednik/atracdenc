@@ -258,7 +258,7 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
 
     // Bit indicate tonal block is used
     bitStream.Write((bool)tonalBlock, 1);
-    if (tonalBlock) {
+    if (tonalBlock && tonalBlock->NumToneBands) {
         WriteTonalBlock(bitStream, channels, tonalBlock);
     }
 

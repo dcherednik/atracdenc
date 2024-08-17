@@ -44,7 +44,7 @@ namespace {
 
 uint32_t GhaFreqToIndex(float f, uint32_t sb)
 {
-    return static_cast<uint32_t>(lrintf(1024.0f * (f / M_PI)) & 1023) | (sb << 10);
+    return static_cast<uint32_t>(lrintf(1023.0f * (f / M_PI)) & 1023) | (sb << 10);
 }
 
 uint32_t GhaPhaseToIndex(float p)
@@ -86,6 +86,11 @@ public:
         , AmpSfTab(CreateAmpSfTab())
     {
         FillSubbandAth(&SubbandAth[0]);
+    }
+
+    ~TGhaProcessor()
+    {
+        gha_free_ctx(LibGhaCtx);
     }
 
     const TAt3PGhaData* DoAnalize() override;
@@ -309,11 +314,12 @@ pair<uint32_t, uint32_t> TGhaProcessor::FindPos(const float* src, const float* t
     }
 
     uint32_t start = 0;
+    uint32_t curStart = 0;
     uint32_t count = 0;
     uint32_t len = 0;
     bool found = false;
 
-    for (size_t i = 0; i < 128; i += windowSz) {
+    for (uint32_t i = 0; i < 128; i += windowSz) {
         float rmsIn = 0.0;
         float rmsOut = 0.0;
         for (size_t j = 0; j < windowSz; j++) {
@@ -330,26 +336,20 @@ pair<uint32_t, uint32_t> TGhaProcessor::FindPos(const float* src, const float* t
         if (rmsIn / rmsOut < 1) {
             count = 0;
             found = false;
+            curStart = i;
         } else {
             count++;
             if (count > len) {
                 len = count;
                 if (!found) {
-                    start = i;
+                    start = curStart;
                     found = true;
                 }
             }
         }
-
     }
 
-    //std::cerr << "start pos: " << start << " len: " << len * windowSz << " end: " << start + len * windowSz << std::endl;
-
     auto end = start + len * windowSz;
-
-    //if (end - start < 64) {
-    //    return {0, 0};
-    //}
 
     return {start, end};
 }
