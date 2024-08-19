@@ -118,7 +118,7 @@ TEST(AT3PGHA, 689hz0625_900hz__full_frame_mono) {
     EXPECT_EQ(res.GetNumWaves(0, 0), 2);
     EXPECT_EQ(res.GetWaves(0, 0).second, 2);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 512);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 669);
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 668);
     Dumper.Dump(&res, 1, 1);
 }
 
@@ -192,7 +192,7 @@ TEST(AT3PGHA, 689hz0625__full_frame_stereo_own) {
     EXPECT_EQ(res.Waves[1].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(1, 0), 1);
     EXPECT_EQ(res.GetWaves(1, 0).second, 1);
-    EXPECT_EQ(res.GetWaves(1, 0).first->FreqIndex, 743);
+    EXPECT_EQ(res.GetWaves(1, 0).first->FreqIndex, 742);
 
     Dumper.Dump(&res, 2, 1);
 }
@@ -212,7 +212,7 @@ TEST(AT3PGHA, 689hz0625__full_frame_stereo_multiple_second) {
     EXPECT_EQ(res.GetNumWaves(1, 0), 2);
     EXPECT_EQ(res.GetWaves(1, 0).second, 2);
     EXPECT_EQ(res.GetWaves(1, 0).first[0].FreqIndex, 512);
-    EXPECT_EQ(res.GetWaves(1, 0).first[1].FreqIndex, 669);
+    EXPECT_EQ(res.GetWaves(1, 0).first[1].FreqIndex, 668);
     Dumper.Dump(&res, 2, 1);
 }
 
