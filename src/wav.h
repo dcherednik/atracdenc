@@ -28,19 +28,16 @@
 class TFileAlreadyExists : public std::exception {
 };
 
-class TNoDataToRead : public std::exception {
-};
-
 template<class T>
 class TWavPcmReader : public IPCMReader<T> {
 public:
-    typedef std::function<void(TPCMBuffer<T>& data, const uint32_t size)> TLambda;
+    typedef std::function<bool(TPCMBuffer<T>& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmReader(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Read(TPCMBuffer<T>& data , const uint32_t size) const override {
-        Lambda(data, size);
+    bool Read(TPCMBuffer<T>& data , const uint32_t size) const override {
+        return Lambda(data, size);
     }
 };
 
@@ -93,17 +90,19 @@ typedef std::unique_ptr<TWav> TWavPtr;
 
 template<class T>
 IPCMReader<T>* TWav::GetPCMReader() const {
-    return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
+    return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) -> bool {
         if (data.Channels() != Impl->GetChannelsNum())
             throw TWrongReadBuffer(); 
 
         size_t read;
         if ((read = Impl->Read(data, size)) != size) {
             if (!read)
-                throw TNoDataToRead();
+                return false;
 
             data.Zero(read, size - read);
         }
+
+        return true;
     });
 }
 

@@ -45,10 +45,11 @@ static const TAt3PGhaData __attribute__ ((noinline)) GenAndRunGha(vector<TTestPa
         }
     }
 
-    auto processor = MakeGhaProcessor0(buf1.data(), buf2.empty() ? nullptr : buf2.data());
+    auto processor = MakeGhaProcessor0(!p2.empty());
+    const float* b1 = buf1.data();
+    const float* b2 = buf2.empty() ? nullptr : buf2.data();
 
-
-    return *(processor->DoAnalize());
+    return *(processor->DoAnalize(b1, b2));
 }
 
 static class TDumper {

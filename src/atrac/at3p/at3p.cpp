@@ -23,6 +23,7 @@
 #include "at3p_bitstream.h"
 #include "at3p_gha.h"
 
+#include <cassert>
 #include <vector>
 
 using std::vector;
@@ -34,10 +35,10 @@ public:
     TImpl(ICompressedOutput* out, int channels)
         : BitStream(out, 2048)
         , ChannelCtx(channels)
-        , GhaProcessor(MakeGhaProcessor0(ChannelCtx[0].SubbandsBuf, channels == 2 ? ChannelCtx[1].SubbandsBuf : nullptr))
+        , GhaProcessor(MakeGhaProcessor0(channels == 2))
     {}
 
-    void EncodeFrame(const TFloat* data, int channels);
+    TPCMEngine<float>::EProcessResult EncodeFrame(const TFloat* data, int channels);
 private:
     struct TChannelCtx {
         TChannelCtx()
@@ -49,7 +50,11 @@ private:
         }
 
         at3plus_pqf_a_ctx_t PqfCtx;
-        TFloat SubbandsBuf[TAt3PEnc::NumSamples];
+
+        TFloat* NextBuf = Buf1;
+        TFloat* CurBuf = nullptr;
+        TFloat Buf1[TAt3PEnc::NumSamples];
+        TFloat Buf2[TAt3PEnc::NumSamples];
     };
 
     TAt3PBitStream BitStream;
@@ -57,21 +62,44 @@ private:
     std::unique_ptr<IGhaProcessor> GhaProcessor;
 };
 
-void TAt3PEnc::TImpl::
+TPCMEngine<float>::EProcessResult TAt3PEnc::TImpl::
 EncodeFrame(const TFloat* data, int channels)
 {
 
+    int needMore = 0;
     for (int ch = 0; ch < channels; ch++) {
         float src[TAt3PEnc::NumSamples];
         for (size_t i = 0; i < NumSamples; ++i) {
             src[i] = data[i * channels  + ch];
         }
 
-        at3plus_pqf_do_analyse(ChannelCtx[ch].PqfCtx, src, ChannelCtx[ch].SubbandsBuf);
+        at3plus_pqf_do_analyse(ChannelCtx[ch].PqfCtx, src, ChannelCtx[ch].NextBuf);
+        if (ChannelCtx[ch].CurBuf == nullptr) {
+            assert(ChannelCtx[ch].NextBuf == ChannelCtx[ch].Buf1);
+            ChannelCtx[ch].CurBuf = ChannelCtx[ch].Buf2;
+            std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
+            needMore++;
+        }
     }
 
-    auto tonalBlock = GhaProcessor->DoAnalize();
+    if (needMore == channels) {
+        return TPCMEngine<TFloat>::EProcessResult::LOOK_AHEAD;
+    }
+
+    assert(needMore == 0);
+
+    const float* b1 = ChannelCtx[0].CurBuf;
+    const float* b2 = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
+
+    auto tonalBlock = GhaProcessor->DoAnalize(b1, b2);
+
     BitStream.WriteFrame(channels, tonalBlock);
+
+    for (int ch = 0; ch < channels; ch++) {
+        std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
+    }
+
+    return TPCMEngine<TFloat>::EProcessResult::PROCESSED;
 }
 
 TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels)
@@ -84,7 +112,7 @@ TPCMEngine<TFloat>::TProcessLambda TAt3PEnc::GetLambda() {
     Impl.reset(new TImpl(Out.get(), Channels));
 
     return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta&) {
-        Impl->EncodeFrame(data, Channels);
+        return Impl->EncodeFrame(data, Channels);
     };
 }
 

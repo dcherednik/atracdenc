@@ -79,11 +79,10 @@ class TGhaProcessor : public IGhaProcessor {
     };
 
 public:
-    TGhaProcessor(float* b1, float* b2)
-        : B1(b1)
-        , B2(b2)
-        , LibGhaCtx(gha_create_ctx(128))
+    TGhaProcessor(bool stereo)
+        : LibGhaCtx(gha_create_ctx(128))
         , AmpSfTab(CreateAmpSfTab())
+        , Stereo(stereo)
     {
         FillSubbandAth(&SubbandAth[0]);
     }
@@ -93,7 +92,7 @@ public:
         gha_free_ctx(LibGhaCtx);
     }
 
-    const TAt3PGhaData* DoAnalize() override;
+    const TAt3PGhaData* DoAnalize(const float* b1, const float* b2) override;
 private:
     static void FillSubbandAth(float* out) {
         const auto ath = CalcATH(16 * 1024, 44100);
@@ -125,25 +124,20 @@ private:
     pair<uint32_t, uint32_t> FindPos(const float* src, const float* analized, float magn, uint32_t freqIdx) const;
     void FillResultBuf(const vector<TChannelData>& data);
 
-    bool IsStereo() const {
-        return (bool)B2;
-    }
-
-    float* const B1;
-    float* const B2;
     gha_ctx_t LibGhaCtx;
     const TAmpSfTab AmpSfTab;
     float SubbandAth[SUBBANDS];
     TAt3PGhaData ResultBuf;
+    const bool Stereo;
 };
 
-const TAt3PGhaData* TGhaProcessor::DoAnalize()
+const TAt3PGhaData* TGhaProcessor::DoAnalize(const float* b1, const float* b2)
 {
-    vector<TChannelData> data((size_t)IsStereo() + 1);
+    vector<TChannelData> data((size_t)Stereo + 1);
     bool progress[2] = {false};
 
     for (size_t ch = 0; ch < data.size(); ch++) {
-        const float* b = (ch == 0) ? B1 : B2;
+        const float* b = (ch == 0) ? b1 : b2;
         data[ch].SrcBuf = b;
         memcpy(&data[ch].Buf[0], b, sizeof(float) * CHANNEL_BUF_SZ);
     }
@@ -494,9 +488,9 @@ uint32_t TGhaProcessor::AmplitudeToSf(float amp)
 
 } // namespace
 
-std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(float* b1, float* b2)
+std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo)
 {
-    return std::unique_ptr<TGhaProcessor>(new TGhaProcessor(b1, b2));
+    return std::unique_ptr<TGhaProcessor>(new TGhaProcessor(stereo));
 }
 
 } // namespace NAtracDEnc

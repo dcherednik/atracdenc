@@ -157,7 +157,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
                 data[i * srcChannels + channel] = sum[i];
             }
         }
-
+        return TPCMEngine<TFloat>::EProcessResult::PROCESSED;
     };
 }
 
@@ -199,6 +199,8 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
             Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSize);
             bitAlloc[channel]->Write(Scaler.ScaleFrame(specs, blockSize), blockSize);
         }
+
+        return TPCMEngine<TFloat>::EProcessResult::PROCESSED;
     };
 }
 

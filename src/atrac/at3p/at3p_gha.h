@@ -61,10 +61,10 @@ struct TAt3PGhaData {
 class IGhaProcessor {
 public:
     virtual ~IGhaProcessor() {}
-    virtual const TAt3PGhaData* DoAnalize() = 0;
+    virtual const TAt3PGhaData* DoAnalize(const float* b1, const float* b2) = 0;
 };
 
-std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(float* b1, float* b2);
+std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo);
 
 } // namespace NAtracDEnc
 
