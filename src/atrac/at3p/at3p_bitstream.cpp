@@ -143,11 +143,23 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
                 continue;
             }
 
-            //TODO: Add actual Envelope
-            // start point present
-            bs.Write(0, 1);
-            // stop point present
-            bs.Write(0, 1);
+            const auto envelope = tonalBlock->GetEnvelope(ch, i);
+
+            if (envelope.first != TAt3PGhaData::EMPTY_POINT) {
+                // start point present
+                bs.Write(1, 1);
+                bs.Write(envelope.first, 5);
+            } else {
+                bs.Write(0, 1);
+            }
+
+            if (envelope.second != TAt3PGhaData::EMPTY_POINT) {
+                // stop point present
+                bs.Write(1, 1);
+                bs.Write(envelope.second, 5);
+            } else {
+                bs.Write(0, 1);
+            }
         }
 
         // Num waves
@@ -238,7 +250,8 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
     // 2 - Nobody know
     bitStream.Write(channels - 1, 2);
 
-    int num_quant_units =  14;
+    //int num_quant_units =  14;
+    int num_quant_units =  24;
     bitStream.Write(num_quant_units - 1, 5);
 
     for (int ch = 0; ch < channels; ch++) {

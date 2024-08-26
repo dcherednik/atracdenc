@@ -4,7 +4,7 @@ set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_C_STANDARD 11)
 
 #add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
@@ -125,3 +125,10 @@ set(SOURCE_EXE
 add_executable(atracdenc ${SOURCE_EXE})
 target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})
 install(TARGETS atracdenc)
+
+#DEVTOOL
+set(GHASENDTOOL_EXE
+    atrac/at3p/ghasend_tool.cpp
+)
+add_executable(ghasendtool ${GHASENDTOOL_EXE})
+target_link_libraries(ghasendtool pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})

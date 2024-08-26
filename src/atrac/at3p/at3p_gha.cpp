@@ -30,7 +30,6 @@
 #include <map>
 #include <vector>
 
-
 using std::map;
 using std::vector;
 using std::isnan;
@@ -49,14 +48,17 @@ uint32_t GhaFreqToIndex(float f, uint32_t sb)
 
 uint32_t GhaPhaseToIndex(float p)
 {
-    return static_cast<uint32_t>(lrintf(32.0 * (p / (2 * M_PI))) & 31);
+    return static_cast<uint32_t>(lrintf(31.0 * ((p) / (2 * M_PI))) & 31);
 }
 
 class TGhaProcessor : public IGhaProcessor {
     // Number of subbands to process;
     // No need to process all subbands.
-    static const size_t SUBBANDS = 13;
-    static const size_t CHANNEL_BUF_SZ = SUBBANDS * 128;;
+    static constexpr size_t SUBBANDS = 8;
+    static constexpr size_t SAMPLES_PER_SUBBAND = 128;
+    static constexpr size_t LOOK_AHEAD = 32;
+    static constexpr size_t GHA_SUBBAND_BUF_SZ = SAMPLES_PER_SUBBAND + LOOK_AHEAD;
+    static constexpr size_t CHANNEL_BUF_SZ = SUBBANDS * GHA_SUBBAND_BUF_SZ;
 
     using TGhaInfoMap = map<uint32_t, struct gha_info>;
     using TWavesChannel = TAt3PGhaData::TWavesChannel;
@@ -68,6 +70,9 @@ class TGhaProcessor : public IGhaProcessor {
         pair<uint32_t, uint32_t> Envelopes[SUBBANDS] = {{0,0}};
         uint8_t SubbandDone[SUBBANDS] = {0};
         TGhaInfoMap GhaInfos;
+        float MaxToneMagnitude[SUBBANDS] = {0}; // Max magnitude of sine in the band. Used to stop processing when next extracted sine become significant less then max one
+        float LastResuidalEnergy[SUBBANDS] = {0}; // Resuidal energy on the last round for subband. It is the second criteria to stop processing, we expect resuidal becaming less on the each round
+        uint16_t LastAddedFreqIdx[SUBBANDS];
 
         void MarkSubbandDone(size_t sb) {
             SubbandDone[sb] = 16;
@@ -78,13 +83,35 @@ class TGhaProcessor : public IGhaProcessor {
         }
     };
 
+    struct TChannelGhaCbCtx {
+        TChannelGhaCbCtx(TChannelData* data, size_t sb)
+            : Data(data)
+            , Sb(sb)
+        {}
+        TChannelData* Data;
+        size_t Sb;
+        struct {
+            bool Ok;
+        } Result;
+    };
+
 public:
     TGhaProcessor(bool stereo)
         : LibGhaCtx(gha_create_ctx(128))
-        , AmpSfTab(CreateAmpSfTab())
         , Stereo(stereo)
     {
-        FillSubbandAth(&SubbandAth[0]);
+        gha_set_max_magnitude(LibGhaCtx, 32768);
+
+        if (!StaticInited) {
+            FillSubbandAth(&SubbandAth[0]);
+
+            AmpSfTab = CreateAmpSfTab();
+            for (int i = 0; i < 2048; i++) {
+                SineTab[i] = sin(2 * M_PI * i / 2048);
+            }
+
+            StaticInited = true;
+        }
     }
 
     ~TGhaProcessor()
@@ -92,54 +119,154 @@ public:
         gha_free_ctx(LibGhaCtx);
     }
 
-    const TAt3PGhaData* DoAnalize(const float* b1, const float* b2) override;
+    const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2) override;
 private:
-    static void FillSubbandAth(float* out) {
-        const auto ath = CalcATH(16 * 1024, 44100);
-        #pragma GCC nounroll
-        for (size_t sb = 0; sb < SUBBANDS; sb++) {
-            float m = 999.;
-            for (size_t f = sb * 1024, i = 0; i < 1024; f++, i++) {
-                m = fmin(m, ath[f]);
-            }
-            m += 26; //Some gap to not encode too much
-            out[sb] = pow(10, 0.1 * (m + 90)); //adjust to 0db level = 32768, convert to power
-        }
-    }
-
-    static TAmpSfTab CreateAmpSfTab() {
-        TAmpSfTab AmpSfTab;
-        for (int i = 0; i < (int)AmpSfTab.size(); i++) {
-            AmpSfTab[i] = exp2f((i - 3) / 4.0f);
-        }
-        return AmpSfTab;
-    }
+    static void FillSubbandAth(float* out);
+    static TAmpSfTab CreateAmpSfTab();
+    static void CheckResuidalAndApply(float* resuidal, size_t size, void* self) noexcept;
 
     uint32_t FillFolowerRes(const TGhaInfoMap& lGha, const TGhaInfoMap& fGha, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
 
     uint32_t AmplitudeToSf(float amp);
 
     bool DoRound(TChannelData& data, size_t& totalTones) const;
-    bool PsyPreCheck(size_t sb, const struct gha_info& gha) const;
-    pair<uint32_t, uint32_t> FindPos(const float* src, const float* analized, float magn, uint32_t freqIdx) const;
+    bool PsyPreCheck(size_t sb, const struct gha_info& gha, const TChannelData& data) const;
     void FillResultBuf(const vector<TChannelData>& data);
 
     gha_ctx_t LibGhaCtx;
-    const TAmpSfTab AmpSfTab;
-    float SubbandAth[SUBBANDS];
     TAt3PGhaData ResultBuf;
     const bool Stereo;
+
+    static float SubbandAth[SUBBANDS];
+    static float SineTab[2048];
+    static bool StaticInited;
+    static TAmpSfTab AmpSfTab;
 };
 
-const TAt3PGhaData* TGhaProcessor::DoAnalize(const float* b1, const float* b2)
+bool TGhaProcessor::StaticInited = false;
+float TGhaProcessor::SubbandAth[SUBBANDS];
+float TGhaProcessor::SineTab[2048];
+TGhaProcessor::TAmpSfTab TGhaProcessor::AmpSfTab;
+
+void TGhaProcessor::FillSubbandAth(float* out)
+{
+    const auto ath = CalcATH(16 * 1024, 44100);
+    #pragma GCC nounroll
+    for (size_t sb = 0; sb < SUBBANDS; sb++) {
+        float m = 999.;
+        for (size_t f = sb * 1024, i = 0; i < 1024; f++, i++) {
+            m = fmin(m, ath[f]);
+        }
+        //m += 26; //Some gap to not encode too much
+        out[sb] = pow(10, 0.1 * (m + 90)); //adjust to 0db level = 32768, convert to power
+    }
+}
+
+TGhaProcessor::TAmpSfTab TGhaProcessor::CreateAmpSfTab()
+{
+    TAmpSfTab AmpSfTab;
+    for (int i = 0; i < (int)AmpSfTab.size(); i++) {
+        AmpSfTab[i] = exp2f((i - 3) / 4.0f);
+    }
+    return AmpSfTab;
+}
+
+void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d) noexcept
+{
+    TChannelGhaCbCtx* ctx = (TChannelGhaCbCtx*)(d);
+    const float* srcBuf = ctx->Data->SrcBuf + (ctx->Sb * SAMPLES_PER_SUBBAND);
+    //std::cerr << "TGhaProcessor::CheckResuidal " << srcBuf[0] << " " << srcBuf[1] << " " << srcBuf[2] << " " << srcBuf[3] <<  std::endl;
+
+    float resuidalEnergy = 0;
+
+    uint32_t start = 0;
+    uint32_t curStart = 0;
+    uint32_t count = 0;
+    uint32_t len = 0;
+    bool found = false;
+
+    if (size != SAMPLES_PER_SUBBAND)
+        abort();
+
+    for (size_t i = 0; i < SAMPLES_PER_SUBBAND; i += 4) {
+        float energyIn = 0.0;
+        float energyOut = 0.0;
+        for (size_t j = 0; j < 4; j++) {
+            energyIn += srcBuf[i + j] * srcBuf[i + j];
+            energyOut += resuidal[i + j] * resuidal[i + j];
+        }
+
+        energyIn = sqrt(energyIn/4);
+        energyOut = sqrt(energyOut/4);
+        resuidalEnergy += energyOut;
+
+        if (energyIn / energyOut < 1) {
+            count = 0;
+            found = false;
+            curStart = i + 4;
+        } else {
+            count++;
+            if (count > len) {
+                len = count;
+                if (!found) {
+                    start = curStart;
+                    found = true;
+                }
+            }
+        }
+
+        //std::cerr << " " << i << " rms : " << energyIn << " " << energyOut  << "\t\t\t" << ((energyOut < energyIn) ? "+" : "-")  << std::endl;
+    }
+
+    const auto sb = ctx->Sb;
+    // Do not encode too short frame
+    if (len < 4) {
+        ctx->Result.Ok = false;
+        return;
+    }
+
+    const uint32_t end = start + len * 4;
+
+    const float threshold = 1.4; //TODO: tune it
+    if (static_cast<bool>(ctx->Data->LastResuidalEnergy[sb]) == false) {
+        ctx->Data->LastResuidalEnergy[sb] = resuidalEnergy;
+    } else if (ctx->Data->LastResuidalEnergy[sb] < resuidalEnergy * threshold) {
+        ctx->Result.Ok = false;
+        return;
+    } else {
+        ctx->Data->LastResuidalEnergy[sb] = resuidalEnergy;
+    }
+
+    auto& envelope = ctx->Data->Envelopes[sb];
+    envelope.first = start;
+    envelope.second = end;
+
+    ctx->Result.Ok = true;
+
+    float* b = &ctx->Data->Buf[sb * GHA_SUBBAND_BUF_SZ];
+
+    memcpy(b, resuidal, sizeof(float) * SAMPLES_PER_SUBBAND);
+}
+
+const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
 {
     vector<TChannelData> data((size_t)Stereo + 1);
     bool progress[2] = {false};
 
     for (size_t ch = 0; ch < data.size(); ch++) {
-        const float* b = (ch == 0) ? b1 : b2;
-        data[ch].SrcBuf = b;
-        memcpy(&data[ch].Buf[0], b, sizeof(float) * CHANNEL_BUF_SZ);
+        const float* bCur = (ch == 0) ? b1[0] : b2[0];
+        const float* bNext = (ch == 0) ? b1[1] : b2[1];
+        data[ch].SrcBuf = bCur;
+
+        for (size_t sb = 0; sb < SUBBANDS; sb++, bCur += SAMPLES_PER_SUBBAND, bNext += SAMPLES_PER_SUBBAND) {
+            constexpr auto copyCurSz = sizeof(float) * SAMPLES_PER_SUBBAND;
+            constexpr auto copyNextSz = sizeof(float) * LOOK_AHEAD;
+            memcpy(&data[ch].Buf[0] + sb * GHA_SUBBAND_BUF_SZ                      , bCur, copyCurSz);
+            memcpy(&data[ch].Buf[0] + sb * GHA_SUBBAND_BUF_SZ + SAMPLES_PER_SUBBAND, bNext, copyNextSz);
+        }
+        //for (int i = 0; i < SAMPLES_PER_SUBBAND + LOOK_AHEAD; i++) {
+            //std::cerr << i << " " << data[0].Buf[i] << std::endl;
+        //}
     }
 
     size_t totalTones = 0;
@@ -170,182 +297,136 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
             return false;
         }
 
-        float* b = &data.Buf[sb * 128];
+        const float* srcB = data.SrcBuf + (sb * SAMPLES_PER_SUBBAND);
+        {
+            auto cit = data.GhaInfos.lower_bound(sb << 10);
+            vector<gha_info> tmp;
+            for(auto it = cit; it != data.GhaInfos.end() && it->first < (sb + 1) << 10; it++) {
+                tmp.push_back(it->second);
+            }
+            if (tmp.size() > 0) {
+                TChannelGhaCbCtx ctx(&data, sb);
+                int ar = gha_adjust_info(srcB, tmp.data(), tmp.size(), LibGhaCtx, CheckResuidalAndApply, &ctx);
+                if (ar == 0 && ctx.Result.Ok) {
+                    std::sort(tmp.begin(), tmp.end(), [](const gha_info& a, const gha_info& b) {return a.frequency < b.frequency;});
+
+                    bool dupFound = false;
+                    {
+                        auto idx1 = GhaFreqToIndex(tmp[0].frequency, sb);
+                        for (size_t i = 1; i < tmp.size(); i++) {
+                            auto idx2 = GhaFreqToIndex(tmp[i].frequency, sb);
+                            if (idx2 == idx1) {
+                                dupFound = true;
+                                break;
+                            } else {
+                                idx1 = idx2;
+                            }
+                        }
+                    }
+
+                    if (!dupFound) {
+                        auto it = cit;
+                        for (const auto& x : tmp) {
+                            data.MaxToneMagnitude[sb] = std::max(data.MaxToneMagnitude[sb], x.magnitude);
+                            const auto newIndex = GhaFreqToIndex(x.frequency, sb);
+                            //std ::cerr << "after adjust, idx: " << it->first << " -> " << newIndex << " info: "  << it->second.frequency << " -> " << x.frequency << " " << it->second.magnitude << " -> " << x.magnitude << " phase: " << x.phase << std::endl;
+                            if (newIndex != it->first) {
+                                bool skip = newIndex > it->first;
+                                //std::cerr << "erase: " << it->first << "skip: " << skip << std::endl;
+                                data.GhaInfos.insert(it, {newIndex, x});
+                                it = data.GhaInfos.erase(it);
+                                if (skip && it != data.GhaInfos.end()) {
+                                    it++;
+                                }
+                            } else {
+                               //std::cerr << "replace" << std::endl;
+                               it->second = x;
+                               it++;
+                            }
+                        }
+                    } else {
+                        std::cerr << "jackpot! same freq index after adjust call, sb: " << sb << " " << std::endl;
+                        data.GhaInfos.erase(data.LastAddedFreqIdx[sb]);
+                        totalTones--;
+                        data.MarkSubbandDone(sb);
+                        continue;
+                    }
+                } else {
+                    data.GhaInfos.erase(data.LastAddedFreqIdx[sb]);
+                    totalTones--;
+                    data.MarkSubbandDone(sb);
+                    continue;
+                }
+            }
+        }
+
+        float* b = &data.Buf[sb * GHA_SUBBAND_BUF_SZ];
         struct gha_info res;
 
         gha_analyze_one(b, &res, LibGhaCtx);
 
-#if 0
-        {
-            const float* srcB = data.SrcBuf + (sb * 128);
-            auto it = data.GhaInfos.lower_bound(sb << 10);
-            vector<gha_info> tmp;
-            for(; it != data.GhaInfos.end() && it->first < (sb + 1) << 10; it++) {
-                tmp.push_back(it->second);
-            }
-            if (tmp.size() > 1) {
-                for (const auto& x : tmp) {
-                    std::cerr << "to adjust: " << x.frequency << " " << x.magnitude << std::endl;
-                }
-                int ar = gha_adjust_info(srcB, tmp.data(), tmp.size(), LibGhaCtx);
-                for (const auto& x : tmp) {
-                    std::cerr << "after adjust: " << x.frequency << " " << x.magnitude << " ar: " << ar << std::endl;
-                }
-
-            }
-        }
-#endif
         auto freqIndex = GhaFreqToIndex(res.frequency, sb);
         //std::cerr << "sb: " << sb << " findex: " << freqIndex << " magn " << res.magnitude <<  std::endl;
-        if (PsyPreCheck(sb, res) == false) {
+        if (PsyPreCheck(sb, res, data) == false) {
             data.MarkSubbandDone(sb);
-            //std::cerr << "PreCheck failed" << std::endl;
         } else {
-            const float* tone = gha_get_analyzed(LibGhaCtx);
-            auto pos = FindPos(b, tone, res.magnitude, freqIndex);
-            if (pos.second == 0) {
-                data.MarkSubbandDone(sb);
+            if (data.SubbandDone[sb] == 0) {
+                bool ins = data.GhaInfos.insert({freqIndex, res}).second;
+                data.LastAddedFreqIdx[sb] = freqIndex;
+                assert(ins);
             } else {
-                auto& envelope = data.Envelopes[sb];
-                // Envelope for whole subband not initialized
-                if (envelope.second == 0) {
-                    assert(data.SubbandDone[sb] == 0);
-                    envelope = pos;
-                    bool ins = data.GhaInfos.insert({freqIndex, res}).second;
-                    assert(ins);
-                } else {
-                    //TODO:
-                    // Nth sine for subband was out of existed envelope. This case requires more
-                    // complicated analisys - just skip it for a while
-                    if ((pos.first < envelope.first && pos.second <= envelope.first) ||
-                        (pos.first >= envelope.second)) {
+                const auto it = data.GhaInfos.lower_bound(freqIndex);
+                const size_t minFreqDistanse = 10; // Now we unable to handle tones with close frequency
+                if (it != data.GhaInfos.end()) {
+                    if (it->first == freqIndex) {
                         data.MarkSubbandDone(sb);
                         continue;
                     }
 
-                    const auto it = data.GhaInfos.lower_bound(freqIndex);
-
-                    const size_t minFreqDistanse = 40; // Now we unable to handle tones with close frequency
-                    if (it != data.GhaInfos.end()) {
-                        if (it->first == freqIndex) {
-                            //std::cerr << "already added: " << freqIndex << std::endl;
-                            data.MarkSubbandDone(sb);
-                            continue;
-                        }
-                        //std::cerr << "right: " << it->first << " " << freqIndex << std::endl;
-                        if (it->first - freqIndex < minFreqDistanse) {
-                            data.MarkSubbandDone(sb);
-                            continue;
-                        }
+                    if (it->first - freqIndex < minFreqDistanse) {
+                        data.MarkSubbandDone(sb);
+                        continue;
                     }
-                    if (it != data.GhaInfos.begin()) {
-                        auto prev = it;
-                        prev--;
-                        //std::cerr << "left: " << prev->first << " " << freqIndex << std::endl;
-                        if (freqIndex - prev->first < minFreqDistanse) {
-                            data.MarkSubbandDone(sb);
-                            continue;
-                        }
+                }
+                if (it != data.GhaInfos.begin()) {
+                    auto prev = it;
+                    prev--;
+                    if (freqIndex - prev->first < minFreqDistanse) {
+                        data.MarkSubbandDone(sb);
+                        continue;
                     }
-                    data.GhaInfos.insert(it, {freqIndex, res});
-                    envelope.first = max(envelope.first, pos.first);
-                    envelope.second = min(envelope.second, pos.second);
                 }
-                // Here we have updated envelope, we are ready to add extracted tone
-
-                for (size_t j = envelope.first; j < envelope.second; j++) {
-                    b[j] -= tone[j] * res.magnitude;
-                }
-
-                data.SubbandDone[sb]++;
-                totalTones++;
-                progress = true;
-
-                //std::cerr << "envelop " << envelope.first << " " << envelope.second << std::endl;
+                data.GhaInfos.insert(it, {freqIndex, res});
+                data.LastAddedFreqIdx[sb] = freqIndex;
             }
+
+            data.SubbandDone[sb]++;
+            totalTones++;
+            progress = true;
         }
 
     }
     return progress;
 }
 
-bool TGhaProcessor::PsyPreCheck(size_t sb, const struct gha_info& gha) const
+bool TGhaProcessor::PsyPreCheck(size_t sb, const struct gha_info& gha, const TChannelData& data) const
 {
     if (isnan(gha.magnitude)) {
         return false;
     }
 
-    //std::cerr << "sb: " << sb << " " << gha.magnitude << " ath: " << SubbandAth[sb] << std::endl;
+    //std::cerr << "sb: " << sb << " " << gha.magnitude << " ath: " << SubbandAth[sb] << " max: " << data.MaxToneMagnitude[sb] << std::endl;
     // TODO: improve it
     // Just to start. Actualy we need to consider spectral leakage during MDCT
     if ((gha.magnitude * gha.magnitude) > SubbandAth[sb]) {
-        return true;
-    } else {
-        return false;
-    }
-    return true;
-}
-
-pair<uint32_t, uint32_t> TGhaProcessor::FindPos(const float* src, const float* tone, float magn, uint32_t freqIdx) const
-{
-    freqIdx &= 1023; // clear subband part
-    size_t windowSz = 64;
-    // TODO: place to make experiments
-    // we should compare rms on some window. Optimal window sile depends on frequency so right now
-    // here just some heuristic to match window size to freq index
-
-    // Ideas:
-    // - generate FIR filter for each frequncy index and use it fo filter source signal before compare level
-    // - may be just perform search all sinusoid components, run N dimension GHA optimization, and then find positions
-    if (freqIdx > 256) {
-        windowSz = 8;
-    } else if (freqIdx > 128) {
-        windowSz = 16;
-    } else if (freqIdx > 64) {
-        windowSz = 32;
-    } else {
-        windowSz = 64;
-    }
-
-    uint32_t start = 0;
-    uint32_t curStart = 0;
-    uint32_t count = 0;
-    uint32_t len = 0;
-    bool found = false;
-
-    for (uint32_t i = 0; i < 128; i += windowSz) {
-        float rmsIn = 0.0;
-        float rmsOut = 0.0;
-        for (size_t j = 0; j < windowSz; j++) {
-            rmsIn += src[i + j] * src[i + j];
-            float r = src[i + j] - tone[i + j] * magn;
-            rmsOut += r * r;
-        }
-        rmsIn /= windowSz;
-        rmsOut /= windowSz;
-        rmsIn = sqrt(rmsIn);
-        rmsOut = sqrt(rmsOut);
-
-        //std::cerr << i << " rms : " << rmsIn << " " << rmsOut  << "\t\t\t" << ((rmsOut < rmsIn) ? "+" : "-")  << std::endl;
-        if (rmsIn / rmsOut < 1) {
-            count = 0;
-            found = false;
-            curStart = i;
-        } else {
-            count++;
-            if (count > len) {
-                len = count;
-                if (!found) {
-                    start = curStart;
-                    found = true;
-                }
-            }
+        // Stop processing for sb if next extracted tone 23db less then maximal one
+        // TODO: tune
+        if (gha.magnitude > data.MaxToneMagnitude[sb] / 10) {
+            return true;
         }
     }
 
-    auto end = start + len * windowSz;
-
-    return {start, end};
+    return false;
 }
 
 void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
@@ -373,6 +454,11 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 
     bool leader = usedContiguousSb[1] > usedContiguousSb[0];
 
+    std::vector<TWavesChannel> history;
+    history.reserve(data.size());
+
+    history.push_back(ResultBuf.Waves[0]);
+
     ResultBuf.SecondIsLeader = leader;
     ResultBuf.NumToneBands = usedContiguousSb[leader];
 
@@ -380,6 +466,9 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
     TGhaInfoMap::const_iterator folowerIt;
     if (data.size() == 2) {
         TWavesChannel& fWaves = ResultBuf.Waves[1];
+
+        history.push_back(fWaves);
+
         fWaves.WaveParams.clear();
         fWaves.WaveSbInfos.clear();
         // Yes, see bitstream code
@@ -394,10 +483,13 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
     waves.WaveSbInfos.clear();
     waves.WaveSbInfos.resize(usedContiguousSb[leader]);
     auto it = ghaInfos.begin();
-    uint32_t nextSb = 0;
+    uint32_t prevSb = 0;
     uint32_t index = 0;
 
-    uint32_t nextFolowerSb = 1;
+    if (usedContiguousSb[leader] == 0) {
+        return;
+    }
+
     while (it != ghaInfos.end()) {
         const auto sb = ((it->first) >> 10);
         if (sb >= usedContiguousSb[leader]) {
@@ -409,26 +501,31 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
         const auto ampSf = AmplitudeToSf(it->second.magnitude);
 
         waves.WaveSbInfos[sb].WaveNums++;
-        if (sb != nextSb) {
-            // cur subband done
+        if (sb != prevSb) {
+            waves.WaveSbInfos[prevSb].Envelope.first = TAt3PGhaData::EMPTY_POINT;
+            waves.WaveSbInfos[prevSb].Envelope.second = TAt3PGhaData::EMPTY_POINT;
+
             // update index sb -> wave position index
             waves.WaveSbInfos[sb].WaveIndex = index;
 
             // process folower if present
             if (data.size() == 2) {
-                nextFolowerSb = FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, nextSb);
+                FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, prevSb);
                 leaderStartIt = it;
             }
 
-            nextSb = sb;
+            prevSb = sb;
         }
         waves.WaveParams.push_back(TAt3PGhaData::TWaveParam{freqIndex, ampSf, 1, phaseIndex});
         it++;
         index++;
     }
 
-    if (data.size() == 2 && nextFolowerSb <= usedContiguousSb[leader]) {
-        FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, nextSb);
+    waves.WaveSbInfos[prevSb].Envelope.first = TAt3PGhaData::EMPTY_POINT;
+    waves.WaveSbInfos[prevSb].Envelope.second = TAt3PGhaData::EMPTY_POINT;
+
+    if (data.size() == 2) {
+        FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, prevSb);
     }
 }
 

@@ -27,6 +27,7 @@ static_assert(sizeof(TFloat) == sizeof(float), "TFloat must be float32");
 namespace NAtracDEnc {
 
 struct TAt3PGhaData {
+    static constexpr uint32_t EMPTY_POINT = static_cast<uint32_t>(-1);
     struct TWaveParam {
         uint32_t FreqIndex;
         uint32_t AmpSf;
@@ -36,6 +37,7 @@ struct TAt3PGhaData {
     struct TWaveSbInfo {
         size_t WaveIndex;
         size_t WaveNums;
+        std::pair<uint32_t, uint32_t> Envelope = {EMPTY_POINT, EMPTY_POINT};
     };
     struct TWavesChannel {
         std::vector<TWaveSbInfo> WaveSbInfos;
@@ -52,6 +54,10 @@ struct TAt3PGhaData {
         return Waves[ch].WaveSbInfos.at(sb).WaveNums;
     }
 
+    std::pair<uint32_t, uint32_t> GetEnvelope(size_t ch, size_t sb) const {
+        return Waves[ch].WaveSbInfos.at(sb).Envelope;
+    }
+
     std::pair<const TWaveParam*, size_t> GetWaves(size_t ch, size_t sb) const {
         const auto& sbInfo = Waves[ch].WaveSbInfos.at(sb);
         return { &Waves[ch].WaveParams[sbInfo.WaveIndex], sbInfo.WaveNums };
@@ -60,8 +66,9 @@ struct TAt3PGhaData {
 
 class IGhaProcessor {
 public:
+    using TBufPtr = std::array<const float*, 2>;
     virtual ~IGhaProcessor() {}
-    virtual const TAt3PGhaData* DoAnalize(const float* b1, const float* b2) = 0;
+    virtual const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2) = 0;
 };
 
 std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo);

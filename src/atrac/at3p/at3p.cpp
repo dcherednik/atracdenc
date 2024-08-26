@@ -88,10 +88,13 @@ EncodeFrame(const TFloat* data, int channels)
 
     assert(needMore == 0);
 
-    const float* b1 = ChannelCtx[0].CurBuf;
-    const float* b2 = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
+    const float* b1Cur = ChannelCtx[0].CurBuf;
+    const float* b1Next = ChannelCtx[0].NextBuf;
+    const float* b2Cur = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
+    const float* b2Next = (channels == 2) ? ChannelCtx[1].NextBuf : nullptr;
 
-    auto tonalBlock = GhaProcessor->DoAnalize(b1, b2);
+
+    auto tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next});
 
     BitStream.WriteFrame(channels, tonalBlock);
 
