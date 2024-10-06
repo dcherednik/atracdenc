@@ -59,16 +59,14 @@ class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster
                                              const TFloat spread, const TFloat shift, const TBlockSize& blockSize);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
+    static std::vector<TFloat> ATHLong;
+
     uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
     uint32_t CheckBfuUsage(bool* changed, uint32_t curBfuId, const std::vector<uint32_t>& bitsPerEachBlock);
 public:
-    explicit TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
-        : TAtrac1BitStreamWriter(container)
-        , BfuIdxConst(bfuIdxConst)
-        , FastBfuNumSearch(fastBfuNumSearch)
-    {}
+    TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch);
     ~TAtrac1SimpleBitAlloc() {};
-     uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
+    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
 };
 
 } //namespace NAtrac1

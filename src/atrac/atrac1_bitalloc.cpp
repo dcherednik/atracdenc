@@ -98,6 +98,30 @@ uint32_t TBitsBooster::ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint3
     return surplus;
 }
 
+std::vector<TFloat> TAtrac1SimpleBitAlloc::ATHLong;
+
+TAtrac1SimpleBitAlloc::TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
+    : TAtrac1BitStreamWriter(container)
+    , BfuIdxConst(bfuIdxConst)
+    , FastBfuNumSearch(fastBfuNumSearch)
+{
+    if (ATHLong.size()) {
+        return;
+    }
+    ATHLong.reserve(MaxBfus);
+    auto ATHSpec = CalcATH(512, 44100);
+    for (size_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
+        for (size_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {
+           const size_t specNumStart =  this->SpecsStartLong[blockNum];
+           float x = 999;
+           for (size_t line = specNumStart; line < specNumStart + this->SpecsPerBlock[blockNum]; line++) {
+                x = fmin(x, ATHSpec[line]);
+           }
+           x = pow(10, 0.1 * x);
+           ATHLong.push_back(x);
+        }
+    }
+}
 
 vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                                            const uint32_t bfuNum,
@@ -106,17 +130,22 @@ vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TSc
                                                            const TBlockSize& blockSize) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
-        const uint32_t fix = blockSize.LogCount[BfuToBand(i)] ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
-        int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
-        if (tmp > 16) {
-            bitsPerEachBlock[i] = 16;
-        } else if (tmp < 2) {
+        bool shortBlock = blockSize.LogCount[BfuToBand(i)];
+        const uint32_t fix = shortBlock ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
+        if (!shortBlock && scaledBlocks[i].MaxEnergy < ATHLong[i]) {
             bitsPerEachBlock[i] = 0;
         } else {
-            bitsPerEachBlock[i] = tmp;
+            int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
+            if (tmp > 16) {
+                bitsPerEachBlock[i] = 16;
+            } else if (tmp < 2) {
+                bitsPerEachBlock[i] = 0;
+            } else {
+                bitsPerEachBlock[i] = tmp;
+            }
         }
     }
-    return bitsPerEachBlock;	
+    return bitsPerEachBlock;
 }
 
 uint32_t TAtrac1SimpleBitAlloc::GetMaxUsedBfuId(const vector<uint32_t>& bitsPerEachBlock) {

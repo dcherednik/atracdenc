@@ -52,14 +52,18 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
     const TFloat scaleFactor = scaleIter->first;
     const uint8_t scaleFactorIndex = scaleIter->second;
     TScaledBlock res(scaleFactorIndex);
+    TFloat maxEnergy = 0.0;
     for (uint16_t i = 0; i < len; ++i) {
         TFloat scaledValue = in[i] / scaleFactor;
+        TFloat energy = in[i] * in[i];
+        maxEnergy = std::max(maxEnergy, energy);
         if (abs(scaledValue) >= 1.0) {
             cerr << "got "<< scaledValue << " it is wrong scalling" << endl;
             scaledValue = (scaledValue > 0) ? 0.99999 : -0.99999;
         }
         res.Values.push_back(scaledValue);
-	}
+    }
+    res.MaxEnergy = maxEnergy;
     return res;
 }
 
