@@ -66,6 +66,8 @@ class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public vir
 
     Atrac1AnalysisFilterBank<TFloat> AnalysisFilterBank[2];
 
+    const std::vector<float> LoudnessCurve;
+
     class TTransientDetectors {
         std::vector<TTransientDetector> transientDetectorLow;
         std::vector<TTransientDetector> transientDetectorMid;
@@ -94,8 +96,10 @@ class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public vir
         }
     };
     TAtrac1Encoder::TTransientDetectors TransientDetectors;
- 
+
     TScaler<TAtrac1Data> Scaler;
+    static constexpr float LoudFactor = 0.006;
+    float Loudness = LoudFactor;
 
 public:
     TAtrac1Encoder(TCompressedOutputPtr&& aea, NAtrac1::TAtrac1EncodeSettings&& settings);

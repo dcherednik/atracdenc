@@ -135,4 +135,40 @@ vector<float> CalcATH(int len, int sampleRate)
     return res;
 }
 
+float TrackLoudness(float prevLoud, const TFloat* e0, const TFloat* e1, const float* weight, size_t sz)
+{
+    float s = 0;
+    if (e1 != nullptr) {
+        for (size_t i = 0; i < sz; i++) {
+            s += (e0[i] + e1[i]) * weight[i];
+        }
+
+        s *= 0.5;
+
+    } else {
+        for (size_t i = 0; i < sz; i++) {
+            s += e0[i] * weight[i];
+        }
+    }
+
+    return 0.98 * prevLoud + 0.02 * s;
+}
+
+vector<float> CreateLoudnessCurve(size_t sz)
+{
+    std::vector<float> res;
+    res.resize(sz);
+
+    for (size_t i = 0; i < sz; i++) {
+        float f = (float)(i + 3) * 0.5 * 44100 / (float)sz;
+        float t = std::log10(f) - 3.5;
+        t = -10 * t * t + 3 - f / 3000;
+        t = std::pow(10, (0.1 * t));
+        //std::cerr << i << "  => " << f << "  "  << t <<std::endl;
+        res[i] = t;
+    }
+
+    return res;
+}
+
 } // namespace NAtracDEnc

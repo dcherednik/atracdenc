@@ -127,12 +127,15 @@ vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TSc
                                                            const uint32_t bfuNum,
                                                            const TFloat spread,
                                                            const TFloat shift,
-                                                           const TBlockSize& blockSize) {
+                                                           const TBlockSize& blockSize,
+                                                           const float loudness) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         bool shortBlock = blockSize.LogCount[BfuToBand(i)];
         const uint32_t fix = shortBlock ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
-        if (!shortBlock && scaledBlocks[i].MaxEnergy < ATHLong[i]) {
+        float ath = ATHLong[i] * loudness;
+        //std::cerr << "block: " << i << " Loudness: " << loudness << " " << 10 * log10(scaledBlocks[i].MaxEnergy / ath) << std::endl;
+        if (!shortBlock && scaledBlocks[i].MaxEnergy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
             int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
@@ -183,7 +186,7 @@ uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed,
     return curBfuId;
 }
 
-uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) {
+uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) {
     uint32_t bfuIdx = BfuIdxConst ? BfuIdxConst - 1 : 7;
     bool autoBfu = !BfuIdxConst;
     TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
@@ -204,7 +207,7 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
         bool bfuNumChanged = false;
         for (;;) {
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, BfuAmountTab[bfuIdx],
-                                                                  spread, shift, blockSize);
+                                                                  spread, shift, blockSize, loudness);
             uint32_t bitsUsed = 0;
             for (size_t i = 0; i < tmpAlloc.size(); i++) {
                 bitsUsed += SpecsPerBlock[i] * tmpAlloc[i];

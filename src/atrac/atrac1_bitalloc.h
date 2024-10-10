@@ -33,7 +33,7 @@ class IAtrac1BitAlloc {
 public:
     IAtrac1BitAlloc() {};
     virtual ~IAtrac1BitAlloc() {};
-    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) = 0;
+    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) = 0;
 };
 
 class TBitsBooster : public virtual TAtrac1Data {
@@ -56,7 +56,8 @@ public:
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
-                                             const TFloat spread, const TFloat shift, const TBlockSize& blockSize);
+                                             const TFloat spread, const TFloat shift, const TBlockSize& blockSize,
+                                             const float loudness);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
     static std::vector<TFloat> ATHLong;
@@ -66,7 +67,7 @@ class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster
 public:
     TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch);
     ~TAtrac1SimpleBitAlloc() {};
-    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
+    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) override;
 };
 
 } //namespace NAtrac1

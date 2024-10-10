@@ -23,5 +23,7 @@ namespace NAtracDEnc {
 
 TFloat AnalizeScaleFactorSpread(const std::vector<TScaledBlock>& scaledBlocks);
 std::vector<float> CalcATH(int len, int sampleRate);
+float TrackLoudness(float prevLoud, const TFloat* e0, const TFloat* e1, const float* weight, size_t sz);
+std::vector<float> CreateLoudnessCurve(size_t sz);
 
 } //namespace NAtracDEnc

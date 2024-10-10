@@ -77,7 +77,7 @@ public:
     TBlockSize()
         : LogCount({{0, 0, 0, 0}})
     {}
-    const std::array<int, 4> LogCount;
+    std::array<int, 4> LogCount;
 };
 
 } //namespace NAtracDEnc

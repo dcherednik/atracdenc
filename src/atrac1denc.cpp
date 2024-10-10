@@ -24,6 +24,7 @@
 #include "atrac/atrac1_dequantiser.h"
 #include "atrac/atrac1_qmf.h"
 #include "atrac/atrac1_bitalloc.h"
+#include "atrac/atrac_psy_common.h"
 #include "util.h"
 
 namespace NAtracDEnc {
@@ -35,6 +36,7 @@ using std::vector;
 TAtrac1Encoder::TAtrac1Encoder(TCompressedOutputPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
+    , LoudnessCurve(CreateLoudnessCurve(NumSamples))
 {
 }
 
@@ -164,22 +166,38 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
 
 TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
-    vector<IAtrac1BitAlloc*> bitAlloc;
-    for (size_t i = 0; i < srcChannels; i++) {
-        bitAlloc.push_back(new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
+    vector<IAtrac1BitAlloc*> bitAlloc(srcChannels);
+
+    for (auto& x : bitAlloc) {
+        x = new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch());
     }
 
-    return [this, srcChannels, bitAlloc](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
+    struct TChannelData {
+        TChannelData()
+            : Specs(NumSamples)
+            , Energy(NumSamples)
+        {}
+
+        vector<TFloat> Specs;
+        vector<TFloat> Energy;
+    };
+
+    using TData = vector<TChannelData>;
+    auto buf = std::make_shared<TData>(srcChannels);
+
+    return [this, srcChannels, bitAlloc, buf](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
+        TBlockSize blockSz[2];
+
+        uint32_t windowMasks[2] = {0};
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             TFloat src[NumSamples];
-            vector<TFloat> specs(512);
             for (size_t i = 0; i < NumSamples; ++i) {
                 src[i] = data[i * srcChannels + channel];
             }
 
             AnalysisFilterBank[channel].Analysis(&src[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
 
-            uint32_t windowMask = 0;
+            uint32_t& windowMask = windowMasks[channel];
             if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
 
@@ -194,10 +212,28 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
                 //no transient detection, use given mask
                 windowMask = Settings.GetWindowMask();
             }
-            const TBlockSize blockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
 
-            Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSize);
-            bitAlloc[channel]->Write(Scaler.ScaleFrame(specs, blockSize), blockSize);
+            blockSz[channel]  = TBlockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
+
+            auto& specs = (*buf)[channel].Specs;
+
+            Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSz[channel]);
+
+            auto& erg = (*buf)[channel].Energy;
+
+            for (size_t i = 0; i < specs.size(); i++) {
+                erg[i] = specs[i] * specs[i];
+            }
+        }
+
+        if (srcChannels == 2 && windowMasks[0] == 0 && windowMasks[1] == 0) {
+            Loudness = TrackLoudness(Loudness, (*buf)[0].Energy.data(), (*buf)[1].Energy.data(), LoudnessCurve.data(), NumSamples);
+        } else if (windowMasks[0] == 0) {
+            Loudness = TrackLoudness(Loudness, (*buf)[0].Energy.data(), nullptr, LoudnessCurve.data(), NumSamples);
+        }
+
+        for (uint32_t channel = 0; channel < srcChannels; channel++) {
+            bitAlloc[channel]->Write(Scaler.ScaleFrame((*buf)[channel].Specs, blockSz[channel]), blockSz[channel], Loudness / LoudFactor);
         }
     };
 }
