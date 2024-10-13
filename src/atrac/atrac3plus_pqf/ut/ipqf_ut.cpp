@@ -133,6 +133,8 @@ TEST(pqf, DC_Short) {
     for (int i = 368; i < 2048; i++) {
         EXPECT_NEAR(tmp[i], x[i], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, DC_Long) {
@@ -160,6 +162,8 @@ TEST(pqf, DC_Long) {
     for (int i = 368; i < 4096; i++) {
         EXPECT_NEAR(tmp[i], x[i-368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, Seq_Short) {
@@ -187,6 +191,8 @@ TEST(pqf, Seq_Short) {
     for (int i = 368; i < 2048; i++) {
         EXPECT_NEAR(tmp[i], x[i - 368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, Seq_Long) {
@@ -213,6 +219,8 @@ TEST(pqf, Seq_Long) {
     for (int i = 368; i < 4096; i++) {
         EXPECT_NEAR(tmp[i], x[i-368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, Chirp_Short) {
@@ -238,6 +246,8 @@ TEST(pqf, Chirp_Short) {
     for (int i = 368; i < 2048; i++) {
         EXPECT_NEAR(tmp[i], x[i - 368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, Chirp_Long) {
@@ -264,6 +274,8 @@ TEST(pqf, Chirp_Long) {
     for (int i = 368; i < 4096; i++) {
         EXPECT_NEAR(tmp[i], x[i-368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 TEST(pqf, Noise_Long) {
@@ -290,6 +302,8 @@ TEST(pqf, Noise_Long) {
     for (int i = 368; i < 4096; i++) {
         EXPECT_NEAR(tmp[i], x[i-368], err);
     }
+
+    at3plus_pqf_free_a_ctx(actx);
 }
 
 
