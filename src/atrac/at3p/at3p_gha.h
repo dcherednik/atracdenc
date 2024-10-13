@@ -28,6 +28,7 @@ namespace NAtracDEnc {
 
 struct TAt3PGhaData {
     static constexpr uint32_t EMPTY_POINT = static_cast<uint32_t>(-1);
+    static constexpr uint32_t INIT = static_cast<uint32_t>(-2);
     struct TWaveParam {
         uint32_t FreqIndex;
         uint32_t AmpSf;

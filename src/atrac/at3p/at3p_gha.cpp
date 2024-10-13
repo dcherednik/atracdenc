@@ -51,12 +51,17 @@ uint32_t GhaPhaseToIndex(float p)
     return static_cast<uint32_t>(lrintf(31.0 * ((p) / (2 * M_PI))) & 31);
 }
 
+uint32_t PhaseIndexToOffset(uint32_t ind)
+{
+    return (ind & 0x1F) << 6;
+}
+
 class TGhaProcessor : public IGhaProcessor {
     // Number of subbands to process;
     // No need to process all subbands.
     static constexpr size_t SUBBANDS = 8;
     static constexpr size_t SAMPLES_PER_SUBBAND = 128;
-    static constexpr size_t LOOK_AHEAD = 32;
+    static constexpr size_t LOOK_AHEAD = 64;
     static constexpr size_t GHA_SUBBAND_BUF_SZ = SAMPLES_PER_SUBBAND + LOOK_AHEAD;
     static constexpr size_t CHANNEL_BUF_SZ = SUBBANDS * GHA_SUBBAND_BUF_SZ;
 
@@ -66,8 +71,10 @@ class TGhaProcessor : public IGhaProcessor {
 
     struct TChannelData {
         const float* SrcBuf;
+        const float* SrcBufNext;
         float Buf[CHANNEL_BUF_SZ];
-        pair<uint32_t, uint32_t> Envelopes[SUBBANDS] = {{0,0}};
+        pair<uint32_t, uint32_t> Envelopes[SUBBANDS] = {{TAt3PGhaData::INIT,TAt3PGhaData::INIT}};
+        bool Gapless[SUBBANDS] = {false};
         uint8_t SubbandDone[SUBBANDS] = {0};
         TGhaInfoMap GhaInfos;
         float MaxToneMagnitude[SUBBANDS] = {0}; // Max magnitude of sine in the band. Used to stop processing when next extracted sine become significant less then max one
@@ -124,10 +131,13 @@ private:
     static void FillSubbandAth(float* out);
     static TAmpSfTab CreateAmpSfTab();
     static void CheckResuidalAndApply(float* resuidal, size_t size, void* self) noexcept;
+    static void GenWaves(const TAt3PGhaData::TWaveParam* param, size_t numWaves, size_t reg_offset, float* out, size_t outLimit);
 
-    uint32_t FillFolowerRes(const TGhaInfoMap& lGha, const TGhaInfoMap& fGha, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
+    void AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t history);
+    uint32_t FillFolowerRes(const TGhaInfoMap& lGha, const TChannelData* src, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
 
-    uint32_t AmplitudeToSf(float amp);
+    uint32_t AmplitudeToSf(float amp) const;
+    bool CheckNextFrame(const float* nextSrc, const vector<gha_info>& ghaInfos) const;
 
     bool DoRound(TChannelData& data, size_t& totalTones) const;
     bool PsyPreCheck(size_t sb, const struct gha_info& gha, const TChannelData& data) const;
@@ -135,6 +145,7 @@ private:
 
     gha_ctx_t LibGhaCtx;
     TAt3PGhaData ResultBuf;
+    TAt3PGhaData ResultBufHistory;
     const bool Stereo;
 
     static float SubbandAth[SUBBANDS];
@@ -169,6 +180,22 @@ TGhaProcessor::TAmpSfTab TGhaProcessor::CreateAmpSfTab()
         AmpSfTab[i] = exp2f((i - 3) / 4.0f);
     }
     return AmpSfTab;
+}
+
+void TGhaProcessor::GenWaves(const TAt3PGhaData::TWaveParam* param, size_t numWaves, size_t reg_offset, float* out, size_t outLimit)
+{
+    for (size_t w = 0; w < numWaves; w++, param++) {
+        //std::cerr << "GenWaves : " << w << "  FreqIndex: " <<  param->FreqIndex << " phaseIndex: " << param->PhaseIndex << " ampSf " << param->AmpSf << std::endl;
+        auto amp = AmpSfTab[param->AmpSf];
+        auto inc = param->FreqIndex;
+        auto pos = ((int)PhaseIndexToOffset(param->PhaseIndex) + ((int)reg_offset ^ 128) * inc) & 2047;
+
+        for (size_t i = 0; i < outLimit; i++) {
+            //std::cerr << "inc: " << inc << " pos: " << pos << std::endl;
+            out[i] += SineTab[pos] * amp;
+            pos     = (pos + inc) & 2047;
+        }
+    }
 }
 
 void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d) noexcept
@@ -239,6 +266,12 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
 
     auto& envelope = ctx->Data->Envelopes[sb];
     envelope.first = start;
+
+    if (envelope.second == TAt3PGhaData::EMPTY_POINT && end != SAMPLES_PER_SUBBAND) {
+        ctx->Result.Ok = false;
+        return;
+    }
+
     envelope.second = end;
 
     ctx->Result.Ok = true;
@@ -257,6 +290,7 @@ const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
         const float* bCur = (ch == 0) ? b1[0] : b2[0];
         const float* bNext = (ch == 0) ? b1[1] : b2[1];
         data[ch].SrcBuf = bCur;
+        data[ch].SrcBufNext = bNext;
 
         for (size_t sb = 0; sb < SUBBANDS; sb++, bCur += SAMPLES_PER_SUBBAND, bNext += SAMPLES_PER_SUBBAND) {
             constexpr auto copyCurSz = sizeof(float) * SAMPLES_PER_SUBBAND;
@@ -281,8 +315,43 @@ const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
     }
 
     FillResultBuf(data);
+    ResultBufHistory = ResultBuf;
 
     return &ResultBuf;
+}
+
+bool TGhaProcessor::CheckNextFrame(const float* nextSrc, const vector<gha_info>& ghaInfos) const
+{
+    vector<TAt3PGhaData::TWaveParam> t(ghaInfos.size());
+    for (const auto& x : ghaInfos) {
+        t.emplace_back(TAt3PGhaData::TWaveParam
+            {
+                // TODO: do not do it twice
+                GhaFreqToIndex(x.frequency, 0),
+                AmplitudeToSf(x.magnitude),
+                1,
+                GhaPhaseToIndex(x.phase)
+            }
+        );
+    }
+
+    float buf[LOOK_AHEAD] = {0.0};
+
+    GenWaves(t.data(), t.size(), 0, buf, LOOK_AHEAD);
+
+    float energyBefore = 0.0;
+    float energyAfter = 0.0;
+
+    for (size_t i = 0; i < LOOK_AHEAD; i++) {
+        energyBefore += nextSrc[i] * nextSrc[i];
+        float t = nextSrc[i] - buf[i];
+        energyAfter += t * t;
+        //std::cerr << buf[i] << " === " << nextSrc[i] << std::endl;
+    }
+
+    //std::cerr << "ENERGY: before: " << energyBefore << " after: " << energyAfter << std::endl;
+
+    return energyAfter < energyBefore;
 }
 
 bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
@@ -325,6 +394,21 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
                     }
 
                     if (!dupFound) {
+                        // check is this tone set ok for the next one
+                        if (data.Envelopes[sb].second == SAMPLES_PER_SUBBAND || data.Envelopes[sb].second == TAt3PGhaData::EMPTY_POINT) {
+                            bool cont = CheckNextFrame(data.SrcBufNext + SAMPLES_PER_SUBBAND * sb, tmp);
+
+                            if (data.Gapless[sb] == true && cont == false) {
+                                data.GhaInfos.erase(data.LastAddedFreqIdx[sb]);
+                                totalTones--;
+                                data.MarkSubbandDone(sb);
+                                continue;
+                            } else if (data.Envelopes[sb].second == SAMPLES_PER_SUBBAND && cont == true) {
+                                data.Envelopes[sb].second = TAt3PGhaData::EMPTY_POINT;
+                                data.Gapless[sb] = true;
+                            }
+                        }
+
                         auto it = cit;
                         for (const auto& x : tmp) {
                             data.MaxToneMagnitude[sb] = std::max(data.MaxToneMagnitude[sb], x.magnitude);
@@ -376,7 +460,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
                 assert(ins);
             } else {
                 const auto it = data.GhaInfos.lower_bound(freqIndex);
-                const size_t minFreqDistanse = 10; // Now we unable to handle tones with close frequency
+                const size_t minFreqDistanse = 20; // Now we unable to handle tones with close frequency
                 if (it != data.GhaInfos.end()) {
                     if (it->first == freqIndex) {
                         data.MarkSubbandDone(sb);
@@ -427,6 +511,29 @@ bool TGhaProcessor::PsyPreCheck(size_t sb, const struct gha_info& gha, const TCh
     }
 
     return false;
+}
+
+void TGhaProcessor::AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t history)
+{
+    if (src.first == 0 && history == TAt3PGhaData::EMPTY_POINT) {
+        envelope.first = TAt3PGhaData::EMPTY_POINT;
+    } else {
+        if (src.first == TAt3PGhaData::EMPTY_POINT) {
+            abort(); //impossible right now
+            envelope.first = TAt3PGhaData::EMPTY_POINT;
+        } else {
+            envelope.first = src.first / 4;
+        }
+    }
+    if (src.second == TAt3PGhaData::EMPTY_POINT) {
+        envelope.second = src.second;
+    } else {
+        if (src.second == 0)
+            abort();
+        envelope.second = (src.second - 1) / 4;
+        if (envelope.second >= 32)
+            abort();
+    }
 }
 
 void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
@@ -502,15 +609,18 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 
         waves.WaveSbInfos[sb].WaveNums++;
         if (sb != prevSb) {
-            waves.WaveSbInfos[prevSb].Envelope.first = TAt3PGhaData::EMPTY_POINT;
-            waves.WaveSbInfos[prevSb].Envelope.second = TAt3PGhaData::EMPTY_POINT;
+            uint32_t histStop = TAt3PGhaData::INIT;
+            if (ResultBufHistory.Waves[0].WaveSbInfos.size() > prevSb) {
+                histStop = ResultBufHistory.Waves[0].WaveSbInfos[prevSb].Envelope.second;
+            }
+            AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], histStop);
 
             // update index sb -> wave position index
             waves.WaveSbInfos[sb].WaveIndex = index;
 
             // process folower if present
             if (data.size() == 2) {
-                FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, prevSb);
+                FillFolowerRes(data[leader].GhaInfos, &data[!leader], folowerIt, prevSb);
                 leaderStartIt = it;
             }
 
@@ -521,16 +631,27 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
         index++;
     }
 
-    waves.WaveSbInfos[prevSb].Envelope.first = TAt3PGhaData::EMPTY_POINT;
-    waves.WaveSbInfos[prevSb].Envelope.second = TAt3PGhaData::EMPTY_POINT;
+    uint32_t histStop = (uint32_t)-2;
+    if (ResultBufHistory.Waves[0].WaveSbInfos.size() > prevSb) {
+        histStop = ResultBufHistory.Waves[0].WaveSbInfos[prevSb].Envelope.second;
+    }
+
+    TGhaProcessor::AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], histStop);
 
     if (data.size() == 2) {
-        FillFolowerRes(data[leader].GhaInfos, data[!leader].GhaInfos, folowerIt, prevSb);
+        FillFolowerRes(data[leader].GhaInfos, &data[!leader], folowerIt, prevSb);
     }
 }
 
-uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TGhaInfoMap& fGhaInfos, TGhaInfoMap::const_iterator& it, const uint32_t curSb)
+uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TChannelData* src, TGhaInfoMap::const_iterator& it, const uint32_t curSb)
 {
+    uint32_t histStop = (uint32_t)-2;
+    if (ResultBufHistory.Waves[1].WaveSbInfos.size() > curSb) {
+        histStop = ResultBufHistory.Waves[1].WaveSbInfos[curSb].Envelope.second;
+    }
+
+    const TGhaInfoMap& fGhaInfos = src->GhaInfos;
+
     TWavesChannel& waves = ResultBuf.Waves[1];
 
     uint32_t folowerSbMode = 0; // 0 - no tones, 1 - sharing band, 2 - own tones set
@@ -570,11 +691,12 @@ uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TGhaI
             ResultBuf.ToneSharing[curSb] = false;
             waves.WaveSbInfos[curSb].WaveIndex = waves.WaveParams.size() - added;
             waves.WaveSbInfos[curSb].WaveNums = added;
+            AdjustEnvelope(waves.WaveSbInfos[curSb].Envelope, src->Envelopes[curSb], histStop);
     }
     return nextSb;
 }
 
-uint32_t TGhaProcessor::AmplitudeToSf(float amp)
+uint32_t TGhaProcessor::AmplitudeToSf(float amp) const
 {
     auto it = std::upper_bound(AmpSfTab.begin(), AmpSfTab.end(), amp);
     if (it != AmpSfTab.begin()) {
