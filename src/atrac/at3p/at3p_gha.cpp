@@ -97,9 +97,13 @@ class TGhaProcessor : public IGhaProcessor {
         {}
         TChannelData* Data;
         size_t Sb;
-        struct {
-            bool Ok;
-        } Result;
+
+        enum class EAdjustStatus {
+            Error,
+            Ok,
+            Repeat
+        } AdjustStatus;
+        size_t FrameSz = 0;
     };
 
 public:
@@ -248,17 +252,23 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
     const auto sb = ctx->Sb;
     // Do not encode too short frame
     if (len < 4) {
-        ctx->Result.Ok = false;
+        ctx->AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Error;
         return;
     }
 
     const uint32_t end = start + len * 4;
 
+    if (ctx->AdjustStatus != TChannelGhaCbCtx::EAdjustStatus::Repeat && end != SAMPLES_PER_SUBBAND) {
+        ctx->FrameSz = end;
+        ctx->AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Repeat;
+        return;
+    }
+
     const float threshold = 1.4; //TODO: tune it
     if (static_cast<bool>(ctx->Data->LastResuidalEnergy[sb]) == false) {
         ctx->Data->LastResuidalEnergy[sb] = resuidalEnergy;
     } else if (ctx->Data->LastResuidalEnergy[sb] < resuidalEnergy * threshold) {
-        ctx->Result.Ok = false;
+        ctx->AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Error;
         return;
     } else {
         ctx->Data->LastResuidalEnergy[sb] = resuidalEnergy;
@@ -268,13 +278,13 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
     envelope.first = start;
 
     if (envelope.second == TAt3PGhaData::EMPTY_POINT && end != SAMPLES_PER_SUBBAND) {
-        ctx->Result.Ok = false;
+        ctx->AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Error;
         return;
     }
 
     envelope.second = end;
 
-    ctx->Result.Ok = true;
+    ctx->AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Ok;
 
     float* b = &ctx->Data->Buf[sb * GHA_SUBBAND_BUF_SZ];
 
@@ -375,8 +385,14 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
             }
             if (tmp.size() > 0) {
                 TChannelGhaCbCtx ctx(&data, sb);
-                int ar = gha_adjust_info(srcB, tmp.data(), tmp.size(), LibGhaCtx, CheckResuidalAndApply, &ctx);
-                if (ar == 0 && ctx.Result.Ok) {
+                do {
+                    int ar = gha_adjust_info(srcB, tmp.data(), tmp.size(), LibGhaCtx, CheckResuidalAndApply, &ctx, ctx.FrameSz);
+                    if (ar < 0) {
+                        ctx.AdjustStatus = TChannelGhaCbCtx::EAdjustStatus::Error;
+                    };
+                } while (ctx.AdjustStatus == TChannelGhaCbCtx::EAdjustStatus::Repeat);
+
+                if (ctx.AdjustStatus == TChannelGhaCbCtx::EAdjustStatus::Ok) {
                     std::sort(tmp.begin(), tmp.end(), [](const gha_info& a, const gha_info& b) {return a.frequency < b.frequency;});
 
                     bool dupFound = false;
