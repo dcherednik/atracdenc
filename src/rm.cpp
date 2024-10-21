@@ -62,7 +62,7 @@ constexpr char RA_DESC[] = "Audio Stream";
 static_assert(sizeof(char) == 1, "unexpected char size");
 constexpr size_t MDPR_HEADER_SZ = 42 + sizeof(RA_MIME) + sizeof(RA_DESC) + CODEC_DATA_SZ;
 
-void FillCodecData(char* buf, uint32_t frameSize, uint8_t numChannels, bool jointStereo, uint32_t bitrate) {
+void FillCodecData(char* buf, uint32_t frameSize, size_t numChannels, bool jointStereo, uint32_t bitrate) {
     *reinterpret_cast<uint32_t*>(buf +  0) = swapbyte32_on_le(CODEC_DATA_SZ - 4); // -4 - without size of `size` field
     buf[4] = '.';
     buf[5] = 'r';
@@ -147,7 +147,7 @@ void scramble_data(const char* input, char* out, size_t bytes) {
 
 class TRm : public ICompressedOutput {
 public:
-    TRm(const std::string& filename, const std::string& /*title*/, uint8_t numChannels,
+    TRm(const std::string& filename, const std::string& /*title*/, size_t numChannels,
         uint32_t numFrames, uint32_t frameSize, bool jointStereo)
         : File_(OpenFile(filename))
 	, FrameDuration_((1000.0 * 1024.0 / 44100.0)) // ms
@@ -194,7 +194,7 @@ public:
         return {};
     }
 
-    uint8_t GetChannelNum() const override {
+    size_t GetChannelNum() const override {
 	    return 0;
     }
 
@@ -251,7 +251,7 @@ private:
             throw std::runtime_error("Can't write PROP header");//, errno);
     }
 
-    void WriteMDPR(uint32_t frameSize, uint32_t numFrames, uint8_t numChannels, bool jointStereo) {
+    void WriteMDPR(uint32_t frameSize, uint32_t numFrames, size_t numChannels, bool jointStereo) {
         char buf[MDPR_HEADER_SZ] = {
             'M', 'D', 'P', 'R'};
         *reinterpret_cast<uint32_t*>(buf +  4) = swapbyte32_on_le(MDPR_HEADER_SZ);
@@ -276,7 +276,7 @@ private:
     }
 };
 
-TCompressedOutputPtr CreateRmOutput(const std::string& filename, const std::string& title, uint8_t numChannel,
+TCompressedOutputPtr CreateRmOutput(const std::string& filename, const std::string& title, size_t numChannel,
     uint32_t numFrames, uint32_t framesize, bool jointStereo) {
     return std::unique_ptr<TRm>(new TRm(filename, title, numChannel, numFrames, framesize, jointStereo));
 }

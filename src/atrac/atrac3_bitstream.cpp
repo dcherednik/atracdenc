@@ -345,7 +345,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
 
     uint8_t tcgnCheck = 0;
     //for each group of equal quantiser and len 
-    for (uint8_t i = 0; i < 64; ++i) {
+    for (size_t i = 0; i < 64; ++i) {
         const TTonalComponentsSubGroup& curGroup = groups[i];
         if (curGroup.SubGroupPtr.size() == 0) {
             ASSERT(curGroup.SubGroupMap.size() == 0);
@@ -398,7 +398,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
                 bitStream->Write(i >> 3, 3);
             uint8_t lastPos = subGroupStartPos;
             uint8_t checkPos = 0;
-            for (uint16_t j = 0; j < 16; ++j) {
+            for (size_t j = 0; j < 16; ++j) {
                 if (!(bandFlags.i[j >> 2])) {
                     continue;
                 }

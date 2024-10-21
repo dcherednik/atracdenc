@@ -76,10 +76,10 @@ public:
         E_WRITE
     };
     TWav(const std::string& filename); // reading
-    TWav(const std::string& filename, uint8_t channels, uint16_t sampleRate); //writing
+    TWav(const std::string& filename, size_t channels, size_t sampleRate); //writing
     ~TWav();
-    uint8_t GetChannelNum() const;
-    uint16_t GetSampleRate() const;
+    size_t GetChannelNum() const;
+    size_t GetSampleRate() const;
     uint64_t GetTotalSamples() const;
 
     template<class T>

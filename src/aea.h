@@ -41,4 +41,4 @@ class TAeaFormatError {
 
 TCompressedInputPtr CreateAeaInput(const std::string& filename);
 TCompressedOutputPtr CreateAeaOutput(const std::string& filename, const std::string& title,
-    uint8_t numChannel, uint32_t numFrames);
+    size_t numChannel, uint32_t numFrames);

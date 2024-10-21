@@ -42,7 +42,7 @@ public:
         char* Get() { return Data; }
     };
     virtual std::string GetName() const = 0;
-    virtual uint8_t GetChannelNum() const = 0;
+    virtual size_t GetChannelNum() const = 0;
     virtual ~ICompressedIO() {}
 };
 
