@@ -80,7 +80,7 @@ At3WaveHeader {
 
 class TAt3 : public ICompressedOutput {
 public:
-    TAt3(const std::string &filename, uint8_t numChannels,
+    TAt3(const std::string &filename, size_t numChannels,
         uint32_t numFrames, uint32_t frameSize, bool jointStereo)
         : fp(fopen(filename.c_str(), "wb"))
     {
@@ -146,7 +146,7 @@ public:
         return {};
     }
 
-    uint8_t GetChannelNum() const override {
+    size_t GetChannelNum() const override {
         return 2;
     }
 
@@ -157,7 +157,7 @@ private:
 } //namespace
 
 TCompressedOutputPtr
-CreateAt3Output(const std::string& filename, uint8_t numChannel,
+CreateAt3Output(const std::string& filename, size_t numChannel,
         uint32_t numFrames, uint32_t framesize, bool jointStereo)
 {
     return std::unique_ptr<TAt3>(new TAt3(filename, numChannel, numFrames, framesize, jointStereo));
