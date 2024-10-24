@@ -332,7 +332,8 @@ const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
 
 bool TGhaProcessor::CheckNextFrame(const float* nextSrc, const vector<gha_info>& ghaInfos) const
 {
-    vector<TAt3PGhaData::TWaveParam> t(ghaInfos.size());
+    vector<TAt3PGhaData::TWaveParam> t;
+    t.reserve(ghaInfos.size());
     for (const auto& x : ghaInfos) {
         t.emplace_back(TAt3PGhaData::TWaveParam
             {
