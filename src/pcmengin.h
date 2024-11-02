@@ -50,10 +50,10 @@ class TEndOfRead : public std::exception {
 template <class T>
 class TPCMBuffer {
     std::vector<T> Buf_;
-    uint16_t NumChannels;
+    size_t NumChannels;
 
 public:
-    TPCMBuffer(uint16_t bufSize, uint8_t numChannels)
+    TPCMBuffer(uint16_t bufSize, size_t numChannels)
        : NumChannels(numChannels)
     {
         Buf_.resize((size_t)bufSize * numChannels);
@@ -121,21 +121,21 @@ private:
     TReaderPtr Reader;
     uint64_t Processed = 0;
 public:
-        TPCMEngine(uint16_t bufSize, uint8_t numChannels)
+        TPCMEngine(uint16_t bufSize, size_t numChannels)
            : Buffer(bufSize, numChannels) {
         }
 
-        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TWriterPtr&& writer)
+        TPCMEngine(uint16_t bufSize, size_t numChannels, TWriterPtr&& writer)
             : Buffer(bufSize, numChannels)
             , Writer(std::move(writer)) {
         }
 
-        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TReaderPtr&& reader)
+        TPCMEngine(uint16_t bufSize, size_t numChannels, TReaderPtr&& reader)
             : Buffer(bufSize, numChannels)
             , Reader(std::move(reader)) {
         }
 
-        TPCMEngine(uint16_t bufSize, uint8_t numChannels, TWriterPtr&& writer, TReaderPtr&& reader)
+        TPCMEngine(uint16_t bufSize, size_t numChannels, TWriterPtr&& writer, TReaderPtr&& reader)
             : Buffer(bufSize, numChannels)
             , Writer(std::move(writer))
             , Reader(std::move(reader)) {

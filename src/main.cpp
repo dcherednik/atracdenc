@@ -136,7 +136,7 @@ static void PrepareAtrac1Encoder(const string& inFile,
         CheckInputFormat(wavPtr);
         wavIO->reset(wavPtr);
     }
-    const uint8_t numChannels = (*wavIO)->GetChannelNum();
+    const size_t numChannels = (*wavIO)->GetChannelNum();
     *totalSamples = (*wavIO)->GetTotalSamples();
     //TODO: recheck it
     const uint64_t numFrames = numChannels * (*totalSamples) / TAtrac1Data::NumSamples;

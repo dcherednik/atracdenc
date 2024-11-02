@@ -20,5 +20,5 @@
 
 #include "compressed_io.h"
 
-TCompressedOutputPtr CreateRmOutput(const std::string& filename, const std::string& title, uint8_t numChannel,
+TCompressedOutputPtr CreateRmOutput(const std::string& filename, const std::string& title, size_t numChannel,
         uint32_t numFrames, uint32_t framesize, bool jointStereo);

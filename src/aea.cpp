@@ -39,12 +39,12 @@ public:
     TAeaCommon(const TMeta& meta)
         : Meta(meta)
     {}
-    uint8_t GetChannelNum() const;
+    size_t GetChannelNum() const;
     string GetName() const;
     virtual ~TAeaCommon();
 };
 
-uint8_t TAeaCommon::GetChannelNum() const {
+size_t TAeaCommon::GetChannelNum() const {
     return Meta.AeaHeader[264];
 }
 
@@ -63,7 +63,7 @@ public:
     unique_ptr<TFrame> ReadFrame() override; 
     uint64_t GetLengthInSamples() const override;
 
-    uint8_t GetChannelNum() const override {
+    size_t GetChannelNum() const override {
         return TAeaCommon::GetChannelNum();
     }
 
@@ -117,14 +117,14 @@ unique_ptr<ICompressedIO::TFrame> TAeaInput::ReadFrame() {
 
 class TAeaOutput : public ICompressedOutput, public TAeaCommon {
     static TAeaCommon::TMeta CreateMeta(const string& filename, const string& title,
-        uint8_t numChannel, uint32_t numFrames);
+        size_t numChannel, uint32_t numFrames);
 
     bool FirstWrite = true;
 public:
-    TAeaOutput(const string& filename, const string& title, uint8_t numChannel, uint32_t numFrames);
+    TAeaOutput(const string& filename, const string& title, size_t numChannel, uint32_t numFrames);
     void WriteFrame(vector<char> data) override;
 
-    uint8_t GetChannelNum() const override {
+    size_t GetChannelNum() const override {
         return TAeaCommon::GetChannelNum();
     }
     string GetName() const override {
@@ -132,12 +132,12 @@ public:
     }
 };
 
-TAeaOutput::TAeaOutput(const string& filename, const string& title, uint8_t numChannels, uint32_t numFrames)
+TAeaOutput::TAeaOutput(const string& filename, const string& title, size_t numChannels, uint32_t numFrames)
     : TAeaCommon(CreateMeta(filename, title, numChannels, numFrames))
 {}
 
 TAeaCommon::TMeta TAeaOutput::CreateMeta(const string& filename, const string& title,
-    uint8_t channelsNum, uint32_t numFrames)
+    size_t channelsNum, uint32_t numFrames)
 {
     FILE* fp = fopen(filename.c_str(), "wb");
     if (!fp)
@@ -191,7 +191,7 @@ TCompressedInputPtr CreateAeaInput(const std::string& filename) {
 }
 
 TCompressedOutputPtr CreateAeaOutput(const string& filename, const string& title,
-    uint8_t numChannels, uint32_t numFrames)
+    size_t numChannels, uint32_t numFrames)
 {
     return unique_ptr<TAeaOutput>(new TAeaOutput(filename, title, numChannels, numFrames));
 }
