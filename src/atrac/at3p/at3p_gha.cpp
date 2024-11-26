@@ -264,7 +264,7 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
         return;
     }
 
-    const float threshold = 1.4; //TODO: tune it
+    const float threshold = 1.05; //TODO: tune it
     if (static_cast<bool>(ctx->Data->LastResuidalEnergy[sb]) == false) {
         ctx->Data->LastResuidalEnergy[sb] = resuidalEnergy;
     } else if (ctx->Data->LastResuidalEnergy[sb] < resuidalEnergy * threshold) {
@@ -427,23 +427,13 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
                         }
 
                         auto it = cit;
+                        for (size_t i = 0; i < tmp.size(); i++) {
+                            it = data.GhaInfos.erase(it);
+                        }
                         for (const auto& x : tmp) {
                             data.MaxToneMagnitude[sb] = std::max(data.MaxToneMagnitude[sb], x.magnitude);
                             const auto newIndex = GhaFreqToIndex(x.frequency, sb);
-                            //std ::cerr << "after adjust, idx: " << it->first << " -> " << newIndex << " info: "  << it->second.frequency << " -> " << x.frequency << " " << it->second.magnitude << " -> " << x.magnitude << " phase: " << x.phase << std::endl;
-                            if (newIndex != it->first) {
-                                bool skip = newIndex > it->first;
-                                //std::cerr << "erase: " << it->first << "skip: " << skip << std::endl;
-                                data.GhaInfos.insert(it, {newIndex, x});
-                                it = data.GhaInfos.erase(it);
-                                if (skip && it != data.GhaInfos.end()) {
-                                    it++;
-                                }
-                            } else {
-                               //std::cerr << "replace" << std::endl;
-                               it->second = x;
-                               it++;
-                            }
+                            data.GhaInfos.insert({newIndex, x});
                         }
                     } else {
                         std::cerr << "jackpot! same freq index after adjust call, sb: " << sb << " " << std::endl;
@@ -467,7 +457,6 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
         gha_analyze_one(b, &res, LibGhaCtx);
 
         auto freqIndex = GhaFreqToIndex(res.frequency, sb);
-        //std::cerr << "sb: " << sb << " findex: " << freqIndex << " magn " << res.magnitude <<  std::endl;
         if (PsyPreCheck(sb, res, data) == false) {
             data.MarkSubbandDone(sb);
         } else {
@@ -496,6 +485,10 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
                         data.MarkSubbandDone(sb);
                         continue;
                     }
+                }
+                if (data.SubbandDone[sb] == 15) {
+                    data.MarkSubbandDone(sb);
+                    continue;
                 }
                 data.GhaInfos.insert(it, {freqIndex, res});
                 data.LastAddedFreqIdx[sb] = freqIndex;
