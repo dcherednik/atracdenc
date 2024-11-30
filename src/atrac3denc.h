@@ -82,11 +82,13 @@ protected:
 class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
     TCompressedOutputPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
+    const std::vector<float> LoudnessCurve;
     TDelayBuffer<TFloat, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
 
     TFloat PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 
     Atrac3AnalysisFilterBank<TFloat> AnalysisFilterBank[2];
+
     TScaler<TAtrac3Data> Scaler;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
 public:
@@ -100,6 +102,8 @@ public:
     };
 private:
     std::vector<std::vector<TTransientParam>> TransientParamsHistory;
+    static constexpr float LoudFactor = 0.006;
+    float Loudness = LoudFactor;
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif

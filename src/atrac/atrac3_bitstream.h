@@ -45,9 +45,10 @@ public:
         TAtrac3Data::SubbandInfo SubbandInfo;
         std::vector<TTonalBlock> TonalBlocks;
         std::vector<TScaledBlock> ScaledBlocks;
-        TFloat Energy;
+        TFloat Loudness;
     };
 private:
+    static std::vector<TFloat> ATH;
 
     struct TTonalComponentsSubGroup {
         std::vector<uint8_t> SubGroupMap;
@@ -65,10 +66,10 @@ private:
                     const uint32_t blockSize, NBitStream::TBitStream* bitStream);
 
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
-                                             uint32_t bfuNum, TFloat spread, TFloat shift);
+                                             uint32_t bfuNum, TFloat spread, TFloat shift, TFloat loudness);
 
     std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
-                                                               uint16_t targetBits, int mt[MaxSpecs]);
+                                                               uint16_t targetBits, int mt[MaxSpecs], float laudness);
 
     std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                           const std::vector<uint32_t>& precisionPerEachBlocks,
@@ -85,15 +86,9 @@ private:
                                    const std::vector<uint32_t>& allocTable,
                                    NBitStream::TBitStream* bitStream);
 public:
-    TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst) //no mono mode for atrac3
-        : Container(container)
-        , Params(params)
-        , BfuIdxConst(bfuIdxConst)
-    {
-        NEnv::SetRoundFloat();
-    }
+    TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst);
 
-    void WriteSoundUnit(const std::vector<TSingleChannelElement>& singleChannelElements);
+    void WriteSoundUnit(const std::vector<TSingleChannelElement>& singleChannelElements, float laudness);
 };
 
 } // namespace NAtrac3

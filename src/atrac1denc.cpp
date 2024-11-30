@@ -175,11 +175,11 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
     struct TChannelData {
         TChannelData()
             : Specs(NumSamples)
-            , Energy(NumSamples)
+            , Loudness(0.0)
         {}
 
         vector<TFloat> Specs;
-        vector<TFloat> Energy;
+        float Loudness;
     };
 
     using TData = vector<TChannelData>;
@@ -219,17 +219,18 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
 
             Mdct(&specs[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0], blockSz[channel]);
 
-            auto& erg = (*buf)[channel].Energy;
-
+            float l = 0.0;
             for (size_t i = 0; i < specs.size(); i++) {
-                erg[i] = specs[i] * specs[i];
+                float e = specs[i] * specs[i];
+                l += e * LoudnessCurve[i];
             }
+            (*buf)[channel].Loudness = l;
         }
 
         if (srcChannels == 2 && windowMasks[0] == 0 && windowMasks[1] == 0) {
-            Loudness = TrackLoudness(Loudness, (*buf)[0].Energy.data(), (*buf)[1].Energy.data(), LoudnessCurve.data(), NumSamples);
+            Loudness = TrackLoudness(Loudness, (*buf)[0].Loudness, (*buf)[1].Loudness);
         } else if (windowMasks[0] == 0) {
-            Loudness = TrackLoudness(Loudness, (*buf)[0].Energy.data(), nullptr, LoudnessCurve.data(), NumSamples);
+            Loudness = TrackLoudness(Loudness, (*buf)[0].Loudness);
         }
 
         for (uint32_t channel = 0; channel < srcChannels; channel++) {

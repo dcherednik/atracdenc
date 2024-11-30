@@ -18,6 +18,7 @@
 
 #include "atrac3denc.h"
 #include "transient_detector.h"
+#include "atrac/atrac_psy_common.h"
 #include <assert.h>
 #include <algorithm>
 #include <iostream>
@@ -91,6 +92,7 @@ void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorAr
 TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSettings&& encoderSettings)
     : Oma(std::move(oma))
     , Params(std::move(encoderSettings))
+    , LoudnessCurve(CreateLoudnessCurve(NumSamples))
     , SingleChannelElements(Params.SourceChannels)
     , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
 {}
@@ -289,7 +291,19 @@ void TAtrac3Encoder::Matrixing()
 TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
 {
     std::shared_ptr<TAtrac3BitStreamWriter> bitStreamWriter(new TAtrac3BitStreamWriter(Oma.get(), *Params.ConteinerParams, Params.BfuIdxConst));
-    return [this, bitStreamWriter](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
+
+    struct TChannelData {
+        TChannelData()
+            : Specs(NumSamples)
+        {}
+
+        vector<TFloat> Specs;
+    };
+
+    using TData = vector<TChannelData>;
+    auto buf = std::make_shared<TData>(2);
+
+    return [this, bitStreamWriter, buf](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
@@ -310,7 +324,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
         }
 
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
-            vector<TFloat> specs(1024);
+            auto& specs = (*buf)[channel].Specs;
             TSce* sce = &SingleChannelElements[channel];
 
             sce->SubbandInfo.Reset();
@@ -326,11 +340,26 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
                 Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
-            sce->Energy = CalcEnergy(specs);
+            float l = 0;
+            for (size_t i = 0; i < specs.size(); i++) {
+                float e = specs[i] * specs[i];
+                l += e * LoudnessCurve[i];
+            }
+
+            sce->Loudness = l;
 
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
             sce->ScaledBlocks = Scaler.ScaleFrame(specs, TBlockSize());
+        }
 
+        if (meta.Channels == 2 && !Params.ConteinerParams->Js) {
+            const TSce& sce0 = SingleChannelElements[0];
+            const TSce& sce1 = SingleChannelElements[1];
+            Loudness = TrackLoudness(Loudness, sce0.Loudness, sce1.Loudness);
+        } else {
+            // 1 channel or Js. In case of Js we do not use side channel to adjust loudness
+            const TSce& sce0 = SingleChannelElements[0];
+            Loudness = TrackLoudness(Loudness, sce0.Loudness);
         }
 
         if (Params.ConteinerParams->Js && meta.Channels == 1) {
@@ -341,7 +370,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
             SingleChannelElements[1].SubbandInfo.Info.resize(1);
         }
 
-        bitStreamWriter->WriteSoundUnit(SingleChannelElements);
+        bitStreamWriter->WriteSoundUnit(SingleChannelElements, Loudness);
     };
 }
 

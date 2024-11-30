@@ -135,25 +135,6 @@ vector<float> CalcATH(int len, int sampleRate)
     return res;
 }
 
-float TrackLoudness(float prevLoud, const TFloat* e0, const TFloat* e1, const float* weight, size_t sz)
-{
-    float s = 0;
-    if (e1 != nullptr) {
-        for (size_t i = 0; i < sz; i++) {
-            s += (e0[i] + e1[i]) * weight[i];
-        }
-
-        s *= 0.5;
-
-    } else {
-        for (size_t i = 0; i < sz; i++) {
-            s += e0[i] * weight[i];
-        }
-    }
-
-    return 0.98 * prevLoud + 0.02 * s;
-}
-
 vector<float> CreateLoudnessCurve(size_t sz)
 {
     std::vector<float> res;
