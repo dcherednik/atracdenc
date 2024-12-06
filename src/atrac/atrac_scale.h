@@ -27,6 +27,8 @@
 
 namespace NAtracDEnc {
 
+void QuantMantisas(const TFloat* in, uint32_t first, uint32_t last, TFloat mul, int* mantisas);
+
 struct TScaledBlock {
     TScaledBlock(uint8_t sfi) : ScaleFactorIndex(sfi) {}
     /* const */ uint8_t ScaleFactorIndex = 0;
