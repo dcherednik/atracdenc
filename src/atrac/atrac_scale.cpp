@@ -36,7 +36,7 @@ using std::abs;
 
 static const TFloat MAX_SCALE = 1.0;
 
-void QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, const TFloat mul, int* const mantisas)
+TFloat QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, const TFloat mul, bool ea, int* const mantisas)
 {
     float e1 = 0.0;
     float e2 = 0.0;
@@ -52,18 +52,19 @@ void QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, 
         mantisas[f] = ToInt(t);
         e2 += mantisas[f] * mantisas[f] * inv2;
 
-        float delta = t - (std::trunc(t) + 0.5);
-
-        // 0 ... 0.25 ... 0.5 ... 0.75 ... 1
-        //        ^----------------^ candidates to be rounded to opposite side
-        // to decrease overall energy error in the band
-        if (std::abs(delta) < 0.25) {
-            candidates.push_back({delta, f});
+        if (ea) {
+            float delta = t - (std::trunc(t) + 0.5);
+            // 0 ... 0.25 ... 0.5 ... 0.75 ... 1
+            //        ^----------------^ candidates to be rounded to opposite side
+            // to decrease overall energy error in the band
+            if (std::abs(delta) < 0.25) {
+                candidates.push_back({delta, f});
+            }
         }
     }
 
     if (candidates.empty()) {
-        return;
+        return e1 / e2;
     }
 
     static auto cmp = [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
@@ -91,7 +92,7 @@ void QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, 
                 }
             }
         }
-        return;
+        return e1 / e2;
     }
 
     if (e2 > e1) {
@@ -114,8 +115,9 @@ void QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, 
                 }
             }
         }
-        return;
+        return e1 / e2;
     }
+    return e1 / e2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

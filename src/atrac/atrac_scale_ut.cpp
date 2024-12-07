@@ -53,7 +53,7 @@ TEST(Quant, SaveEnergyLost) {
         std::vector<int> mantisas;
         mantisas.resize(in.size());
 
-        QuantMantisas(scaled.data(), 0, mantisas.size(), td.Q, mantisas.data());
+        QuantMantisas(scaled.data(), 0, mantisas.size(), td.Q, true, mantisas.data());
 
         float e2 = 0.0;
         for (auto x : mantisas) {
