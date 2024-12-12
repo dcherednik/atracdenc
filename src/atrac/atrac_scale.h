@@ -17,6 +17,7 @@
  */
 
 #pragma once
+#include <array>
 #include <vector>
 #include <map>
 #include <cstdint>
