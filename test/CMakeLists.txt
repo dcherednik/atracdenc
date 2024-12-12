@@ -12,6 +12,7 @@ set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/lib/bitstream/bitstream_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/util_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/atracdenc_ut.cpp
+    ${CMAKE_SOURCE_DIR}/src/atrac3denc_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/transient_detector_ut.cpp
 )
 

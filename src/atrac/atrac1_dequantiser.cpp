@@ -27,9 +27,9 @@ TAtrac1Dequantiser::TAtrac1Dequantiser() {
 }
 
 void TAtrac1Dequantiser::Dequant(TBitStream* stream, const TBlockSize& bs, TFloat specs[512]) {
-    uint32_t wordLens[MaxBfus];
-    uint32_t idScaleFactors[MaxBfus];
-    const uint32_t numBFUs = BfuAmountTab[stream->Read(3)];
+    uint32_t wordLens[TAtrac1Data::MaxBfus];
+    uint32_t idScaleFactors[TAtrac1Data::MaxBfus];
+    const uint32_t numBFUs = TAtrac1Data::BfuAmountTab[stream->Read(3)];
     stream->Read(2);
     stream->Read(3);
 
@@ -40,16 +40,17 @@ void TAtrac1Dequantiser::Dequant(TBitStream* stream, const TBlockSize& bs, TFloa
     for (uint32_t i = 0; i < numBFUs; i++) {
         idScaleFactors[i] = stream->Read(6);
     }
-    for (uint32_t i = numBFUs; i < MaxBfus; i++) {
+    for (uint32_t i = numBFUs; i < TAtrac1Data::MaxBfus; i++) {
         wordLens[i] = idScaleFactors[i] = 0;
     }
 
-    for (uint32_t bandNum = 0; bandNum < NumQMF; bandNum++) {
-        for (uint32_t bfuNum = BlocksPerBand[bandNum]; bfuNum < BlocksPerBand[bandNum + 1]; bfuNum++) {
-            const uint32_t numSpecs = SpecsPerBlock[bfuNum];
+    for (uint32_t bandNum = 0; bandNum < TAtrac1Data::NumQMF; bandNum++) {
+        for (uint32_t bfuNum = TAtrac1Data::BlocksPerBand[bandNum]; bfuNum < TAtrac1Data::BlocksPerBand[bandNum + 1]; bfuNum++) {
+            const uint32_t numSpecs = TAtrac1Data::SpecsPerBlock[bfuNum];
             const uint32_t wordLen = !!wordLens[bfuNum] + wordLens[bfuNum];
-            const TFloat scaleFactor = ScaleTable[idScaleFactors[bfuNum]];
-            const uint32_t startPos = bs.LogCount[bandNum] ? SpecsStartShort[bfuNum] : SpecsStartLong[bfuNum]; 
+            const TFloat scaleFactor = TAtrac1Data::ScaleTable[idScaleFactors[bfuNum]];
+            const uint32_t startPos = bs.LogCount[bandNum] ?
+                TAtrac1Data::SpecsStartShort[bfuNum] : TAtrac1Data::SpecsStartLong[bfuNum];
             if (wordLen) {
                 TFloat maxQuant = 1.0 / (TFloat)((1 << (wordLen - 1)) - 1);
                 //cout << "BFU ("<< bfuNum << ") :" <<  "wordLen " << wordLen << " maxQuant " << maxQuant << " scaleFactor " << scaleFactor << " id " << idScaleFactors[bfuNum] << " num Specs " << numSpecs << " short: "<< (int)bs.LogCount[bandNum] << endl;
@@ -61,7 +62,7 @@ void TAtrac1Dequantiser::Dequant(TBitStream* stream, const TBlockSize& bs, TFloa
             }
         }
 
-    } 
+    }
 }
 
 } //namespace NAtrac1

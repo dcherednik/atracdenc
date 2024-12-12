@@ -19,7 +19,6 @@
 #pragma once
 #include "atrac_scale.h"
 #include "../aea.h"
-#include "../atrac/atrac1.h"
 #include <vector>
 #include <map>
 #include <cstdint>
@@ -36,7 +35,7 @@ public:
     virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) = 0;
 };
 
-class TBitsBooster : public virtual TAtrac1Data {
+class TBitsBooster {
     std::multimap<uint32_t, uint32_t> BitsBoostMap; //bits needed -> position
     uint32_t MaxBitsPerIteration;
     uint32_t MinKey;
@@ -45,7 +44,7 @@ public:
     uint32_t ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target);
 };
 
-class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
+class TAtrac1BitStreamWriter {
     ICompressedOutput* Container;
 public:
     explicit TAtrac1BitStreamWriter(ICompressedOutput* container);

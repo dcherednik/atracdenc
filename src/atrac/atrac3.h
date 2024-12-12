@@ -54,7 +54,7 @@ class TAtrac3Data {
 public:
     static constexpr uint8_t MaxBfus = 32;
     static constexpr uint32_t NumSamples = 1024;
-//protected:
+
     static const uint32_t MDCTSz = 512;
     static double ScaleTable[64];
     static double EncodeWindow[256];
@@ -247,6 +247,7 @@ public:
     };
     typedef std::vector<TTonalVal> TTonalComponents;
 };
+
 
 struct TAtrac3EncoderSettings {
     TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll,

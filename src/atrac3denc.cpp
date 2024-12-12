@@ -75,8 +75,8 @@ void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorAr
         vector<TFloat> inv  = Midct512(curSpec);
         assert(inv.size()/2 == 256);
         for (int j = 0; j < 256; ++j) {
-            inv[j] *= /*2 */ DecodeWindow[j];
-            inv[511 - j] *= /*2*/ DecodeWindow[j];
+            inv[j] *= /*2 */ TAtrac3Data::DecodeWindow[j];
+            inv[511 - j] *= /*2*/ TAtrac3Data::DecodeWindow[j];
         }
         if (demodFn) {
             demodFn(dstBuff, inv.data(), prevBuff);
@@ -92,7 +92,7 @@ void TAtrac3MDCT::Midct(TFloat specs[1024], TFloat* bands[4], TGainDemodulatorAr
 TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSettings&& encoderSettings)
     : Oma(std::move(oma))
     , Params(std::move(encoderSettings))
-    , LoudnessCurve(CreateLoudnessCurve(NumSamples))
+    , LoudnessCurve(CreateLoudnessCurve(TAtrac3Data::NumSamples))
     , SingleChannelElements(Params.SourceChannels)
     , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
 {}
@@ -132,7 +132,7 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
 
 TFloat TAtrac3Encoder::LimitRel(TFloat x)
 {
-    return std::min(std::max((double)x, GainLevel[15]), GainLevel[0]);
+    return std::min(std::max((double)x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
 }
 
 void TAtrac3Encoder::ResetTransientParamsHistory(int channel, int band)
@@ -294,7 +294,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
 
     struct TChannelData {
         TChannelData()
-            : Specs(NumSamples)
+            : Specs(TAtrac3Data::NumSamples)
         {}
 
         vector<TFloat> Specs;
@@ -307,9 +307,9 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac3Encoder::GetLambda()
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
-            TFloat src[NumSamples];
+            TFloat src[TAtrac3Data::NumSamples];
 
-            for (size_t i = 0; i < NumSamples; ++i) {
+            for (size_t i = 0; i < TAtrac3Data::NumSamples; ++i) {
                 src[i] = data[i * meta.Channels  + channel] / 4.0;
             }
 

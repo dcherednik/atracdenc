@@ -36,6 +36,13 @@ using std::abs;
 static const TFloat MAX_SCALE = 1.0;
 
 template<class TBaseData>
+TScaler<TBaseData>::TScaler() {
+    for (int i = 0; i < 64; i++) {
+        ScaleIndex[TBaseData::ScaleTable[i]] = i;
+    }
+}
+
+template<class TBaseData>
 TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
     TFloat maxAbsSpec = 0;
     for (uint16_t i = 0; i < len; ++i) {
@@ -71,14 +78,14 @@ template<class TBaseData>
 vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<TFloat>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
     scaledBlocks.reserve(TBaseData::MaxBfus);
-    for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
+    for (uint8_t bandNum = 0; bandNum < TBaseData::NumQMF; ++bandNum) {
         const bool shortWinMode = !!blockSize.LogCount[bandNum];
-        for (uint8_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] : 
+        for (uint8_t blockNum = TBaseData::BlocksPerBand[bandNum]; blockNum < TBaseData::BlocksPerBand[bandNum + 1]; ++blockNum) {
+            const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] :
                                                          TBaseData::SpecsStartLong[blockNum];
-            scaledBlocks.emplace_back(Scale(&specs[specNumStart], this->SpecsPerBlock[blockNum]));
-		}
-	}
+            scaledBlocks.emplace_back(Scale(&specs[specNumStart], TBaseData::SpecsPerBlock[blockNum]));
+        }
+    }
     return scaledBlocks;
 }
 

@@ -21,7 +21,6 @@
 #include <map>
 #include <cstdint>
 
-#include "atrac1.h"
 #include "lib/bitstream/bitstream.h"
 #include "../config.h"
 
@@ -37,14 +36,10 @@ struct TScaledBlock {
 class TBlockSize;
 
 template <class TBaseData>
-class TScaler : public TBaseData {
-    std::map<TFloat, uint8_t>ScaleIndex;
+class TScaler {
+    std::map<TFloat, uint8_t> ScaleIndex;
 public:
-    TScaler() {
-        for (int i = 0; i < 64; i++) {
-            ScaleIndex[TBaseData::ScaleTable[i]] = i;
-        }
-    }
+    TScaler();
     TScaledBlock Scale(const TFloat* in, uint16_t len);
     std::vector<TScaledBlock> ScaleFrame(const std::vector<TFloat>& specs, const TBlockSize& blockSize);
 };

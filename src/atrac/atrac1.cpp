@@ -29,5 +29,7 @@ constexpr uint32_t TAtrac1Data::BfuAmountTab[8];
 TFloat TAtrac1Data::ScaleTable[64] = {0};
 TFloat TAtrac1Data::SineWindow[32] = {0};
 
+const static TAtrac1Data Atrac1Data;
+
 } //namespace NAtrac1
 } //namespace NAtracDEnc
