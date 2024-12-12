@@ -36,7 +36,7 @@ using std::vector;
 TAtrac1Encoder::TAtrac1Encoder(TCompressedOutputPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
-    , LoudnessCurve(CreateLoudnessCurve(NumSamples))
+    , LoudnessCurve(CreateLoudnessCurve(TAtrac1Data::NumSamples))
 {
 }
 
@@ -66,10 +66,10 @@ static void vector_fmul_window(TFloat *dst, const TFloat *src0,
 
 void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize) {
     uint32_t pos = 0;
-    for (uint32_t band = 0; band < NumQMF; band++) {
+    for (uint32_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << blockSize.LogCount[band];
         TFloat* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
-        uint32_t bufSz = (band == 2) ? 256 : 128; 
+        uint32_t bufSz = (band == 2) ? 256 : 128;
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t winStart = (numMdctBlocks == 1) ? ((band == 2) ? 112 : 48) : 0;
         //compensate level for 3rd band in case of short window
@@ -95,11 +95,11 @@ void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, 
             blockPos += 32;
         }
         pos += bufSz;
-    } 
+    }
 }
 void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi) {
     uint32_t pos = 0;
-    for (size_t band = 0; band < NumQMF; band++) {
+    for (size_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
         const uint32_t bufSz = (band == 2) ? 256 : 128;
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
@@ -150,7 +150,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
 
             IMdct(&specs[0], mode, &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             SynthesisFilterBank[channel].Synthesis(&sum[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
-            for (size_t i = 0; i < NumSamples; ++i) {
+            for (size_t i = 0; i < TAtrac1Data::NumSamples; ++i) {
                 if (sum[i] > PcmValueMax)
                     sum[i] = PcmValueMax;
                 if (sum[i] < PcmValueMin)
@@ -174,7 +174,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
 
     struct TChannelData {
         TChannelData()
-            : Specs(NumSamples)
+            : Specs(TAtrac1Data::NumSamples)
             , Loudness(0.0)
         {}
 
@@ -190,8 +190,8 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
 
         uint32_t windowMasks[2] = {0};
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
-            TFloat src[NumSamples];
-            for (size_t i = 0; i < NumSamples; ++i) {
+            TFloat src[TAtrac1Data::NumSamples];
+            for (size_t i = 0; i < TAtrac1Data::NumSamples; ++i) {
                 src[i] = data[i * srcChannels + channel];
             }
 

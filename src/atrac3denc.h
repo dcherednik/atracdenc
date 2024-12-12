@@ -28,7 +28,7 @@
 
 #include "atrac/atrac3_bitstream.h"
 #include "atrac/atrac_scale.h"
-#include "mdct/mdct.h"
+#include "lib/mdct/mdct.h"
 #include "gain_processor.h"
 
 #include <algorithm>
@@ -51,7 +51,8 @@ inline uint16_t RelationToIdx(TFloat x) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TAtrac3MDCT : public NAtrac3::TAtrac3Data {
+class TAtrac3MDCT {
+    using TAtrac3Data = NAtrac3::TAtrac3Data;
     NMDCT::TMDCT<512> Mdct512;
     NMDCT::TMIDCT<512> Midct512;
 public:
@@ -80,6 +81,7 @@ protected:
 };
 
 class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
+    using TAtrac3Data = NAtrac3::TAtrac3Data;
     TCompressedOutputPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
     const std::vector<float> LoudnessCurve;

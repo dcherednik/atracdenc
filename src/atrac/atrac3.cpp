@@ -42,6 +42,8 @@ double TAtrac3Data::ScaleTable[64] = {0};
 double TAtrac3Data::GainLevel[16];
 double TAtrac3Data::GainInterpolation[31];
 
+static const TAtrac3Data Atrac3Data;
+
 const TContainerParams* TAtrac3Data::GetContainerParamsForBitrate(uint32_t bitrate) {
     // Set default to LP2 mode
     if (bitrate == 0) {

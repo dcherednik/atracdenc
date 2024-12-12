@@ -36,7 +36,7 @@ enum EMode {
     E_ATRAC3 = 4
 };
 
-class TAtrac1MDCT : public virtual NAtrac1::TAtrac1Data {
+class TAtrac1MDCT {
     NMDCT::TMDCT<512> Mdct512;
     NMDCT::TMDCT<256> Mdct256;
     NMDCT::TMDCT<64> Mdct64;
@@ -56,7 +56,7 @@ public:
     {}
 };
 
-class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
+class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT {
     TCompressedOutputPtr Aea;
     const NAtrac1::TAtrac1EncodeSettings Settings;
 
@@ -97,7 +97,7 @@ class TAtrac1Encoder : public IProcessor<TFloat>, public TAtrac1MDCT, public vir
     };
     TAtrac1Encoder::TTransientDetectors TransientDetectors;
 
-    TScaler<TAtrac1Data> Scaler;
+    TScaler<NAtrac1::TAtrac1Data> Scaler;
     static constexpr float LoudFactor = 0.006;
     float Loudness = LoudFactor;
 
@@ -106,7 +106,7 @@ public:
     TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
 };
 
-class TAtrac1Decoder : public IProcessor<TFloat>, public TAtrac1MDCT, public virtual NAtrac1::TAtrac1Data {
+class TAtrac1Decoder : public IProcessor<TFloat>, public TAtrac1MDCT {
     TCompressedInputPtr Aea;
     const NAtrac1::TAtrac1EncodeSettings Settings;
 
