@@ -47,9 +47,8 @@ class TEndOfRead : public std::exception {
     }
 };
 
-template <class T>
 class TPCMBuffer {
-    std::vector<T> Buf_;
+    std::vector<float> Buf_;
     size_t NumChannels;
 
 public:
@@ -63,7 +62,7 @@ public:
         return Buf_.size() / NumChannels;
     }
 
-    T* operator[](size_t pos) {
+    float* operator[](size_t pos) {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size()) {
             std::cerr << "attempt to access out of buffer pos: " << pos << std::endl;
@@ -72,7 +71,7 @@ public:
         return &Buf_[rpos];
     }
 
-    const T* operator[](size_t pos) const {
+    const float* operator[](size_t pos) const {
         size_t rpos = pos * NumChannels;
         if (rpos >= Buf_.size()) {
             std::cerr << "attempt to access out of buffer pos: " << pos << std::endl;
@@ -91,32 +90,29 @@ public:
     }
 };
 
-template <class T>
 class IPCMWriter {
     public:
-        virtual void Write(const TPCMBuffer<T>& data , const uint32_t size) const = 0;
+        virtual void Write(const TPCMBuffer& data , const uint32_t size) const = 0;
         IPCMWriter() {};
         virtual ~IPCMWriter() {};
 };
 
-template <class T>
 class IPCMReader {
     public:
-        virtual void Read(TPCMBuffer<T>& data , const uint32_t size) const = 0;
+        virtual void Read(TPCMBuffer& data , const uint32_t size) const = 0;
         IPCMReader() {};
         virtual ~IPCMReader() {};
 };
 
-template<class T>
 class TPCMEngine {
 public:
-    typedef std::unique_ptr<IPCMWriter<T>> TWriterPtr;
-    typedef std::unique_ptr<IPCMReader<T>> TReaderPtr;
+    typedef std::unique_ptr<IPCMWriter> TWriterPtr;
+    typedef std::unique_ptr<IPCMReader> TReaderPtr;
     struct ProcessMeta {
         const uint16_t Channels;
     };
 private:
-    TPCMBuffer<T> Buffer;
+    TPCMBuffer Buffer;
     TWriterPtr Writer;
     TReaderPtr Reader;
     uint64_t Processed = 0;
@@ -141,7 +137,7 @@ public:
             , Reader(std::move(reader)) {
         }
 
-        typedef std::function<void(T* data, const ProcessMeta& meta)> TProcessLambda; 
+        typedef std::function<void(float* data, const ProcessMeta& meta)> TProcessLambda;
 
         uint64_t ApplyProcess(size_t step, TProcessLambda lambda) {
             if (step > Buffer.Size()) {
@@ -170,9 +166,8 @@ public:
         }
 };
 
-template<class T>
 class IProcessor {
 public:
-    virtual typename TPCMEngine<T>::TProcessLambda GetLambda() = 0;
+    virtual typename TPCMEngine::TProcessLambda GetLambda() = 0;
     virtual ~IProcessor() {}
 };

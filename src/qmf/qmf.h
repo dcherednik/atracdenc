@@ -24,10 +24,10 @@
 template<class TPCM, int nIn>
 class TQmf {
     static const float TapHalf[24];
-    TFloat QmfWindow[48];
+    float QmfWindow[48];
     TPCM PcmBuffer[nIn + 46];
-    TFloat PcmBufferMerge[nIn + 46];
-    TFloat DelayBuff[46];
+    float PcmBufferMerge[nIn + 46];
+    float DelayBuff[46];
 public:
     TQmf() {
         const int sz = sizeof(QmfWindow)/sizeof(QmfWindow[0]);
@@ -41,8 +41,8 @@ public:
         }
     }
 
-    void Analysis(TPCM* in, TFloat* lower, TFloat* upper) {
-        TFloat temp;
+    void Analysis(TPCM* in, float* lower, float* upper) {
+        float temp;
         for (size_t i = 0; i < 46; i++)
             PcmBuffer[i] = PcmBuffer[nIn + i];
 
@@ -61,9 +61,9 @@ public:
         }
     }
 
-    void Synthesis(TPCM* out, TFloat* lower, TFloat* upper) {
-        memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(TFloat));
-        TFloat* newPart = &PcmBufferMerge[46];
+    void Synthesis(TPCM* out, float* lower, float* upper) {
+        memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(float));
+        float* newPart = &PcmBufferMerge[46];
         for (int i = 0; i < nIn; i+=4) {
             newPart[i+0] = lower[i/2] + upper[i/2];
             newPart[i+1] = lower[i/2] - upper[i/2];
@@ -71,10 +71,10 @@ public:
             newPart[i+3] = lower[i/2 + 1] - upper[i/2 + 1];
         }
 
-        TFloat* winP = &PcmBufferMerge[0];
+        float* winP = &PcmBufferMerge[0];
         for (size_t j = nIn/2; j != 0; j--) {
-            TFloat s1 = 0;
-            TFloat s2 = 0;
+            float s1 = 0;
+            float s2 = 0;
             for (size_t i = 0; i < 48; i+=2) {
                 s1 += winP[i] * QmfWindow[i];
                 s2 += winP[i+1] * QmfWindow[i+1];
@@ -84,7 +84,7 @@ public:
             winP += 2;
             out += 2;
         }
-        memcpy(&DelayBuff[0], &PcmBufferMerge[nIn], 46*sizeof(TFloat));
+        memcpy(&DelayBuff[0], &PcmBufferMerge[nIn], 46*sizeof(float));
     }
 };
 

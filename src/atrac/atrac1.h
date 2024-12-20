@@ -78,8 +78,8 @@ public:
     static const uint32_t BitsPerIDWL = 4;
     static const uint32_t BitsPerIDSF = 6;
 
-    static TFloat ScaleTable[64];
-    static TFloat SineWindow[32];
+    static float ScaleTable[64];
+    static float SineWindow[32];
     static uint32_t BfuToBand(uint32_t i) {
         if (i < 20)
             return 0;

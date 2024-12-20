@@ -30,19 +30,19 @@ namespace NAtracDEnc {
 struct TScaledBlock {
     TScaledBlock(uint8_t sfi) : ScaleFactorIndex(sfi) {}
     /* const */ uint8_t ScaleFactorIndex = 0;
-    std::vector<TFloat> Values;
-    TFloat MaxEnergy;
+    std::vector<float> Values;
+    float MaxEnergy;
 };
 
 class TBlockSize;
 
 template <class TBaseData>
 class TScaler {
-    std::map<TFloat, uint8_t> ScaleIndex;
+    std::map<float, uint8_t> ScaleIndex;
 public:
     TScaler();
-    TScaledBlock Scale(const TFloat* in, uint16_t len);
-    std::vector<TScaledBlock> ScaleFrame(const std::vector<TFloat>& specs, const TBlockSize& blockSize);
+    TScaledBlock Scale(const float* in, uint16_t len);
+    std::vector<TScaledBlock> ScaleFrame(const std::vector<float>& specs, const TBlockSize& blockSize);
 };
 
 class TBlockSize {

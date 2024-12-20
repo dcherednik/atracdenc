@@ -33,7 +33,7 @@ using std::endl;
 
 using std::abs;
 
-static const TFloat MAX_SCALE = 1.0;
+static const float MAX_SCALE = 1.0;
 
 template<class TBaseData>
 TScaler<TBaseData>::TScaler() {
@@ -43,10 +43,10 @@ TScaler<TBaseData>::TScaler() {
 }
 
 template<class TBaseData>
-TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
-    TFloat maxAbsSpec = 0;
+TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
+    float maxAbsSpec = 0;
     for (uint16_t i = 0; i < len; ++i) {
-        const TFloat absSpec = abs(in[i]);
+        const float absSpec = abs(in[i]);
         if (absSpec > maxAbsSpec) {
             maxAbsSpec = absSpec;
         }
@@ -55,17 +55,19 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
         cerr << "Scale error: absSpec > MAX_SCALE, val: " << maxAbsSpec << endl;
         maxAbsSpec = MAX_SCALE;
     }
-    const map<TFloat, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
-    const TFloat scaleFactor = scaleIter->first;
+    const map<float, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
+    const float scaleFactor = scaleIter->first;
     const uint8_t scaleFactorIndex = scaleIter->second;
     TScaledBlock res(scaleFactorIndex);
-    TFloat maxEnergy = 0.0;
+    float maxEnergy = 0.0;
     for (uint16_t i = 0; i < len; ++i) {
-        TFloat scaledValue = in[i] / scaleFactor;
-        TFloat energy = in[i] * in[i];
+        float scaledValue = in[i] / scaleFactor;
+        float energy = in[i] * in[i];
         maxEnergy = std::max(maxEnergy, energy);
         if (abs(scaledValue) >= 1.0) {
-            cerr << "got "<< scaledValue << " it is wrong scalling" << endl;
+            if (abs(scaledValue) > 1.0) {
+                cerr << "clipping, scaled value: "<< scaledValue << endl;
+            }
             scaledValue = (scaledValue > 0) ? 0.99999 : -0.99999;
         }
         res.Values.push_back(scaledValue);
@@ -75,7 +77,7 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
 }
 
 template<class TBaseData>
-vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<TFloat>& specs, const TBlockSize& blockSize) {
+vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<float>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
     scaledBlocks.reserve(TBaseData::MaxBfus);
     for (uint8_t bandNum = 0; bandNum < TBaseData::NumQMF; ++bandNum) {

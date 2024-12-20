@@ -55,11 +55,11 @@ public:
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
-                                             const TFloat spread, const TFloat shift, const TBlockSize& blockSize,
+                                             const float spread, const float shift, const TBlockSize& blockSize,
                                              const float loudness);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
-    static std::vector<TFloat> ATHLong;
+    static std::vector<float> ATHLong;
 
     uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
     uint32_t CheckBfuUsage(bool* changed, uint32_t curBfuId, const std::vector<uint32_t>& bitsPerEachBlock);

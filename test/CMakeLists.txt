@@ -3,10 +3,6 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_C_STANDARD 11)
 
-if (ATDE_USE_FLOAT)
-    add_compile_definitions(ATDE_USE_FLOAT)
-endif()
-
 set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/lib/mdct/mdct_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/lib/bitstream/bitstream_ut.cpp

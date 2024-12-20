@@ -22,10 +22,10 @@
 #include <vector>
 
 TEST(Util, SwapArrayTest) {
-    TFloat arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    float arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
     SwapArray(arr, 8);
     for (size_t i = 0; i < 8; ++i) {
-        EXPECT_NEAR((TFloat)i, arr[7-i], 0.000000000001);
+        EXPECT_NEAR((float)i, arr[7-i], 0.000000000001);
     }
 }
 
@@ -43,10 +43,10 @@ TEST(Util, GetFirstSetBitTest) {
 
 TEST(Util, CalcEnergy) {
 
-    EXPECT_NEAR((TFloat)0.0, CalcEnergy(std::vector<TFloat>{0.0}), 0.000000000001);
-    EXPECT_NEAR((TFloat)1.0, CalcEnergy(std::vector<TFloat>{1.0}), 0.000000000001);
-    EXPECT_NEAR((TFloat)2.0, CalcEnergy(std::vector<TFloat>{1.0, 1.0}), 0.000000000001);
-    EXPECT_NEAR((TFloat)5.0, CalcEnergy(std::vector<TFloat>{2.0, 1.0}), 0.000000000001);
-    EXPECT_NEAR((TFloat)5.0, CalcEnergy(std::vector<TFloat>{1.0, 2.0}), 0.000000000001);
-    EXPECT_NEAR((TFloat)8.0, CalcEnergy(std::vector<TFloat>{2.0, 2.0}), 0.000000000001);
+    EXPECT_NEAR((float)0.0, CalcEnergy(std::vector<float>{0.0}), 0.000000000001);
+    EXPECT_NEAR((float)1.0, CalcEnergy(std::vector<float>{1.0}), 0.000000000001);
+    EXPECT_NEAR((float)2.0, CalcEnergy(std::vector<float>{1.0, 1.0}), 0.000000000001);
+    EXPECT_NEAR((float)5.0, CalcEnergy(std::vector<float>{2.0, 1.0}), 0.000000000001);
+    EXPECT_NEAR((float)5.0, CalcEnergy(std::vector<float>{1.0, 2.0}), 0.000000000001);
+    EXPECT_NEAR((float)8.0, CalcEnergy(std::vector<float>{2.0, 2.0}), 0.000000000001);
 }

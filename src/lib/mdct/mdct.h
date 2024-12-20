@@ -25,21 +25,21 @@
 
 namespace NMDCT {
 
-static_assert(sizeof(kiss_fft_scalar) == sizeof(TFloat), "size of fft_scalar is not equal to size of TFloat");
+static_assert(sizeof(kiss_fft_scalar) == sizeof(float), "size of fft_scalar is not equal to size of float");
 
 class TMDCTBase {
 protected:
     const size_t N;
-    const std::vector<TFloat> SinCos;
+    const std::vector<float> SinCos;
     kiss_fft_cpx*   FFTIn;
     kiss_fft_cpx*   FFTOut;
     kiss_fft_cfg    FFTPlan;
-    TMDCTBase(size_t n, TFloat scale);
+    TMDCTBase(size_t n, float scale);
     virtual ~TMDCTBase();
 };
 
 
-template<size_t TN, typename TIO = TFloat>
+template<size_t TN, typename TIO = float>
 class TMDCT : public TMDCTBase {
     std::vector<TIO> Buf;
 public:
@@ -54,15 +54,15 @@ public:
         const size_t n4 = N >> 2;
         const size_t n34 = 3 * n4;
         const size_t n54 = 5 * n4;
-        const TFloat* cos = &SinCos[0];
-        const TFloat* sin = &SinCos[1];
+        const float* cos = &SinCos[0];
+        const float* sin = &SinCos[1];
 
-        TFloat  *xr, *xi, r0, i0;
-        TFloat  c, s;
+        float  *xr, *xi, r0, i0;
+        float  c, s;
         size_t n;
 
-        xr = (TFloat*)FFTIn;
-        xi = (TFloat*)FFTIn + 1;
+        xr = (float*)FFTIn;
+        xi = (float*)FFTIn + 1;
         for (n = 0; n < n4; n += 2) {
             r0 = in[n34 - 1 - n] + in[n34 + n];
             i0 = in[n4 + n] - in[n4 - 1 - n];
@@ -87,8 +87,8 @@ public:
 
         kiss_fft(FFTPlan, FFTIn, FFTOut);
 
-        xr = (TFloat*)FFTOut;
-        xi = (TFloat*)FFTOut + 1;
+        xr = (float*)FFTOut;
+        xi = (float*)FFTOut + 1;
         for (n = 0; n < n2; n += 2) {
             r0 = xr[n];
             i0 = xi[n];
@@ -104,7 +104,7 @@ public:
     }
 };
 
-template<size_t TN, typename TIO = TFloat>
+template<size_t TN, typename TIO = float>
 class TMIDCT : public TMDCTBase {
     std::vector<TIO> Buf;
 public:
@@ -118,15 +118,15 @@ public:
         const size_t n4 = N >> 2;
         const size_t n34 = 3 * n4;
         const size_t n54 = 5 * n4;
-        const TFloat* cos = &SinCos[0];
-        const TFloat* sin = &SinCos[1];
+        const float* cos = &SinCos[0];
+        const float* sin = &SinCos[1];
 
-        TFloat *xr, *xi, r0, i0, r1, i1;
-        TFloat c, s;
+        float *xr, *xi, r0, i0, r1, i1;
+        float c, s;
         size_t n;
 
-        xr = (TFloat*)FFTIn;
-        xi = (TFloat*)FFTIn + 1;
+        xr = (float*)FFTIn;
+        xi = (float*)FFTIn + 1;
 
         for (n = 0; n < n2; n += 2) {
             r0 = in[n];
@@ -141,8 +141,8 @@ public:
 
         kiss_fft(FFTPlan, FFTIn, FFTOut);
 
-        xr = (TFloat*)FFTOut;
-        xi = (TFloat*)FFTOut + 1;
+        xr = (float*)FFTOut;
+        xi = (float*)FFTOut + 1;
 
         for (n = 0; n < n4; n += 2) {
             r0 = xr[n];

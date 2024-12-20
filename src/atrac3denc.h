@@ -39,12 +39,12 @@ namespace NAtracDEnc {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-inline uint16_t RelationToIdx(TFloat x) {
+inline uint16_t RelationToIdx(float x) {
     if (x <= 0.5) {
-        x = 1.0 / std::max(x, (TFloat)0.00048828125);
+        x = 1.0 / std::max(x, (float)0.00048828125);
         return 4 + GetFirstSetBit((int32_t)std::trunc(x));
     } else {
-        x = std::min(x, (TFloat)16.0);
+        x = std::min(x, (float)16.0);
         return 4 - GetFirstSetBit((int32_t)std::trunc(x));
     }
 }
@@ -66,41 +66,41 @@ public:
     using TGainDemodulator = TAtrac3GainProcessor::TGainDemodulator;
     typedef std::array<TGainDemodulator, 4> TGainDemodulatorArray;
     typedef std::array<TGainModulator, 4> TGainModulatorArray;
-    void Mdct(TFloat specs[1024],
-              TFloat* bands[4],
-              TFloat maxLevels[4],
+    void Mdct(float specs[1024],
+              float* bands[4],
+              float maxLevels[4],
               TGainModulatorArray gainModulators);
-    void Mdct(TFloat specs[1024],
-              TFloat* bands[4],
+    void Mdct(float specs[1024],
+              float* bands[4],
               TGainModulatorArray gainModulators = TGainModulatorArray());
-    void Midct(TFloat specs[1024],
-               TFloat* bands[4],
+    void Midct(float specs[1024],
+               float* bands[4],
                TGainDemodulatorArray gainDemodulators = TGainDemodulatorArray());
 protected:
     TAtrac3MDCT::TGainModulatorArray MakeGainModulatorArray(const TAtrac3Data::SubbandInfo& si);
 };
 
-class TAtrac3Encoder : public IProcessor<TFloat>, public TAtrac3MDCT {
+class TAtrac3Encoder : public IProcessor, public TAtrac3MDCT {
     using TAtrac3Data = NAtrac3::TAtrac3Data;
     TCompressedOutputPtr Oma;
     const NAtrac3::TAtrac3EncoderSettings Params;
     const std::vector<float> LoudnessCurve;
-    TDelayBuffer<TFloat, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
+    TDelayBuffer<float, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
 
-    TFloat PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
+    float PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 
-    Atrac3AnalysisFilterBank<TFloat> AnalysisFilterBank[2];
+    Atrac3AnalysisFilterBank<float> AnalysisFilterBank[2];
 
     TScaler<TAtrac3Data> Scaler;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
 public:
     struct TTransientParam {
         int32_t Attack0Location; // Attack position relative to previous frame
-        TFloat Attack0Relation;
+        float Attack0Relation;
         int32_t Attack1Location; // Attack position relative to previous sample
-        TFloat Attack1Relation;
+        float Attack1Relation;
         int32_t ReleaseLocation;
-        TFloat ReleaseRelation;
+        float ReleaseRelation;
     };
 private:
     std::vector<std::vector<TTransientParam>> TransientParamsHistory;
@@ -109,9 +109,9 @@ private:
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif
-    TFloat LimitRel(TFloat x);
-    TTransientParam CalcTransientParam(const std::vector<TFloat>& gain, TFloat lastMax);
-    void CreateSubbandInfo(TFloat* in[4], uint32_t channel,
+    float LimitRel(float x);
+    TTransientParam CalcTransientParam(const std::vector<float>& gain, float lastMax);
+    void CreateSubbandInfo(float* in[4], uint32_t channel,
                            TAtrac3Data::SubbandInfo* subbandInfo);
     void ResetTransientParamsHistory(int channel, int band);
     void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);
@@ -121,6 +121,6 @@ public:
 public:
     TAtrac3Encoder(TCompressedOutputPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);
     ~TAtrac3Encoder();
-    TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
+    TPCMEngine::TProcessLambda GetLambda() override;
 };
 }
