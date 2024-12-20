@@ -24,7 +24,7 @@ template<class T>
 class TGainProcessor : public T {
 
 public:
-    typedef std::function<void(TFloat* out, TFloat* cur, TFloat* prev)> TGainDemodulator;
+    typedef std::function<void(float* out, float* cur, float* prev)> TGainDemodulator;
     /*
      * example GainModulation:
      * PCMinput:
@@ -41,13 +41,13 @@ public:
      *               (i.e the input buffer started at b point)
      * so next transformation (mdct #3) gets modulated first part
      */
-    typedef std::function<void(TFloat* bufCur, TFloat* bufNext)> TGainModulator;
-    static TFloat GetGainInc(uint32_t levelIdxCur)
+    typedef std::function<void(float* bufCur, float* bufNext)> TGainModulator;
+    static float GetGainInc(uint32_t levelIdxCur)
     {
         const int incPos = T::ExponentOffset - levelIdxCur + T::GainInterpolationPosShift;
         return T::GainInterpolation[incPos];
     }
-    static TFloat GetGainInc(uint32_t levelIdxCur, uint32_t levelIdxNext)
+    static float GetGainInc(uint32_t levelIdxCur, uint32_t levelIdxNext)
     {
         const int incPos = levelIdxNext - levelIdxCur + T::GainInterpolationPosShift;
         return T::GainInterpolation[incPos];
@@ -57,17 +57,17 @@ public:
     TGainDemodulator Demodulate(const std::vector<typename T::SubbandInfo::TGainPoint>& giNow,
                                 const std::vector<typename T::SubbandInfo::TGainPoint>& giNext)
     {
-        return [=](TFloat* out, TFloat* cur, TFloat* prev) {
+        return [=](float* out, float* cur, float* prev) {
             uint32_t pos = 0;
-            const TFloat scale = giNext.size() ? T::GainLevel[giNext[0].Level] : 1;
+            const float scale = giNext.size() ? T::GainLevel[giNext[0].Level] : 1;
             for (uint32_t i = 0; i < giNow.size(); ++i) {
                 uint32_t lastPos = giNow[i].Location << T::LocScale;
                 const uint32_t levelPos = giNow[i].Level;
                 assert(levelPos < sizeof(T::GainLevel)/sizeof(T::GainLevel[0]));
-                TFloat level = T::GainLevel[levelPos];
+                float level = T::GainLevel[levelPos];
                 const int incPos = ((i + 1) < giNow.size() ? giNow[i + 1].Level : T::ExponentOffset)
                                    - giNow[i].Level + T::GainInterpolationPosShift;
-                TFloat gainInc = T::GainInterpolation[incPos];
+                float gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
                     //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << std::endl;
                     out[pos] = (cur[pos] * scale + prev[pos]) * level;
@@ -87,17 +87,17 @@ public:
     TGainModulator Modulate(const std::vector<typename T::SubbandInfo::TGainPoint>& giCur) {
         if (giCur.empty())
             return {};
-        return [=](TFloat* bufCur, TFloat* bufNext) {
+        return [=](float* bufCur, float* bufNext) {
             uint32_t pos = 0;
-            const TFloat scale = T::GainLevel[giCur[0].Level];
+            const float scale = T::GainLevel[giCur[0].Level];
             for (uint32_t i = 0; i < giCur.size(); ++i) {
                 uint32_t lastPos = giCur[i].Location << T::LocScale;
                 const uint32_t levelPos = giCur[i].Level;
                 assert(levelPos < sizeof(T::GainLevel)/sizeof(T::GainLevel[0]));
-                TFloat level = T::GainLevel[levelPos];
+                float level = T::GainLevel[levelPos];
                 const int incPos = ((i + 1) < giCur.size() ? giCur[i + 1].Level : T::ExponentOffset)
                                    - giCur[i].Level + T::GainInterpolationPosShift;
-                TFloat gainInc = T::GainInterpolation[incPos];
+                float gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
                     //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " bufNext: " << bufNext[pos] << std::endl;
                     bufCur[pos] /= scale;

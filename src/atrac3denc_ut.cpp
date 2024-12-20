@@ -27,14 +27,14 @@ using std::vector;
 using namespace NAtracDEnc;
 using namespace NAtrac3;
 
-static void GenerateSignal(TFloat* buf, size_t n, TFloat f, TFloat a) {
+static void GenerateSignal(float* buf, size_t n, float f, float a) {
     for (size_t i = 0; i < n; ++i) {
         buf[i] = a * sin((M_PI/2) * i * f);
     }
 }
 
-static void GenerateSignalWithTransient(TFloat* buf, size_t n, TFloat f, TFloat a,
-        size_t transientPos, size_t transientLen, TFloat transientLev) {
+static void GenerateSignalWithTransient(float* buf, size_t n, float f, float a,
+        size_t transientPos, size_t transientLen, float transientLev) {
     assert(transientPos + transientLen < n);
     GenerateSignal(buf, n, f, a);
     GenerateSignal(buf+transientPos, transientLen, f, transientLev);
@@ -47,11 +47,11 @@ class TWindowTest {
 public:
     void RunTest() {
         for (size_t i = 0; i < 256; i++) {
-            const TFloat ha1 = TAtrac3Data::EncodeWindow[i] / 2.0; //compensation
-            const TFloat hs1 = TAtrac3Data::DecodeWindow[i];
-            const TFloat hs2 = TAtrac3Data::DecodeWindow[255-i];
-            const TFloat res = hs1 / (hs1 * hs1 + hs2 * hs2);
-            EXPECT_NEAR(ha1, res, 0.000000001);
+            const float ha1 = TAtrac3Data::EncodeWindow[i] / 2.0; //compensation
+            const double hs1 = TAtrac3Data::DecodeWindow[i];
+            const double hs2 = TAtrac3Data::DecodeWindow[255-i];
+            const float res = hs1 / (hs1 * hs1 + hs2 * hs2);
+            EXPECT_NEAR(ha1, res, 1.0 / (1 << 24));
         }
     }
 };
@@ -93,18 +93,18 @@ public:
 
 TEST(TAtrac3MDCT, TAtrac3MDCTZeroOneBlock) {
     TAtrac3MDCT mdct;
-    TAtrac3MDCTWorkBuff<TFloat> buff;
-    size_t workSz = TAtrac3MDCTWorkBuff<TFloat>::BandBuffSz;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
 
-    vector<TFloat> specs(1024);
+    vector<float> specs(1024);
 
-    TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+    float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
 
     mdct.Mdct(specs.data(), p);
     for(auto s: specs)
         EXPECT_NEAR(s, 0.0, 0.0000000001);
 
-    TFloat* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+    float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
     mdct.Midct(specs.data(), p);
 
     for(size_t i = 0; i < workSz; ++i)
@@ -124,25 +124,25 @@ TEST(TAtrac3MDCT, TAtrac3MDCTZeroOneBlock) {
 /*
 TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
     TAtrac3MDCT mdct;
-    TAtrac3MDCTWorkBuff<TFloat> buff;
-    size_t workSz = TAtrac3MDCTWorkBuff<TFloat>::BandBuffSz;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
 
     const size_t len = 1024;
-    vector<TFloat> signal(len);
-    vector<TFloat> signalRes(len);
+    vector<float> signal(len);
+    vector<float> signalRes(len);
     GenerateSignal(signal.data(), signal.size(), 0.25, 32768);
     
     for (size_t pos = 0; pos < len; pos += workSz) {
-        vector<TFloat> specs(1024);
-        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
 
-        TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
         mdct.Mdct(specs.data(), p);
 
-        TFloat* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
         mdct.Midct(specs.data(), t);
 
-        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(TFloat));
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
     }
 
     for (int i = workSz; i < len; ++i)
@@ -151,19 +151,19 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
 
 TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
     TAtrac3MDCT mdct;
-    TAtrac3MDCTWorkBuff<TFloat> buff;
-    size_t workSz = TAtrac3MDCTWorkBuff<TFloat>::BandBuffSz;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
 
     const size_t len = 4096;
-    vector<TFloat> signal(len, 8000);
-    vector<TFloat> signalRes(len);
+    vector<float> signal(len, 8000);
+    vector<float> signalRes(len);
     GenerateSignal(signal.data() + 1024, signal.size()-1024, 0.25, 32768);
     
     for (size_t pos = 0; pos < len; pos += workSz) {
-        vector<TFloat> specs(1024);
-        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
 
-        TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
 
         if (pos == 256) { //apply gain modulation
             TAtrac3Data::SubbandInfo siCur;
@@ -195,7 +195,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
             mdct.Mdct(specs.data(), p);
         }
 
-        TFloat* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
 
         if (pos == 256) { //restore gain modulation
             TAtrac3Data::SubbandInfo siCur;
@@ -268,7 +268,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
         } else {
             mdct.Midct(specs.data(), t);
         }
-        memcpy(signalRes.data() + pos, buff.Band0Res,  workSz * sizeof(TFloat));
+        memcpy(signalRes.data() + pos, buff.Band0Res,  workSz * sizeof(float));
     }
     for (int i = workSz; i < len; ++i) {
         //std::cout << "res: " << i << " " << signalRes[i] << std::endl;
@@ -278,21 +278,21 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
 
 TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
     TAtrac3MDCT mdct;
-    TAtrac3MDCTWorkBuff<TFloat> buff;
-    size_t workSz = TAtrac3MDCTWorkBuff<TFloat>::BandBuffSz;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
 
     const size_t len = 1024;
-    vector<TFloat> signal(len);
-    vector<TFloat> signalRes(len);
+    vector<float> signal(len);
+    vector<float> signalRes(len);
     GenerateSignalWithTransient(signal.data(), signal.size(), 0.03125, 512.0,
                     640, 64, 32768.0);
     const std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve1 = {{6, 13}, {4, 14}};
  
     for (size_t pos = 0; pos < len; pos += workSz) {
-        vector<TFloat> specs(1024);
-        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(TFloat));
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
 
-        TFloat* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
         //for (int i = 0; i < 256; i++) {
         //    std::cout << i + pos << " " << buff.Band0[i] << std::endl;
         //}
@@ -315,7 +315,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
             if (i > 240 && i < 256)
                 specs[i] /= 1.9;
         }
-        TFloat* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
         if (pos == 512) { //restore gain modulation
             TAtrac3Data::SubbandInfo siCur;
             TAtrac3Data::SubbandInfo siNext;
@@ -337,7 +337,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
             mdct.Midct(specs.data(), t);
         }
 
-        memcpy(signalRes.data() + pos, buff.Band0Res,  workSz * sizeof(TFloat));
+        memcpy(signalRes.data() + pos, buff.Band0Res,  workSz * sizeof(float));
     }
     for (int i = workSz; i < len; ++i) {
         //std::cout << "res: " << i << " " << signalRes[i] << std::endl;

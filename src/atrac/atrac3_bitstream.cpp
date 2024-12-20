@@ -40,7 +40,7 @@ static const uint32_t FixedBitAllocTable[TAtrac3Data::MaxBfus] = {
   1, 0
 };
 
-std::vector<TFloat> TAtrac3BitStreamWriter::ATH;
+std::vector<float> TAtrac3BitStreamWriter::ATH;
 TAtrac3BitStreamWriter::TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst)
     : Container(container)
     , Params(params)
@@ -120,7 +120,7 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
     return bitsUsed;
 }
 
-static inline int ToInt(double x) {
+static inline int ToInt(float x) {
 #if defined(_MSC_VER) && !defined(_WIN64)
     int n;
     __asm {
@@ -133,7 +133,7 @@ static inline int ToInt(double x) {
 #endif
 }
 
-static inline void CalcMantisas(const TFloat* values, const uint32_t first, const uint32_t last, const TFloat mul, int* mantisas) {
+static inline void CalcMantisas(const float* values, const uint32_t first, const uint32_t last, const float mul, int* mantisas) {
     for (uint32_t j = 0, f = first; f < last; f++, j++) {
         mantisas[f] = ToInt(values[j] * mul);
     }
@@ -156,9 +156,9 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
             const uint32_t first = TAtrac3Data::BlockSizeTab[i];
             const uint32_t last = TAtrac3Data::BlockSizeTab[i+1];
             const uint32_t blockSize = last - first;
-            const TFloat mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
+            const float mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
             if (calcMant) {
-                const TFloat* values = scaledBlocks[i].Values.data();
+                const float* values = scaledBlocks[i].Values.data();
                 CalcMantisas(values, first, last, mul, mantisas);
             }
             bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr) :
@@ -197,7 +197,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
         return DUMMY_ALLOC;
     }
 
-    TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
+    float spread = AnalizeScaleFactorSpread(scaledBlocks);
 
     uint16_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
 
@@ -215,10 +215,10 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
     bool cont = true;
     while (cont) {
         precisionPerEachBlocks.resize(numBfu);
-        TFloat maxShift = 20;
-        TFloat minShift = -8;
+        double maxShift = 20;
+        double minShift = -8;
         for (;;) {
-            TFloat shift = (maxShift + minShift) / 2;
+            double shift = (maxShift + minShift) / 2;
             const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift, laudness);
             auto consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt);
 
@@ -451,7 +451,7 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
 
                     ASSERT(curGroup.SubGroupPtr[k]->ScaledBlock.Values.size() < 8);
                     int mantisas[256];
-                    const TFloat mul = TAtrac3Data::MaxQuant[std::min((uint32_t)(i>>3), (uint32_t)7)];
+                    const float mul = TAtrac3Data::MaxQuant[std::min((uint32_t)(i>>3), (uint32_t)7)];
                     ASSERT(codedValues == curGroup.SubGroupPtr[k]->ScaledBlock.Values.size());
                     for (uint32_t z = 0; z < curGroup.SubGroupPtr[k]->ScaledBlock.Values.size(); ++z) {
                         mantisas[z] = lrint(curGroup.SubGroupPtr[k]->ScaledBlock.Values[z] * mul);
@@ -477,9 +477,9 @@ uint16_t TAtrac3BitStreamWriter::EncodeTonalComponents(const TSingleChannelEleme
 
 vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                                             const uint32_t bfuNum,
-                                                            const TFloat spread,
-                                                            const TFloat shift,
-                                                            const TFloat loudness)
+                                                            const float spread,
+                                                            const float shift,
+                                                            const float loudness)
 {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
@@ -489,7 +489,7 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
             bitsPerEachBlock[i] = 0;
         } else {
             const uint32_t fix = FixedBitAllocTable[i];
-            int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
+            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
             if (tmp > 7) {
                 bitsPerEachBlock[i] = 7;
             } else if (tmp < 0) {
@@ -514,8 +514,8 @@ void WriteJsParams(NBitStream::TBitStream* bs)
 //  0.5 - M only (mono)
 //  0.0 - Uncorrelated
 // -0.5 - S only
-static TFloat CalcMSRatio(TFloat mEnergy, TFloat sEnergy) {
-    TFloat total = sEnergy + mEnergy;
+static float CalcMSRatio(float mEnergy, float sEnergy) {
+    float total = sEnergy + mEnergy;
     if (total > 0)
         return mEnergy / total - 0.5;
 
@@ -535,7 +535,7 @@ static int32_t CalcMSBytesShift(uint32_t frameSz,
     if (elements[1].ScaledBlocks.empty()) {
         return maxAllowedShift;
     } else {
-        TFloat ratio = CalcMSRatio(elements[0].Loudness, elements[1].Loudness);
+        float ratio = CalcMSRatio(elements[0].Loudness, elements[1].Loudness);
         //std::cerr << ratio << std::endl;
         return std::max(std::min(ToInt(frameSz * ratio), maxAllowedShift), -maxAllowedShift);
     }

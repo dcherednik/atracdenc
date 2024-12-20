@@ -98,7 +98,7 @@ uint32_t TBitsBooster::ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint3
     return surplus;
 }
 
-std::vector<TFloat> TAtrac1SimpleBitAlloc::ATHLong;
+std::vector<float> TAtrac1SimpleBitAlloc::ATHLong;
 
 TAtrac1SimpleBitAlloc::TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
     : TAtrac1BitStreamWriter(container)
@@ -125,8 +125,8 @@ TAtrac1SimpleBitAlloc::TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint3
 
 vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                                            const uint32_t bfuNum,
-                                                           const TFloat spread,
-                                                           const TFloat shift,
+                                                           const float spread,
+                                                           const float shift,
                                                            const TBlockSize& blockSize,
                                                            const float loudness) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
@@ -138,7 +138,7 @@ vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TSc
         if (!shortBlock && scaledBlocks[i].MaxEnergy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
-            int tmp = spread * ( (TFloat)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
+            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
             if (tmp > 16) {
                 bitsPerEachBlock[i] = 16;
             } else if (tmp < 2) {
@@ -189,7 +189,7 @@ uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed,
 uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) {
     uint32_t bfuIdx = BfuIdxConst ? BfuIdxConst - 1 : 7;
     bool autoBfu = !BfuIdxConst;
-    TFloat spread = AnalizeScaleFactorSpread(scaledBlocks);
+    float spread = AnalizeScaleFactorSpread(scaledBlocks);
 
     vector<uint32_t> bitsPerEachBlock(TAtrac1Data::BfuAmountTab[bfuIdx]);
     uint32_t targetBitsPerBfus;
@@ -200,9 +200,9 @@ uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlo
             TAtrac1Data::BitsPerBfuAmountTabIdx - 32 - 2 - 3 -
             bitsPerEachBlock.size() * (TAtrac1Data::BitsPerIDWL + TAtrac1Data::BitsPerIDSF);
 
-        TFloat maxShift = 15;
-        TFloat minShift = -3;
-        TFloat shift = 3.0;
+        float maxShift = 15;
+        float minShift = -3;
+        float shift = 3.0;
         const uint32_t maxBits = bitsAvaliablePerBfus;
         const uint32_t minBits = bitsAvaliablePerBfus - 110;
 
@@ -299,8 +299,8 @@ void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachB
         if (wordLength == 0 || wordLength == 1)
             continue;
 
-        const TFloat multiple = ((1 << (wordLength - 1)) - 1);
-        for (const TFloat val : scaledBlocks[i].Values) {
+        const float multiple = ((1 << (wordLength - 1)) - 1);
+        for (const float val : scaledBlocks[i].Values) {
             const int tmp = lrint(val * multiple);
             const uint32_t testwl = bitsPerEachBlock[i] ? (bitsPerEachBlock[i] - 1) : 0;
             const uint32_t a = !!testwl + testwl;

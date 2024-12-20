@@ -45,8 +45,8 @@ TAtrac1Decoder::TAtrac1Decoder(TCompressedInputPtr&& aea)
 {
 }
 
-static void vector_fmul_window(TFloat *dst, const TFloat *src0,
-                                const TFloat *src1, const TFloat *win, int len)
+static void vector_fmul_window(float *dst, const float *src0,
+                                const float *src1, const float *win, int len)
 {
     int i, j;
 
@@ -55,36 +55,36 @@ static void vector_fmul_window(TFloat *dst, const TFloat *src0,
     src0 += len;
 
     for (i = -len, j = len - 1; i < 0; i++, j--) {
-        TFloat s0 = src0[i];
-        TFloat s1 = src1[j];
-        TFloat wi = win[i];
-        TFloat wj = win[j];
+        float s0 = src0[i];
+        float s1 = src1[j];
+        float wi = win[i];
+        float wj = win[j];
         dst[i] = s0 * wj - s1 * wi;
         dst[j] = s0 * wi + s1 * wj;
     }
 }
 
-void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, const TBlockSize& blockSize) {
+void TAtrac1MDCT::Mdct(float Specs[512], float* low, float* mid, float* hi, const TBlockSize& blockSize) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << blockSize.LogCount[band];
-        TFloat* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
+        float* srcBuf = (band == 0) ? low : (band == 1) ? mid : hi;
         uint32_t bufSz = (band == 2) ? 256 : 128;
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t winStart = (numMdctBlocks == 1) ? ((band == 2) ? 112 : 48) : 0;
         //compensate level for 3rd band in case of short window
-        const TFloat multiple = (numMdctBlocks != 1 && band == 2) ? 2.0 : 1.0;
-        vector<TFloat> tmp(512);
+        const float multiple = (numMdctBlocks != 1 && band == 2) ? 2.0 : 1.0;
+        vector<float> tmp(512);
         uint32_t blockPos = 0;
 
         for (size_t k = 0; k < numMdctBlocks; ++k) {
-            memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(TFloat));
+            memcpy(&tmp[winStart], &srcBuf[bufSz], 32 * sizeof(float));
             for (size_t i = 0; i < 32; i++) {
                 srcBuf[bufSz + i] = TAtrac1Data::SineWindow[i] * srcBuf[blockPos + blockSz - 32 + i];
                 srcBuf[blockPos + blockSz - 32 + i] = TAtrac1Data::SineWindow[31 - i] * srcBuf[blockPos + blockSz - 32 + i];
             }
-            memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(TFloat));
-            const vector<TFloat>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
+            memcpy(&tmp[winStart+32], &srcBuf[blockPos], blockSz * sizeof(float));
+            const vector<float>&  sp = (numMdctBlocks == 1) ? ((band == 2) ? Mdct512(&tmp[0]) : Mdct256(&tmp[0])) : Mdct64(&tmp[0]);
             for (size_t i = 0; i < sp.size(); i++) {
                 Specs[blockPos + pos + i] = sp[i] * multiple;
             }
@@ -97,7 +97,7 @@ void TAtrac1MDCT::Mdct(TFloat Specs[512], TFloat* low, TFloat* mid, TFloat* hi, 
         pos += bufSz;
     }
 }
-void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, TFloat* mid, TFloat* hi) {
+void TAtrac1MDCT::IMdct(float Specs[512], const TBlockSize& mode, float* low, float* mid, float* hi) {
     uint32_t pos = 0;
     for (size_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
@@ -105,15 +105,15 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
         const uint32_t blockSz = (numMdctBlocks == 1) ? bufSz : 32;
         uint32_t start = 0;
 
-        TFloat* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
+        float* dstBuf = (band == 0) ? low : (band == 1) ? mid : hi;
 
-        vector<TFloat> invBuf(512);
-        TFloat* prevBuf = &dstBuf[bufSz * 2  - 16];
+        vector<float> invBuf(512);
+        float* prevBuf = &dstBuf[bufSz * 2  - 16];
         for (uint32_t block = 0; block < numMdctBlocks; block++) {
             if (band) {
                 SwapArray(&Specs[pos], blockSz);
             }
-            vector<TFloat> inv = (numMdctBlocks != 1) ? Midct64(&Specs[pos]) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
+            vector<float> inv = (numMdctBlocks != 1) ? Midct64(&Specs[pos]) : (bufSz == 128) ? Midct256(&Specs[pos]) : Midct512(&Specs[pos]);
             for (size_t i = 0; i < (inv.size()/2); i++) {
                 invBuf[start+i] = inv[i + inv.size()/4];
             }
@@ -125,7 +125,7 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
             pos += blockSz;
         }
         if (numMdctBlocks == 1)
-            memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(TFloat));
+            memcpy(dstBuf + 32, &invBuf[16], ((band == 2) ? 240 : 112) * sizeof(float));
 
         for (size_t j = 0; j < 16; j++) {
             dstBuf[bufSz*2 - 16  + j] = invBuf[bufSz - 16 + j];
@@ -133,9 +133,9 @@ void TAtrac1MDCT::IMdct(TFloat Specs[512], const TBlockSize& mode, TFloat* low, 
     }
 }
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
-    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
-        TFloat sum[512];
+TPCMEngine::TProcessLambda TAtrac1Decoder::GetLambda() {
+    return [this](float* data, const TPCMEngine::ProcessMeta& /*meta*/) {
+        float sum[512];
         const uint32_t srcChannels = Aea->GetChannelNum();
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
             std::unique_ptr<ICompressedIO::TFrame> frame(Aea->ReadFrame());
@@ -144,7 +144,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
 
             TBlockSize mode(&bitstream);
             TAtrac1Dequantiser dequantiser;
-            vector<TFloat> specs;
+            vector<float> specs;
             specs.resize(512);;
             dequantiser.Dequant(&bitstream, mode, &specs[0]);
 
@@ -164,7 +164,7 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Decoder::GetLambda() {
 }
 
 
-TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
+TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
     vector<IAtrac1BitAlloc*> bitAlloc(srcChannels);
 
@@ -178,19 +178,19 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
             , Loudness(0.0)
         {}
 
-        vector<TFloat> Specs;
+        vector<float> Specs;
         float Loudness;
     };
 
     using TData = vector<TChannelData>;
     auto buf = std::make_shared<TData>(srcChannels);
 
-    return [this, srcChannels, bitAlloc, buf](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta& /*meta*/) {
+    return [this, srcChannels, bitAlloc, buf](float* data, const TPCMEngine::ProcessMeta& /*meta*/) {
         TBlockSize blockSz[2];
 
         uint32_t windowMasks[2] = {0};
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
-            TFloat src[TAtrac1Data::NumSamples];
+            float src[TAtrac1Data::NumSamples];
             for (size_t i = 0; i < TAtrac1Data::NumSamples; ++i) {
                 src[i] = data[i * srcChannels + channel];
             }
@@ -201,10 +201,10 @@ TPCMEngine<TFloat>::TProcessLambda TAtrac1Encoder::GetLambda() {
             if (Settings.GetWindowMode() == TAtrac1EncodeSettings::EWindowMode::EWM_AUTO) {
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 0).Detect(&PcmBufLow[channel][0]);
 
-                const vector<TFloat>& invMid = InvertSpectr<128>(&PcmBufMid[channel][0]);
+                const vector<float>& invMid = InvertSpectr<128>(&PcmBufMid[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 1).Detect(&invMid[0]) << 1;
 
-                const vector<TFloat>& invHi = InvertSpectr<256>(&PcmBufHi[channel][0]);
+                const vector<float>& invHi = InvertSpectr<256>(&PcmBufHi[channel][0]);
                 windowMask |= (uint32_t)TransientDetectors.GetDetector(channel, 2).Detect(&invHi[0]) << 2;
 
                 //std::cout << "trans: " << windowMask << std::endl;

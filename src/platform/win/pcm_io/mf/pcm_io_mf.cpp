@@ -69,8 +69,8 @@ static std::wstring Utf8ToMultiByte(const std::string& in) {
 }
 
 // TODO: add dither, noise shape?
-static inline int16_t FloatToInt16(TFloat in) {
-    return std::min((int)INT16_MAX, std::max((int)INT16_MIN, (int)lrint(in * (TFloat)INT16_MAX)));
+static inline int16_t FloatToInt16(float in) {
+    return std::min((int)INT16_MAX, std::max((int)INT16_MIN, (int)lrint(in * (float)INT16_MAX)));
 }
 
 static HRESULT WriteToFile(HANDLE hFile, void* p, DWORD cb) {
@@ -350,7 +350,7 @@ public:
         return static_cast<size_t>(totalSamples);
     }
 
-    size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Read(TPCMBuffer& buf, size_t sz) override {
         HRESULT hr = S_OK;
 
         const size_t sizeBytes = sz * BytesPerSample_;
@@ -447,7 +447,7 @@ public:
         return curPos;
     }
 
-    size_t Write(const TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Write(const TPCMBuffer& buf, size_t sz) override {
         const size_t samples = ChannelsNum_ * sz;
         Buf_.resize(samples * 2);
         for (size_t i = 0; i < samples; i++) {
