@@ -31,28 +31,26 @@ class TFileAlreadyExists : public std::exception {
 class TNoDataToRead : public std::exception {
 };
 
-template<class T>
-class TWavPcmReader : public IPCMReader<T> {
+class TWavPcmReader : public IPCMReader {
 public:
-    typedef std::function<void(TPCMBuffer<T>& data, const uint32_t size)> TLambda;
+    typedef std::function<void(TPCMBuffer& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmReader(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Read(TPCMBuffer<T>& data , const uint32_t size) const override {
+    void Read(TPCMBuffer& data , const uint32_t size) const override {
         Lambda(data, size);
     }
 };
 
-template<class T>
-class TWavPcmWriter : public IPCMWriter<T> {
+class TWavPcmWriter : public IPCMWriter {
 public:
-    typedef std::function<void(const TPCMBuffer<T>& data, const uint32_t size)> TLambda;
+    typedef std::function<void(const TPCMBuffer& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmWriter(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Write(const TPCMBuffer<T>& data , const uint32_t size) const override {
+    void Write(const TPCMBuffer& data , const uint32_t size) const override {
         Lambda(data, size);
     }
 };
@@ -63,8 +61,8 @@ public:
     virtual size_t GetChannelsNum() const = 0;
     virtual size_t GetSampleRate() const = 0;
     virtual size_t GetTotalSamples() const = 0;
-    virtual size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) = 0;
-    virtual size_t Write(const TPCMBuffer<TFloat>& buf, size_t sz) = 0;
+    virtual size_t Read(TPCMBuffer& buf, size_t sz) = 0;
+    virtual size_t Write(const TPCMBuffer& buf, size_t sz) = 0;
 };
 
 //TODO: split for reader/writer
@@ -82,40 +80,9 @@ public:
     size_t GetSampleRate() const;
     uint64_t GetTotalSamples() const;
 
-    template<class T>
-    IPCMReader<T>* GetPCMReader() const;
+    IPCMReader* GetPCMReader() const;
 
-    template<class T>
-    IPCMWriter<T>* GetPCMWriter();
+    IPCMWriter* GetPCMWriter();
 };
 
 typedef std::unique_ptr<TWav> TWavPtr;
-
-template<class T>
-IPCMReader<T>* TWav::GetPCMReader() const {
-    return new TWavPcmReader<T>([this](TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != Impl->GetChannelsNum())
-            throw TWrongReadBuffer(); 
-
-        size_t read;
-        if ((read = Impl->Read(data, size)) != size) {
-            if (!read)
-                throw TNoDataToRead();
-
-            data.Zero(read, size - read);
-        }
-    });
-}
-
-template<class T>
-IPCMWriter<T>* TWav::GetPCMWriter() {
-    return new TWavPcmWriter<T>([this](const TPCMBuffer<T>& data, const uint32_t size) {
-        if (data.Channels() != Impl->GetChannelsNum())
-            throw TWrongReadBuffer();
-        if (Impl->Write(data, size) != size) {
-            fprintf(stderr, "can't write block\n");
-        }
-    });
-}
-
-

@@ -39,16 +39,16 @@ struct TTonalBlock {
     TScaledBlock ScaledBlock;
 };
 
-class TAtrac3BitStreamWriter : public virtual TAtrac3Data {
+class TAtrac3BitStreamWriter {
 public:
     struct TSingleChannelElement {
         TAtrac3Data::SubbandInfo SubbandInfo;
         std::vector<TTonalBlock> TonalBlocks;
         std::vector<TScaledBlock> ScaledBlocks;
-        TFloat Loudness;
+        float Loudness;
     };
 private:
-    static std::vector<TFloat> ATH;
+    static std::vector<float> ATH;
 
     struct TTonalComponentsSubGroup {
         std::vector<uint8_t> SubGroupMap;
@@ -59,24 +59,24 @@ private:
     const uint32_t BfuIdxConst;
     std::vector<char> OutBuffer;
 
-    uint32_t CLCEnc(const uint32_t selector, const int mantissas[MaxSpecsPerBlock],
+    uint32_t CLCEnc(const uint32_t selector, const int mantissas[TAtrac3Data::MaxSpecsPerBlock],
                     const uint32_t blockSize, NBitStream::TBitStream* bitStream);
 
-    uint32_t VLCEnc(const uint32_t selector, const int mantissas[MaxSpecsPerBlock],
+    uint32_t VLCEnc(const uint32_t selector, const int mantissas[TAtrac3Data::MaxSpecsPerBlock],
                     const uint32_t blockSize, NBitStream::TBitStream* bitStream);
 
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
-                                             uint32_t bfuNum, TFloat spread, TFloat shift, TFloat loudness);
+                                             uint32_t bfuNum, float spread, float shift, float loudness);
 
     std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
-                                                               uint16_t targetBits, int mt[MaxSpecs], float laudness);
+                                                               uint16_t targetBits, int mt[TAtrac3Data::MaxSpecs], float laudness);
 
     std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                           const std::vector<uint32_t>& precisionPerEachBlocks,
                                                           int* mantisas, std::vector<float>& energyErr);
 
     void EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
-                     const std::pair<uint8_t, std::vector<uint32_t>>&, const int mt[MaxSpecs]);
+                     const std::pair<uint8_t, std::vector<uint32_t>>&, const int mt[TAtrac3Data::MaxSpecs]);
 
     uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                                  const std::vector<uint32_t>& allocTable,

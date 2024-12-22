@@ -46,8 +46,8 @@ using std::stoi;
 
 using namespace NAtracDEnc;
 
-typedef std::unique_ptr<TPCMEngine<TFloat>> TPcmEnginePtr;
-typedef std::unique_ptr<IProcessor<TFloat>> TAtracProcessorPtr;
+typedef std::unique_ptr<TPCMEngine> TPcmEnginePtr;
+typedef std::unique_ptr<IProcessor> TAtracProcessorPtr;
 
 static void printUsage(const char* myName, const string& err = string())
 {
@@ -145,9 +145,9 @@ static void PrepareAtrac1Encoder(const string& inFile,
             "the result will be incorrect" << std::endl;
     }
     TCompressedOutputPtr aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
-    pcmEngine->reset(new TPCMEngine<TFloat>(4096,
+    pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
-                                            TPCMEngine<TFloat>::TReaderPtr((*wavIO)->GetPCMReader<TFloat>())));
+                                            TPCMEngine::TReaderPtr((*wavIO)->GetPCMReader())));
     if (!noStdOut)
         cout << "Input\n Filename: " << inFile
              << "\n Channels: " << (int)numChannels
@@ -177,9 +177,9 @@ static void PrepareAtrac1Decoder(const string& inFile,
 	     << "\n Codec: PCM"
              << endl;
     wavIO->reset(new TWav(outFile, aeaIO->GetChannelNum(), 44100));
-    pcmEngine->reset(new TPCMEngine<TFloat>(4096,
+    pcmEngine->reset(new TPCMEngine(4096,
                                             aeaIO->GetChannelNum(),
-                                            TPCMEngine<TFloat>::TWriterPtr((*wavIO)->GetPCMWriter<TFloat>())));
+                                            TPCMEngine::TWriterPtr((*wavIO)->GetPCMWriter())));
     atracProcessor->reset(new TAtrac1Decoder(std::move(aeaIO)));
 }
 
@@ -237,9 +237,9 @@ static void PrepareAtrac3Encoder(const string& inFile,
              << "\n Bitrate: " << encoderSettings.ConteinerParams->Bitrate
              << endl;
 
-    pcmEngine->reset(new TPCMEngine<TFloat>(4096,
+    pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
-                                            TPCMEngine<TFloat>::TReaderPtr(wavIO->GetPCMReader<TFloat>())));
+                                            TPCMEngine::TReaderPtr(wavIO->GetPCMReader())));
     atracProcessor->reset(new TAtrac3Encoder(std::move(omaIO), std::move(encoderSettings)));
 }
 

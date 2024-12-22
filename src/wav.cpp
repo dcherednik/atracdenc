@@ -43,6 +43,31 @@ TWav::TWav(const std::string& path, size_t channels, size_t sampleRate)
 TWav::~TWav() {
 }
 
+IPCMReader* TWav::GetPCMReader() const {
+    return new TWavPcmReader([this](TPCMBuffer& data, const uint32_t size) {
+        if (data.Channels() != Impl->GetChannelsNum())
+            throw TWrongReadBuffer();
+
+        size_t read;
+        if ((read = Impl->Read(data, size)) != size) {
+            if (!read)
+                throw TNoDataToRead();
+
+            data.Zero(read, size - read);
+        }
+    });
+}
+
+IPCMWriter* TWav::GetPCMWriter() {
+    return new TWavPcmWriter([this](const TPCMBuffer& data, const uint32_t size) {
+        if (data.Channels() != Impl->GetChannelsNum())
+            throw TWrongReadBuffer();
+        if (Impl->Write(data, size) != size) {
+            fprintf(stderr, "can't write block\n");
+        }
+    });
+}
+
 uint64_t TWav::GetTotalSamples() const {
     return Impl->GetTotalSamples();
 }

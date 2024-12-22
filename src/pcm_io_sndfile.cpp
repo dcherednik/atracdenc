@@ -62,10 +62,10 @@ public:
     size_t GetTotalSamples() const override {
         return File.frames();
     }
-    size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Read(TPCMBuffer& buf, size_t sz) override {
         return File.readf(buf[0], sz);
     }
-    size_t Write(const TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Write(const TPCMBuffer& buf, size_t sz) override {
         return File.writef(buf[0], sz);
     }
 private:

@@ -82,7 +82,7 @@ public:
         }
     }
 
-    size_t Read(TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Read(TPCMBuffer& buf, size_t sz) override {
         if (Finished_)
             return 0;
 
@@ -108,7 +108,7 @@ public:
         return toConvert;
     }
 
-    size_t Write(const TPCMBuffer<TFloat>& buf, size_t sz) override {
+    size_t Write(const TPCMBuffer& buf, size_t sz) override {
         abort();
         return 0;
     }

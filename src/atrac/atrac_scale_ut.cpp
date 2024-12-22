@@ -24,10 +24,10 @@ using namespace NAtracDEnc;
 
 TEST(Quant, SaveEnergyLost) {
     struct TTestData {
-        const std::vector<TFloat> In;
-        const TFloat S;
-        const TFloat Q;
-        const TFloat Diff;
+        const std::vector<float> In;
+        const float S;
+        const float Q;
+        const float Diff;
     };
 
     const std::vector<TTestData> testData {
@@ -37,12 +37,12 @@ TEST(Quant, SaveEnergyLost) {
     };
 
     for (const auto& td : testData) {
-        const std::vector<TFloat>& in = td.In;
-        const TFloat scale = td.S;
+        const std::vector<float>& in = td.In;
+        const float scale = td.S;
 
         float e1 = 0.0;
 
-        std::vector<TFloat> scaled;
+        std::vector<float> scaled;
         scaled.reserve(in.size());
 
         for (auto x : in) {

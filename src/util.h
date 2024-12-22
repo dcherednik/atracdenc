@@ -44,15 +44,15 @@ inline void SwapArray(T* p, const size_t len) {
 }
 
 template<size_t N>
-inline void InvertSpectrInPlase(TFloat* in) {
+inline void InvertSpectrInPlase(float* in) {
     for (size_t i = 0; i < N; i+=2)
         in[i] *= -1;
 }
 
 template<size_t N>
-inline std::vector<TFloat> InvertSpectr(const TFloat* in) {
-    std::vector<TFloat> buf(N);
-    std::memcpy(&buf[0], in, N * sizeof(TFloat));
+inline std::vector<float> InvertSpectr(const float* in) {
+    std::vector<float> buf(N);
+    std::memcpy(&buf[0], in, N * sizeof(float));
     InvertSpectrInPlase<N>(&buf[0]);
     return buf;
 }
@@ -90,7 +90,7 @@ inline T CalcEnergy(const std::vector<T>& in) {
         });
 }
 
-inline int ToInt(double x) {
+inline int ToInt(float x) {
 #if defined(_MSC_VER) && !defined(_WIN64)
     int n;
     __asm {

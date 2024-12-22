@@ -31,9 +31,9 @@ class TTransientDetector {
     const uint16_t NShortBlocks;
     static const uint16_t PrevBufSz = 20;
     static const uint16_t FIRLen = 21;
-    void HPFilter(const TFloat* in, TFloat* out);
-    std::vector<TFloat> HPFBuffer;
-    TFloat LastEnergy = 0.0;
+    void HPFilter(const float* in, float* out);
+    std::vector<float> HPFBuffer;
+    float LastEnergy = 0.0;
     uint16_t LastTransientPos = 0;
 public:
     TTransientDetector(uint16_t shortSz, uint16_t blockSz)
@@ -43,10 +43,10 @@ public:
     {
         HPFBuffer.resize(BlockSz + FIRLen); 
     }
-    bool Detect(const TFloat* buf);
+    bool Detect(const float* buf);
     uint32_t GetLastTransientPos() const { return LastTransientPos; }
 };
 
-std::vector<TFloat> AnalyzeGain(const TFloat* in, uint32_t len, uint32_t maxPoints, bool useRms);
+std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms);
 
 }

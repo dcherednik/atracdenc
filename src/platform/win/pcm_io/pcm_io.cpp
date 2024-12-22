@@ -26,28 +26,28 @@
 #include <windows.h>
 
 
-void ConvertToPcmBufferFromLE(const BYTE* audioData, TPCMBuffer<TFloat>& buf, size_t sz, size_t shift, size_t channelsNum) {
+void ConvertToPcmBufferFromLE(const BYTE* audioData, TPCMBuffer& buf, size_t sz, size_t shift, size_t channelsNum) {
     if (channelsNum == 1) {
         for (size_t i = 0; i < sz; i++) {
-            *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 2 + 0)) / (TFloat)32768.0;
+            *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 2 + 0)) / (float)32768.0;
         }
     } else {
         for (size_t i = 0; i < sz; i++) {
-            *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 4 + 0)) / (TFloat)32768.0;
-            *(buf[i + shift] + 1) = (*(int16_t*)(audioData + i * 4 + 2)) / (TFloat)32768.0;
+            *(buf[i + shift] + 0) = (*(int16_t*)(audioData + i * 4 + 0)) / (float)32768.0;
+            *(buf[i + shift] + 1) = (*(int16_t*)(audioData + i * 4 + 2)) / (float)32768.0;
         }
     }
 }
 
-void ConvertToPcmBufferFromBE(const BYTE* audioData, TPCMBuffer<TFloat>& buf, size_t sz, size_t shift, size_t channelsNum) {
+void ConvertToPcmBufferFromBE(const BYTE* audioData, TPCMBuffer& buf, size_t sz, size_t shift, size_t channelsNum) {
     if (channelsNum == 1) {
         for (size_t i = 0; i < sz; i++) {
-            *(buf[i + shift] + 0) = conv_ntoh((*(int16_t*)(audioData + i * 2 + 0))) / (TFloat)32768.0;
+            *(buf[i + shift] + 0) = conv_ntoh((*(int16_t*)(audioData + i * 2 + 0))) / (float)32768.0;
         }
     } else {
         for (size_t i = 0; i < sz; i++) {
-            *(buf[i + shift] + 0) = conv_ntoh((*(int16_t*)(audioData + i * 4 + 0))) / (TFloat)32768.0;
-            *(buf[i + shift] + 1) = conv_ntoh((*(int16_t*)(audioData + i * 4 + 2))) / (TFloat)32768.0;
+            *(buf[i + shift] + 0) = conv_ntoh((*(int16_t*)(audioData + i * 4 + 0))) / (float)32768.0;
+            *(buf[i + shift] + 1) = conv_ntoh((*(int16_t*)(audioData + i * 4 + 2))) / (float)32768.0;
         }
     }
 }

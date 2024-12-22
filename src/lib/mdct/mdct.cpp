@@ -22,11 +22,11 @@
 
 namespace NMDCT {
 
-static std::vector<TFloat> CalcSinCos(size_t n, TFloat scale)
+static std::vector<float> CalcSinCos(size_t n, float scale)
 {
-    std::vector<TFloat> tmp(n >> 1);
-    const TFloat alpha = 2.0 * M_PI / (8.0 * n);
-    const TFloat omiga = 2.0 * M_PI / n;
+    std::vector<float> tmp(n >> 1);
+    const float alpha = 2.0 * M_PI / (8.0 * n);
+    const float omiga = 2.0 * M_PI / n;
     scale = sqrt(scale/n); 
     for (size_t i = 0; i < (n >> 2); ++i) {
         tmp[2 * i + 0] = scale * cos(omiga * i + alpha);
@@ -35,7 +35,7 @@ static std::vector<TFloat> CalcSinCos(size_t n, TFloat scale)
     return tmp;
 }
 
-TMDCTBase::TMDCTBase(size_t n, TFloat scale)
+TMDCTBase::TMDCTBase(size_t n, float scale)
     : N(n)
     , SinCos(CalcSinCos(n, scale))
 {

@@ -4,15 +4,13 @@ set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_C_STANDARD 11)
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
-if (ATDE_USE_FLOAT)
-    add_compile_definitions(ATDE_USE_FLOAT)
-endif()
 
 set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/lib/mdct/mdct_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/lib/bitstream/bitstream_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/util_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/atracdenc_ut.cpp
+    ${CMAKE_SOURCE_DIR}/src/atrac3denc_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/transient_detector_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/atrac/atrac_scale_ut.cpp
 )

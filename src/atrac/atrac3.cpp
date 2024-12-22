@@ -24,7 +24,7 @@ namespace NAtrac3 {
 
 constexpr uint32_t TAtrac3Data::BlockSizeTab[33];
 constexpr uint32_t TAtrac3Data::ClcLengthTab[8];
-constexpr double TAtrac3Data::MaxQuant[8];
+constexpr float TAtrac3Data::MaxQuant[8];
 constexpr uint32_t TAtrac3Data::BlocksPerBand[4 + 1];
 constexpr uint32_t TAtrac3Data::SpecsPerBlock[33];
 constexpr TAtrac3Data::THuffEntry TAtrac3Data::HuffTable1[HuffTable1Sz];
@@ -36,11 +36,13 @@ constexpr TAtrac3Data::THuffEntry TAtrac3Data::HuffTable7[HuffTable7Sz];
 constexpr TAtrac3Data::THuffTablePair TAtrac3Data::HuffTables[7];
 
 constexpr TContainerParams TAtrac3Data::ContainerParams[8];
-double TAtrac3Data::EncodeWindow[256] = {0};
-double TAtrac3Data::DecodeWindow[256] = {0};
-double TAtrac3Data::ScaleTable[64] = {0};
-double TAtrac3Data::GainLevel[16];
-double TAtrac3Data::GainInterpolation[31];
+float TAtrac3Data::EncodeWindow[256] = {0};
+float TAtrac3Data::DecodeWindow[256] = {0};
+float TAtrac3Data::ScaleTable[64] = {0};
+float TAtrac3Data::GainLevel[16];
+float TAtrac3Data::GainInterpolation[31];
+
+static const TAtrac3Data Atrac3Data;
 
 const TContainerParams* TAtrac3Data::GetContainerParamsForBitrate(uint32_t bitrate) {
     // Set default to LP2 mode

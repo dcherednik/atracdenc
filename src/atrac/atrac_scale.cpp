@@ -34,9 +34,9 @@ using std::endl;
 
 using std::abs;
 
-static const TFloat MAX_SCALE = 1.0;
+static const float MAX_SCALE = 1.0;
 
-TFloat QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last, const TFloat mul, bool ea, int* const mantisas)
+float QuantMantisas(const float* in, const uint32_t first, const uint32_t last, const float mul, bool ea, int* const mantisas)
 {
     float e1 = 0.0;
     float e2 = 0.0;
@@ -47,17 +47,17 @@ TFloat QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last
     const float inv2 = 1.0 / (mul * mul);
 
     for (uint32_t j = 0, f = first; f < last; f++, j++) {
-        auto t = in[j] * mul;
+        float t = in[j] * mul;
         e1 += in[j] * in[j];
         mantisas[f] = ToInt(t);
         e2 += mantisas[f] * mantisas[f] * inv2;
 
         if (ea) {
-            float delta = t - (std::trunc(t) + 0.5);
+            float delta = t - (std::truncf(t) + 0.5f);
             // 0 ... 0.25 ... 0.5 ... 0.75 ... 1
             //        ^----------------^ candidates to be rounded to opposite side
             // to decrease overall energy error in the band
-            if (std::abs(delta) < 0.25) {
+            if (std::abs(delta) < 0.25f) {
                 candidates.push_back({delta, f});
             }
         }
@@ -123,10 +123,17 @@ TFloat QuantMantisas(const TFloat* in, const uint32_t first, const uint32_t last
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class TBaseData>
-TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
-    TFloat maxAbsSpec = 0;
+TScaler<TBaseData>::TScaler() {
+    for (int i = 0; i < 64; i++) {
+        ScaleIndex[TBaseData::ScaleTable[i]] = i;
+    }
+}
+
+template<class TBaseData>
+TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
+    float maxAbsSpec = 0;
     for (uint16_t i = 0; i < len; ++i) {
-        const TFloat absSpec = abs(in[i]);
+        const float absSpec = abs(in[i]);
         if (absSpec > maxAbsSpec) {
             maxAbsSpec = absSpec;
         }
@@ -135,17 +142,19 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
         cerr << "Scale error: absSpec > MAX_SCALE, val: " << maxAbsSpec << endl;
         maxAbsSpec = MAX_SCALE;
     }
-    const map<TFloat, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
-    const TFloat scaleFactor = scaleIter->first;
+    const map<float, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
+    const float scaleFactor = scaleIter->first;
     const uint8_t scaleFactorIndex = scaleIter->second;
     TScaledBlock res(scaleFactorIndex);
-    TFloat maxEnergy = 0.0;
+    float maxEnergy = 0.0;
     for (uint16_t i = 0; i < len; ++i) {
-        TFloat scaledValue = in[i] / scaleFactor;
-        TFloat energy = in[i] * in[i];
+        float scaledValue = in[i] / scaleFactor;
+        float energy = in[i] * in[i];
         maxEnergy = std::max(maxEnergy, energy);
         if (abs(scaledValue) >= 1.0) {
-            cerr << "got "<< scaledValue << " it is wrong scalling" << endl;
+            if (abs(scaledValue) > 1.0) {
+                cerr << "clipping, scaled value: "<< scaledValue << endl;
+            }
             scaledValue = (scaledValue > 0) ? 0.99999 : -0.99999;
         }
         res.Values.push_back(scaledValue);
@@ -155,17 +164,17 @@ TScaledBlock TScaler<TBaseData>::Scale(const TFloat* in, uint16_t len) {
 }
 
 template<class TBaseData>
-vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<TFloat>& specs, const TBlockSize& blockSize) {
+vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<float>& specs, const TBlockSize& blockSize) {
     vector<TScaledBlock> scaledBlocks;
     scaledBlocks.reserve(TBaseData::MaxBfus);
-    for (uint8_t bandNum = 0; bandNum < this->NumQMF; ++bandNum) {
+    for (uint8_t bandNum = 0; bandNum < TBaseData::NumQMF; ++bandNum) {
         const bool shortWinMode = !!blockSize.LogCount[bandNum];
-        for (uint8_t blockNum = this->BlocksPerBand[bandNum]; blockNum < this->BlocksPerBand[bandNum + 1]; ++blockNum) {
-            const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] : 
+        for (uint8_t blockNum = TBaseData::BlocksPerBand[bandNum]; blockNum < TBaseData::BlocksPerBand[bandNum + 1]; ++blockNum) {
+            const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] :
                                                          TBaseData::SpecsStartLong[blockNum];
-            scaledBlocks.emplace_back(Scale(&specs[specNumStart], this->SpecsPerBlock[blockNum]));
-		}
-	}
+            scaledBlocks.emplace_back(Scale(&specs[specNumStart], TBaseData::SpecsPerBlock[blockNum]));
+        }
+    }
     return scaledBlocks;
 }
 
