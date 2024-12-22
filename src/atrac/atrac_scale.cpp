@@ -41,10 +41,20 @@ float QuantMantisas(const float* in, const uint32_t first, const uint32_t last, 
     float e1 = 0.0;
     float e2 = 0.0;
 
+    const float inv2 = 1.0 / (mul * mul);
+
+    if (!ea) {
+        for (uint32_t j = 0, f = first; f < last; f++, j++) {
+            float t = in[j] * mul;
+            e1 += in[j] * in[j];
+            mantisas[f] = ToInt(t);
+            e2 += mantisas[f] * mantisas[f] * inv2;
+        }
+        return e1 / e2;
+    }
+
     std::vector<std::pair<float, int>> candidates;
     candidates.reserve(last - first);
-
-    const float inv2 = 1.0 / (mul * mul);
 
     for (uint32_t j = 0, f = first; f < last; f++, j++) {
         float t = in[j] * mul;
@@ -52,14 +62,12 @@ float QuantMantisas(const float* in, const uint32_t first, const uint32_t last, 
         mantisas[f] = ToInt(t);
         e2 += mantisas[f] * mantisas[f] * inv2;
 
-        if (ea) {
-            float delta = t - (std::truncf(t) + 0.5f);
-            // 0 ... 0.25 ... 0.5 ... 0.75 ... 1
-            //        ^----------------^ candidates to be rounded to opposite side
-            // to decrease overall energy error in the band
-            if (std::abs(delta) < 0.25f) {
-                candidates.push_back({delta, f});
-            }
+        float delta = t - (std::truncf(t) + 0.5f);
+        // 0 ... 0.25 ... 0.5 ... 0.75 ... 1
+        //        ^----------------^ candidates to be rounded to opposite side
+        // to decrease overall energy error in the band
+        if (std::abs(delta) < 0.25f) {
+            candidates.push_back({delta, f});
         }
     }
 
