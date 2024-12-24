@@ -22,13 +22,7 @@
 #define NOMINMAX
 #endif
 
-#ifdef ATDE_USE_FLOAT
-#    define kiss_fft_scalar float
-typedef float TFloat;
-#else
-#    define kiss_fft_scalar double
-typedef double TFloat;
-#endif
+#define kiss_fft_scalar float
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)

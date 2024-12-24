@@ -28,18 +28,18 @@ class Atrac1AnalysisFilterBank {
     const static int delayComp = 39;
     TQmf<TIn, nInSamples> Qmf1;
     TQmf<TIn, nInSamples / 2> Qmf2;
-    std::vector<TFloat> MidLowTmp;
-    std::vector<TFloat> DelayBuf;
+    std::vector<float> MidLowTmp;
+    std::vector<float> DelayBuf;
 public:
     Atrac1AnalysisFilterBank() {
         MidLowTmp.resize(512);
         DelayBuf.resize(delayComp + 512);
     }
-    void Analysis(TIn* pcm, TFloat* low, TFloat* mid, TFloat* hi) {
-        memcpy(&DelayBuf[0], &DelayBuf[256], sizeof(TFloat) *  delayComp);
+    void Analysis(TIn* pcm, float* low, float* mid, float* hi) {
+        memcpy(&DelayBuf[0], &DelayBuf[256], sizeof(float) *  delayComp);
         Qmf1.Analysis(pcm, &MidLowTmp[0], &DelayBuf[delayComp]);
         Qmf2.Analysis(&MidLowTmp[0], low, mid);
-        memcpy(hi, &DelayBuf[0], sizeof(TFloat) * 256);
+        memcpy(hi, &DelayBuf[0], sizeof(float) * 256);
 
     }
 };
@@ -49,16 +49,16 @@ class Atrac1SynthesisFilterBank {
     const static int delayComp = 39;
     TQmf<TOut, nInSamples> Qmf1;
     TQmf<TOut, nInSamples / 2> Qmf2;
-    std::vector<TFloat> MidLowTmp;
-    std::vector<TFloat> DelayBuf;
+    std::vector<float> MidLowTmp;
+    std::vector<float> DelayBuf;
 public:
     Atrac1SynthesisFilterBank() {
         MidLowTmp.resize(512);
         DelayBuf.resize(delayComp + 512);
     }
-    void Synthesis(TOut* pcm, TFloat* low, TFloat* mid, TFloat* hi) {
-        memcpy(&DelayBuf[0], &DelayBuf[256], sizeof(TFloat) *  delayComp);
-        memcpy(&DelayBuf[delayComp], hi, sizeof(TFloat) * 256);
+    void Synthesis(TOut* pcm, float* low, float* mid, float* hi) {
+        memcpy(&DelayBuf[0], &DelayBuf[256], sizeof(float) *  delayComp);
+        memcpy(&DelayBuf[delayComp], hi, sizeof(float) * 256);
         Qmf2.Synthesis(&MidLowTmp[0], &low[0], &mid[0]);
         Qmf1.Synthesis(&pcm[0], &MidLowTmp[0], &DelayBuf[0]);
     }

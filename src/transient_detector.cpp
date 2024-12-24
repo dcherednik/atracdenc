@@ -26,8 +26,8 @@
 namespace NAtracDEnc {
 
 using std::vector;
-static TFloat calculateRMS(const TFloat* in, uint32_t n) {
-    TFloat s = 0;
+static float calculateRMS(const float* in, uint32_t n) {
+    float s = 0;
     for (uint32_t i = 0; i < n; i++) {
         s += (in[i] * in[i]);
     }
@@ -35,41 +35,41 @@ static TFloat calculateRMS(const TFloat* in, uint32_t n) {
     return sqrt(s);
 }
 
-static TFloat calculatePeak(const TFloat* in, uint32_t n) {
-    TFloat s = 0;
+static float calculatePeak(const float* in, uint32_t n) {
+    float s = 0;
     for (uint32_t i = 0; i < n; i++) {
-        TFloat absVal = std::abs(in[i]);
+        float absVal = std::abs(in[i]);
         if (absVal > s)
             s = absVal;
     }
     return s;
 }
 
-void TTransientDetector::HPFilter(const TFloat* in, TFloat* out) {
-    static const TFloat fircoef[] = {
+void TTransientDetector::HPFilter(const float* in, float* out) {
+    static const float fircoef[] = {
         -8.65163e-18 * 2.0, -0.00851586 * 2.0, -6.74764e-18 * 2.0, 0.0209036 * 2.0,
         -3.36639e-17 * 2.0, -0.0438162 * 2.0, -1.54175e-17 * 2.0, 0.0931738 * 2.0,
         -5.52212e-17 * 2.0, -0.313819 * 2.0
     };
-    memcpy(HPFBuffer.data() + PrevBufSz, in, BlockSz * sizeof(TFloat));
-    const TFloat* inBuf = HPFBuffer.data();
+    memcpy(HPFBuffer.data() + PrevBufSz, in, BlockSz * sizeof(float));
+    const float* inBuf = HPFBuffer.data();
     for (size_t i = 0; i < BlockSz; ++i) {
-        TFloat s = inBuf[i + 10];
-        TFloat s2 = 0;
+        float s = inBuf[i + 10];
+        float s2 = 0;
         for (size_t j = 0; j < ((FIRLen - 1) / 2) - 1 ; j += 2) {
             s += fircoef[j] * (inBuf[i + j] + inBuf[i + FIRLen - j]);
             s2 += fircoef[j + 1] * (inBuf[i + j + 1] + inBuf[i + FIRLen - j - 1]);
         }
         out[i] = (s + s2)/2;
     }
-    memcpy(HPFBuffer.data(), in + (BlockSz - PrevBufSz),  PrevBufSz * sizeof(TFloat));
+    memcpy(HPFBuffer.data(), in + (BlockSz - PrevBufSz),  PrevBufSz * sizeof(float));
 }
 
 
-bool TTransientDetector::Detect(const TFloat* buf) {
+bool TTransientDetector::Detect(const float* buf) {
     const uint16_t nBlocksToAnalize = NShortBlocks + 1;
-    TFloat* rmsPerShortBlock = reinterpret_cast<TFloat*>(alloca(sizeof(TFloat) * nBlocksToAnalize));
-    std::vector<TFloat> filtered(BlockSz);
+    float* rmsPerShortBlock = reinterpret_cast<float*>(alloca(sizeof(float) * nBlocksToAnalize));
+    std::vector<float> filtered(BlockSz);
     HPFilter(buf, filtered.data());
     bool trans = false;
     rmsPerShortBlock[0] = LastEnergy;
@@ -88,11 +88,11 @@ bool TTransientDetector::Detect(const TFloat* buf) {
     return trans;
 }
 
-std::vector<TFloat> AnalyzeGain(const TFloat* in, const uint32_t len, const uint32_t maxPoints, bool useRms) {
-    vector<TFloat> res;
+std::vector<float> AnalyzeGain(const float* in, const uint32_t len, const uint32_t maxPoints, bool useRms) {
+    vector<float> res;
     const uint32_t step = len / maxPoints;
     for (uint32_t pos = 0; pos < len; pos += step) {
-        TFloat rms = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
+        float rms = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
         res.emplace_back(rms);
     }
     return res;

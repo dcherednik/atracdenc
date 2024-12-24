@@ -36,23 +36,50 @@ TWav::TWav(const std::string& path)
     : Impl(CreatePCMIOReadImpl(path))
 { }
 
-TWav::TWav(const std::string& path, uint8_t channels, uint16_t sampleRate)
+TWav::TWav(const std::string& path, size_t channels, size_t sampleRate)
     : Impl(CreatePCMIOWriteImpl(path, channels, sampleRate))
 { }
 
 TWav::~TWav() {
 }
 
+IPCMReader* TWav::GetPCMReader() const {
+    return new TWavPcmReader([this](TPCMBuffer& data, const uint32_t size) {
+        if (data.Channels() != Impl->GetChannelsNum())
+            throw TWrongReadBuffer();
+
+        size_t read;
+        if ((read = Impl->Read(data, size)) != size) {
+            if (!read)
+                return false;
+
+            data.Zero(read, size - read);
+        }
+
+        return true;
+    });
+}
+
+IPCMWriter* TWav::GetPCMWriter() {
+    return new TWavPcmWriter([this](const TPCMBuffer& data, const uint32_t size) {
+        if (data.Channels() != Impl->GetChannelsNum())
+            throw TWrongReadBuffer();
+        if (Impl->Write(data, size) != size) {
+            fprintf(stderr, "can't write block\n");
+        }
+    });
+}
+
 uint64_t TWav::GetTotalSamples() const {
     return Impl->GetTotalSamples();
 }
 
-uint8_t TWav::GetChannelNum() const {
-    return (uint8_t)Impl->GetChannelsNum();
+size_t TWav::GetChannelNum() const {
+    return Impl->GetChannelsNum();
 }
 
-uint16_t TWav::GetSampleRate() const {
-    return (uint16_t)Impl->GetSampleRate();
+size_t TWav::GetSampleRate() const {
+    return Impl->GetSampleRate();
 }
 
 //bool TWav::IsFormatSupported() const {

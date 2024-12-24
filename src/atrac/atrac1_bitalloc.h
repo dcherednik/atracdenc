@@ -19,7 +19,6 @@
 #pragma once
 #include "atrac_scale.h"
 #include "../aea.h"
-#include "../atrac/atrac1.h"
 #include <vector>
 #include <map>
 #include <cstdint>
@@ -33,10 +32,10 @@ class IAtrac1BitAlloc {
 public:
     IAtrac1BitAlloc() {};
     virtual ~IAtrac1BitAlloc() {};
-    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) = 0;
+    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) = 0;
 };
 
-class TBitsBooster : public virtual TAtrac1Data {
+class TBitsBooster {
     std::multimap<uint32_t, uint32_t> BitsBoostMap; //bits needed -> position
     uint32_t MaxBitsPerIteration;
     uint32_t MinKey;
@@ -45,7 +44,7 @@ public:
     uint32_t ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target);
 };
 
-class TAtrac1BitStreamWriter : public virtual TAtrac1Data {
+class TAtrac1BitStreamWriter {
     ICompressedOutput* Container;
 public:
     explicit TAtrac1BitStreamWriter(ICompressedOutput* container);
@@ -56,19 +55,18 @@ public:
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
-                                             const TFloat spread, const TFloat shift, const TBlockSize& blockSize);
+                                             const float spread, const float shift, const TBlockSize& blockSize,
+                                             const float loudness);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
+    static std::vector<float> ATHLong;
+
     uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
     uint32_t CheckBfuUsage(bool* changed, uint32_t curBfuId, const std::vector<uint32_t>& bitsPerEachBlock);
 public:
-    explicit TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch)
-        : TAtrac1BitStreamWriter(container)
-        , BfuIdxConst(bfuIdxConst)
-        , FastBfuNumSearch(fastBfuNumSearch)
-    {}
+    TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch);
     ~TAtrac1SimpleBitAlloc() {};
-     uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize) override;
+    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) override;
 };
 
 } //namespace NAtrac1

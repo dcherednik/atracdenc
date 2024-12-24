@@ -22,5 +22,5 @@
 
 #include <windows.h>
 
-void ConvertToPcmBufferFromLE(const BYTE* audioData, TPCMBuffer<TFloat>& buf, size_t sz, size_t shift, size_t channelsNum);
-void ConvertToPcmBufferFromBE(const BYTE* audioData, TPCMBuffer<TFloat>& buf, size_t sz, size_t shift, size_t channelsNum);
+void ConvertToPcmBufferFromLE(const BYTE* audioData, TPCMBuffer& buf, size_t sz, size_t shift, size_t channelsNum);
+void ConvertToPcmBufferFromBE(const BYTE* audioData, TPCMBuffer& buf, size_t sz, size_t shift, size_t channelsNum);

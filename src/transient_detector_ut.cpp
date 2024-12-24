@@ -26,7 +26,7 @@ using std::vector;
 using namespace NAtracDEnc;
 TEST(AnalyzeGain, AnalyzeGainSimple) {
 
-    TFloat in[256];
+    float in[256];
     for (int i = 0; i < 256; ++i) {
         if (i <= 24) {
             in[i] = 1.0;
@@ -38,10 +38,10 @@ TEST(AnalyzeGain, AnalyzeGainSimple) {
             in[i] = 0.5;
         }
     }
-    vector<TFloat> res = AnalyzeGain(in, 256, 32, false);
+    vector<float> res = AnalyzeGain(in, 256, 32, false);
     EXPECT_EQ(res.size(), 32);    
 
-//    for (TFloat v : res)
+//    for (float v : res)
 //        std::cout << v << std::endl;
     for (int i = 0; i < 3; ++i)
         EXPECT_EQ(res[i], 1.0);

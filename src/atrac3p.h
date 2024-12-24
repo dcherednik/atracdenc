@@ -24,10 +24,10 @@
 
 namespace NAtracDEnc {
 
-class TAt3PEnc : public IProcessor<TFloat> {
+class TAt3PEnc : public IProcessor {
 public:
     TAt3PEnc(TCompressedOutputPtr&& out, int channels);
-    TPCMEngine<TFloat>::TProcessLambda GetLambda() override;
+    TPCMEngine::TProcessLambda GetLambda() override;
     static constexpr int NumSamples = 2048;
 private:
     TCompressedOutputPtr Out;

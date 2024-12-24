@@ -21,8 +21,8 @@
 #include "mdct.h"
 
 // Calculate value of error for given magnitude
-inline TFloat CalcEps(TFloat magn) {
-    const float snr = (sizeof(TFloat) == 4) ? -114.0 : -240.0;
+inline float CalcEps(float magn) {
+    const float snr = (sizeof(float) == 4) ? -114.0 : -240.0;
     return magn * pow(10, (snr / 20.0));
 }
 

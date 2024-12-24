@@ -21,5 +21,5 @@
 #include "compressed_io.h"
 
 TCompressedOutputPtr
-CreateAt3Output(const std::string& filename, uint8_t numChannel,
+CreateAt3Output(const std::string& filename, size_t numChannel,
         uint32_t numFrames, uint32_t framesize, bool jointStereo);

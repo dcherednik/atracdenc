@@ -38,7 +38,7 @@ public:
         , GhaProcessor(MakeGhaProcessor0(channels == 2))
     {}
 
-    TPCMEngine<float>::EProcessResult EncodeFrame(const TFloat* data, int channels);
+    TPCMEngine::EProcessResult EncodeFrame(const float* data, int channels);
 private:
     struct TChannelCtx {
         TChannelCtx()
@@ -51,10 +51,10 @@ private:
 
         at3plus_pqf_a_ctx_t PqfCtx;
 
-        TFloat* NextBuf = Buf1;
-        TFloat* CurBuf = nullptr;
-        TFloat Buf1[TAt3PEnc::NumSamples];
-        TFloat Buf2[TAt3PEnc::NumSamples];
+        float* NextBuf = Buf1;
+        float* CurBuf = nullptr;
+        float Buf1[TAt3PEnc::NumSamples];
+        float Buf2[TAt3PEnc::NumSamples];
     };
 
     TAt3PBitStream BitStream;
@@ -62,8 +62,8 @@ private:
     std::unique_ptr<IGhaProcessor> GhaProcessor;
 };
 
-TPCMEngine<float>::EProcessResult TAt3PEnc::TImpl::
-EncodeFrame(const TFloat* data, int channels)
+TPCMEngine::EProcessResult TAt3PEnc::TImpl::
+EncodeFrame(const float* data, int channels)
 {
 
     int needMore = 0;
@@ -83,7 +83,7 @@ EncodeFrame(const TFloat* data, int channels)
     }
 
     if (needMore == channels) {
-        return TPCMEngine<TFloat>::EProcessResult::LOOK_AHEAD;
+        return TPCMEngine::EProcessResult::LOOK_AHEAD;
     }
 
     assert(needMore == 0);
@@ -102,7 +102,7 @@ EncodeFrame(const TFloat* data, int channels)
         std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
     }
 
-    return TPCMEngine<TFloat>::EProcessResult::PROCESSED;
+    return TPCMEngine::EProcessResult::PROCESSED;
 }
 
 TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels)
@@ -111,10 +111,10 @@ TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels)
 {
 }
 
-TPCMEngine<TFloat>::TProcessLambda TAt3PEnc::GetLambda() {
+TPCMEngine::TProcessLambda TAt3PEnc::GetLambda() {
     Impl.reset(new TImpl(Out.get(), Channels));
 
-    return [this](TFloat* data, const TPCMEngine<TFloat>::ProcessMeta&) {
+    return [this](float* data, const TPCMEngine::ProcessMeta&) {
         return Impl->EncodeFrame(data, Channels);
     };
 }

@@ -18,6 +18,7 @@
 
 #include "atrac_psy_common.h"
 
+#include <cmath>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace {
@@ -98,15 +99,15 @@ namespace NAtracDEnc {
 using std::vector;
 
 //returns 1 for tone-like, 0 - noise-like
-TFloat AnalizeScaleFactorSpread(const vector<TScaledBlock>& scaledBlocks)
+float AnalizeScaleFactorSpread(const vector<TScaledBlock>& scaledBlocks)
 {
-    TFloat s = 0.0;
+    float s = 0.0;
     for (size_t i = 0; i < scaledBlocks.size(); ++i) {
         s += scaledBlocks[i].ScaleFactorIndex;
     }
     s /= scaledBlocks.size();
-    TFloat sigma = 0.0;
-    TFloat t = 0.0;
+    float sigma = 0.0;
+    float t = 0.0;
     for (size_t i = 0; i < scaledBlocks.size(); ++i) {
         t = (scaledBlocks[i].ScaleFactorIndex - s);
         t *= t;
@@ -132,6 +133,23 @@ vector<float> CalcATH(int len, int sampleRate)
 
 	res[i] = trh;
     }
+    return res;
+}
+
+vector<float> CreateLoudnessCurve(size_t sz)
+{
+    std::vector<float> res;
+    res.resize(sz);
+
+    for (size_t i = 0; i < sz; i++) {
+        float f = (float)(i + 3) * 0.5 * 44100 / (float)sz;
+        float t = std::log10(f) - 3.5;
+        t = -10 * t * t + 3 - f / 3000;
+        t = std::pow(10, (0.1 * t));
+        //std::cerr << i << "  => " << f << "  "  << t <<std::endl;
+        res[i] = t;
+    }
+
     return res;
 }
 

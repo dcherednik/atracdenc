@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <vector>

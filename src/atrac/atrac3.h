@@ -54,13 +54,13 @@ class TAtrac3Data {
 public:
     static constexpr uint8_t MaxBfus = 32;
     static constexpr uint32_t NumSamples = 1024;
-//protected:
+
     static const uint32_t MDCTSz = 512;
-    static double ScaleTable[64];
-    static double EncodeWindow[256];
-    static double DecodeWindow[256];
-    static double GainLevel[16];
-    static double GainInterpolation[31];
+    static float ScaleTable[64];
+    static float EncodeWindow[256];
+    static float DecodeWindow[256];
+    static float GainLevel[16];
+    static float GainInterpolation[31];
     static constexpr int32_t ExponentOffset = 4;
     static constexpr int32_t LocScale = 3;
     static constexpr int32_t LocSz = 1 << LocScale;
@@ -68,7 +68,7 @@ public:
 
     static constexpr uint32_t NumSpecs = NumSamples;
     static const uint32_t frameSz = 152;
-    static constexpr double MaxQuant[8] = {
+    static constexpr float MaxQuant[8] = {
         0.0,    1.5,    2.5,    3.5,
         4.5,    7.5,    15.5,   31.5
     };
@@ -247,6 +247,7 @@ public:
     };
     typedef std::vector<TTonalVal> TTonalComponents;
 };
+
 
 struct TAtrac3EncoderSettings {
     TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll,
