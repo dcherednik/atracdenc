@@ -51,7 +51,8 @@ static const TAt3PGhaData __attribute__ ((noinline)) GenAndRunGha(vector<TTestPa
     const float* b1 = buf1.data();
     const float* b2 = buf2.empty() ? nullptr : buf2.data();
 
-    return *(processor->DoAnalize({b1, b1 + 2048}, {b2, b2 + 2048}));
+    processor->DoAnalize({b1, b1 + 2048}, {b2, b2 + 2048});
+    return *processor->Drain();
 }
 
 static class TDumper {
@@ -469,8 +470,9 @@ TEST(AT3PGHA, 100hz__two_frames_mono) {
     std::vector<TAt3PGhaData> resBuf;
     auto processor = MakeGhaProcessor0(false);
 
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
     {
-        const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+        const auto& res = *processor->DoAnalize({&buf[2048], &buf[0]}, {nullptr, nullptr});
 
         EXPECT_EQ(res.NumToneBands, 1);
         EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -486,7 +488,7 @@ TEST(AT3PGHA, 100hz__two_frames_mono) {
 
     {
         memset(&buf[0], 0, sizeof(float) * 128);
-        const auto& res = *processor->DoAnalize({&buf[2048], &buf[0]}, {nullptr, nullptr});
+        const auto& res = *processor->Drain();
 
         EXPECT_EQ(res.NumToneBands, 1);
         EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -514,9 +516,10 @@ TEST(AT3PGHA, 100hz_than_500hz_than_100hz__3_frames_mono) {
     std::vector<TAt3PGhaData> resBuf;
     auto processor = MakeGhaProcessor0(false);
 
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
     {
-        const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
 
+        const auto& res = *processor->DoAnalize({&buf[2048], &buf[0]}, {nullptr, nullptr});
         EXPECT_EQ(res.NumToneBands, 1);
         EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
         EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
@@ -532,7 +535,7 @@ TEST(AT3PGHA, 100hz_than_500hz_than_100hz__3_frames_mono) {
     {
         memset(&buf[0], 0, sizeof(float) * 128);
         Gen({100.0f, 0, 32768, 0, 128}, buf);
-        const auto& res = *processor->DoAnalize({&buf[2048], &buf[0]}, {nullptr, nullptr});
+        const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
 
         EXPECT_EQ(res.NumToneBands, 1);
         EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -547,7 +550,8 @@ TEST(AT3PGHA, 100hz_than_500hz_than_100hz__3_frames_mono) {
     }
     {
         memset(&buf[2048], 0, sizeof(float) * 128);
-        const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+
+        const auto& res = *processor->Drain();
 
         EXPECT_EQ(res.NumToneBands, 1);
         EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -574,7 +578,8 @@ TEST(AT3PGHA, 100hz__phase_two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -596,7 +601,8 @@ TEST(AT3PGHA, 689hz0625__two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 1);
@@ -617,7 +623,8 @@ TEST(AT3PGHA, 689hz0625_1000hz__two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 2);
@@ -640,7 +647,8 @@ TEST(AT3PGHA, 500hz_1000hz__two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 2);
@@ -663,7 +671,8 @@ TEST(AT3PGHA, 500hz_1000hz__phase_two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 2);
@@ -689,7 +698,8 @@ TEST(AT3PGHA, 250hz_500hz_1000hz__two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 3);
@@ -716,7 +726,8 @@ TEST(AT3PGHA, 250hz_500hz_1000hz_1200hz__two_frames_mono) {
     memset(&buf[128], 0, sizeof(float) * 128);
 
     auto processor = MakeGhaProcessor0(false);
-    const auto& res = *processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr});
+    const auto& res = *processor->Drain();
 
     EXPECT_EQ(res.NumToneBands, 1);
     EXPECT_EQ(res.Waves[0].WaveParams.size(), 4);

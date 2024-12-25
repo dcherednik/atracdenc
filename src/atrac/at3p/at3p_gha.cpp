@@ -91,6 +91,41 @@ class TGhaProcessor : public IGhaProcessor {
         }
     };
 
+    class TTimeline {
+    public:
+        static void Clear(TAt3PGhaData& p)
+        {
+            for (size_t i = 0; i < p.Waves.size(); i++) {
+                TAt3PGhaData::TWavesChannel& waves = p.Waves[i];
+                waves.WaveParams.clear();
+                waves.WaveSbInfos.clear();
+            }
+            p.NumToneBands = 0;
+            p.SecondIsLeader = false;
+        }
+
+        TTimeline()
+        {
+            P0 = &Buf[0];
+            P1 = &Buf[1];
+
+            Clear(P0->Res);
+            Clear(P1->Res);
+        }
+
+        TAt3PGhaData* Cur()  { return &P1->Res; }
+        TAt3PGhaData* Prev() { return &P0->Res; }
+
+        void Swap() { std::swap(P0, P1); }
+    private:
+        struct TBuf {
+            TAt3PGhaData Res;
+        } Buf[2];
+
+        TBuf* P0;
+        TBuf* P1;
+    };
+
     struct TChannelGhaCbCtx {
         TChannelGhaCbCtx(TChannelData* data, size_t sb)
             : Data(data)
@@ -132,13 +167,14 @@ public:
     }
 
     const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2) override;
+    const TAt3PGhaData* Drain() override;
 private:
     static void FillSubbandAth(float* out);
     static TAmpSfTab CreateAmpSfTab();
     static void CheckResuidalAndApply(float* resuidal, size_t size, void* self) noexcept;
     static void GenWaves(const TAt3PGhaData::TWaveParam* param, size_t numWaves, size_t reg_offset, float* out, size_t outLimit);
 
-    void AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t history);
+    void AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t sb, bool folower);
     uint32_t FillFolowerRes(const TGhaInfoMap& lGha, const TChannelData* src, TGhaInfoMap::const_iterator& it, uint32_t leaderSb);
 
     uint32_t AmplitudeToSf(float amp) const;
@@ -149,8 +185,7 @@ private:
     void FillResultBuf(const vector<TChannelData>& data);
 
     gha_ctx_t LibGhaCtx;
-    TAt3PGhaData ResultBuf;
-    TAt3PGhaData ResultBufHistory;
+    TTimeline Timeline;
     const bool Stereo;
 
     static float SubbandAth[SUBBANDS];
@@ -326,9 +361,14 @@ const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
     }
 
     FillResultBuf(data);
-    ResultBufHistory = ResultBuf;
+    Timeline.Swap();
 
-    return &ResultBuf;
+    return Timeline.Cur();
+}
+
+const TAt3PGhaData* TGhaProcessor::Drain()
+{
+    return Timeline.Prev();
 }
 
 bool TGhaProcessor::CheckNextFrame(const float* nextSrc, const vector<gha_info>& ghaInfos) const
@@ -524,11 +564,19 @@ bool TGhaProcessor::PsyPreCheck(size_t sb, const struct gha_info& gha, const TCh
     return false;
 }
 
-void TGhaProcessor::AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t history)
+void TGhaProcessor::AdjustEnvelope(pair<uint32_t, uint32_t>& envelope, const pair<uint32_t, uint32_t>& src, uint32_t sb, bool folower)
 {
+    uint32_t history = TAt3PGhaData::INIT;
+    if (Timeline.Prev()->Waves[folower].WaveSbInfos.size() > sb) {
+        history = Timeline.Prev()->Waves[folower].WaveSbInfos[sb].Envelope.second;
+    }
+
     if (src.first == 0 && history == TAt3PGhaData::EMPTY_POINT) {
         envelope.first = TAt3PGhaData::EMPTY_POINT;
     } else {
+        if (history == TAt3PGhaData::EMPTY_POINT) {
+            Timeline.Prev()->Waves[folower].WaveSbInfos[sb].Envelope.second = 31;
+        }
         if (src.first == TAt3PGhaData::EMPTY_POINT) {
             abort(); //impossible right now
             envelope.first = TAt3PGhaData::EMPTY_POINT;
@@ -575,15 +623,16 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
     std::vector<TWavesChannel> history;
     history.reserve(data.size());
 
-    history.push_back(ResultBuf.Waves[0]);
+    auto resultBuf = Timeline.Cur();
+    history.push_back(resultBuf->Waves[0]);
 
-    ResultBuf.SecondIsLeader = leader;
-    ResultBuf.NumToneBands = usedContiguousSb[leader];
+    resultBuf->SecondIsLeader = leader;
+    resultBuf->NumToneBands = usedContiguousSb[leader];
 
     TGhaInfoMap::const_iterator leaderStartIt;
     TGhaInfoMap::const_iterator folowerIt;
     if (data.size() == 2) {
-        TWavesChannel& fWaves = ResultBuf.Waves[1];
+        TWavesChannel& fWaves = resultBuf->Waves[1];
 
         history.push_back(fWaves);
 
@@ -596,7 +645,7 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
     }
 
     const auto& ghaInfos = data[leader].GhaInfos;
-    TWavesChannel& waves = ResultBuf.Waves[0];
+    TWavesChannel& waves = resultBuf->Waves[0];
     waves.WaveParams.clear();
     waves.WaveSbInfos.clear();
     waves.WaveSbInfos.resize(usedContiguousSb[leader]);
@@ -620,11 +669,7 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 
         waves.WaveSbInfos[sb].WaveNums++;
         if (sb != prevSb) {
-            uint32_t histStop = TAt3PGhaData::INIT;
-            if (ResultBufHistory.Waves[0].WaveSbInfos.size() > prevSb) {
-                histStop = ResultBufHistory.Waves[0].WaveSbInfos[prevSb].Envelope.second;
-            }
-            AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], histStop);
+            AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], prevSb, 0);
 
             // update index sb -> wave position index
             waves.WaveSbInfos[sb].WaveIndex = index;
@@ -642,12 +687,7 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
         index++;
     }
 
-    uint32_t histStop = (uint32_t)-2;
-    if (ResultBufHistory.Waves[0].WaveSbInfos.size() > prevSb) {
-        histStop = ResultBufHistory.Waves[0].WaveSbInfos[prevSb].Envelope.second;
-    }
-
-    TGhaProcessor::AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], histStop);
+    TGhaProcessor::AdjustEnvelope(waves.WaveSbInfos[prevSb].Envelope, data[leader].Envelopes[prevSb], prevSb, 0);
 
     if (data.size() == 2) {
         FillFolowerRes(data[leader].GhaInfos, &data[!leader], folowerIt, prevSb);
@@ -656,14 +696,9 @@ void TGhaProcessor::FillResultBuf(const vector<TChannelData>& data)
 
 uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TChannelData* src, TGhaInfoMap::const_iterator& it, const uint32_t curSb)
 {
-    uint32_t histStop = (uint32_t)-2;
-    if (ResultBufHistory.Waves[1].WaveSbInfos.size() > curSb) {
-        histStop = ResultBufHistory.Waves[1].WaveSbInfos[curSb].Envelope.second;
-    }
-
     const TGhaInfoMap& fGhaInfos = src->GhaInfos;
 
-    TWavesChannel& waves = ResultBuf.Waves[1];
+    TWavesChannel& waves = Timeline.Cur()->Waves[1];
 
     uint32_t folowerSbMode = 0; // 0 - no tones, 1 - sharing band, 2 - own tones set
     uint32_t nextSb = 0;
@@ -691,18 +726,18 @@ uint32_t TGhaProcessor::FillFolowerRes(const TGhaInfoMap& lGhaInfos, const TChan
 
     switch (folowerSbMode) {
         case 0:
-            ResultBuf.ToneSharing[curSb] = false;
+            Timeline.Cur()->ToneSharing[curSb] = false;
             waves.WaveSbInfos[curSb].WaveNums = 0;
             break;
         case 1:
-            ResultBuf.ToneSharing[curSb] = true;
+            Timeline.Cur()->ToneSharing[curSb] = true;
             waves.WaveParams.resize(waves.WaveParams.size() - added);
             break;
         default:
-            ResultBuf.ToneSharing[curSb] = false;
+            Timeline.Cur()->ToneSharing[curSb] = false;
             waves.WaveSbInfos[curSb].WaveIndex = waves.WaveParams.size() - added;
             waves.WaveSbInfos[curSb].WaveNums = added;
-            AdjustEnvelope(waves.WaveSbInfos[curSb].Envelope, src->Envelopes[curSb], histStop);
+            AdjustEnvelope(waves.WaveSbInfos[curSb].Envelope, src->Envelopes[curSb], curSb, 1);
     }
     return nextSb;
 }
