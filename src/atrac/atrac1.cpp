@@ -17,6 +17,7 @@
  */
 
 #include "atrac1.h"
+#include "bitstream/bitstream.h"
 
 namespace NAtracDEnc {
 namespace NAtrac1 {
@@ -30,6 +31,15 @@ float TAtrac1Data::ScaleTable[64] = {0};
 float TAtrac1Data::SineWindow[32] = {0};
 
 const static TAtrac1Data Atrac1Data;
+
+std::array<int, 3> TAtrac1Data::TBlockSizeMod::Parse(NBitStream::TBitStream* stream) {
+    std::array<int, 3> tmp;
+    tmp[0] = 2 - stream->Read(2);
+    tmp[1] = 2 - stream->Read(2);
+    tmp[2] = 3 - stream->Read(2);
+    stream->Read(2); //skip unused 2 bits
+    return tmp;
+}
 
 } //namespace NAtrac1
 } //namespace NAtracDEnc

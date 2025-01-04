@@ -18,6 +18,7 @@
 
 #pragma once
 #include "atrac_scale.h"
+#include "atrac/atrac1.h"
 #include "../aea.h"
 #include <vector>
 #include <map>
@@ -32,7 +33,7 @@ class IAtrac1BitAlloc {
 public:
     IAtrac1BitAlloc() {};
     virtual ~IAtrac1BitAlloc() {};
-    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) = 0;
+    virtual uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TAtrac1Data::TBlockSizeMod& blockSize, float loudness) = 0;
 };
 
 class TBitsBooster {
@@ -50,12 +51,13 @@ public:
     explicit TAtrac1BitStreamWriter(ICompressedOutput* container);
 
     void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
-                        uint32_t bfuAmountIdx, const TBlockSize& blockSize);
+                        uint32_t bfuAmountIdx, const TAtrac1Data::TBlockSizeMod& blockSize);
 };
 
 class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
-                                             const float spread, const float shift, const TBlockSize& blockSize,
+                                             const float spread, const float shift,
+                                             const TAtrac1Data::TBlockSizeMod& blockSize,
                                              const float loudness);
     const uint32_t BfuIdxConst;
     const bool FastBfuNumSearch;
@@ -66,7 +68,7 @@ class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster
 public:
     TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch);
     ~TAtrac1SimpleBitAlloc() {};
-    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) override;
+    uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TAtrac1Data::TBlockSizeMod& blockSize, float loudness) override;
 };
 
 } //namespace NAtrac1

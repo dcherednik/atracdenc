@@ -127,7 +127,7 @@ vector<uint32_t> TAtrac1SimpleBitAlloc::CalcBitsAllocation(const std::vector<TSc
                                                            const uint32_t bfuNum,
                                                            const float spread,
                                                            const float shift,
-                                                           const TBlockSize& blockSize,
+                                                           const TAtrac1Data::TBlockSizeMod& blockSize,
                                                            const float loudness) {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
@@ -186,7 +186,7 @@ uint32_t TAtrac1SimpleBitAlloc::CheckBfuUsage(bool* changed,
     return curBfuId;
 }
 
-uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TBlockSize& blockSize, float loudness) {
+uint32_t TAtrac1SimpleBitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, const TAtrac1Data::TBlockSizeMod& blockSize, float loudness) {
     uint32_t bfuIdx = BfuIdxConst ? BfuIdxConst - 1 : 7;
     bool autoBfu = !BfuIdxConst;
     float spread = AnalizeScaleFactorSpread(scaledBlocks);
@@ -261,7 +261,7 @@ TAtrac1BitStreamWriter::TAtrac1BitStreamWriter(ICompressedOutput* container)
 void TAtrac1BitStreamWriter::WriteBitStream(const vector<uint32_t>& bitsPerEachBlock,
                                             const std::vector<TScaledBlock>& scaledBlocks,
                                             uint32_t bfuAmountIdx,
-                                            const TBlockSize& blockSize) {
+                                            const TAtrac1Data::TBlockSizeMod& blockSize) {
     NBitStream::TBitStream bitStream;
     size_t bitUsed = 0;
     if (bfuAmountIdx >= (1 << TAtrac1Data::BitsPerBfuAmountTabIdx)) {

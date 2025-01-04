@@ -22,6 +22,11 @@
 #include <map>
 #include <math.h>
 #include "config.h"
+
+namespace NBitStream {
+    class TBitStream;
+}
+
 namespace NAtracDEnc {
 namespace NAtrac1 {
 
@@ -53,6 +58,34 @@ public:
 
 class TAtrac1Data {
 public:
+    class TBlockSizeMod {
+        static std::array<int, 3> Parse(NBitStream::TBitStream* stream);
+        static std::array<int, 3> Create(bool lowShort, bool midShort, bool hiShort) {
+            std::array<int, 3> tmp;
+            tmp[0] = lowShort ? 2 : 0;
+            tmp[1] = midShort ? 2 : 0;
+            tmp[2] = hiShort ? 3 : 0;
+            return tmp;
+        }
+    public:
+        bool ShortWin(uint8_t band) const noexcept {
+            return LogCount[band];
+        }
+
+        TBlockSizeMod(NBitStream::TBitStream* stream)
+            : LogCount(Parse(stream))
+        {}
+
+        TBlockSizeMod(bool lowShort, bool midShort, bool hiShort)
+            : LogCount(Create(lowShort, midShort, hiShort))
+        {}
+
+        TBlockSizeMod()
+            : LogCount({{0, 0, 0}})
+        {}
+
+        std::array<int, 3> LogCount;
+    };
     static constexpr uint8_t MaxBfus = 52;
     static constexpr uint8_t NumQMF = 3;
 
