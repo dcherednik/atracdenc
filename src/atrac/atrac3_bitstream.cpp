@@ -34,11 +34,25 @@ using std::vector;
 using std::memset;
 
 static const uint32_t FixedBitAllocTable[TAtrac3Data::MaxBfus] = {
-  5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-  3, 3, 3, 3, 3, 3, 3, 3,
-  3, 2, 2, 1,
-  1, 0
+  4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+  2, 2, 2, 2, 2, 1, 1, 1,
+  1, 1, 1, 1,
+  0, 0
 };
+
+#define EAQ 1
+
+#ifdef EAQ
+
+static constexpr size_t LOSY_NAQ_START = 18;
+static constexpr size_t BOOST_NAQ_END = 10;
+
+#else
+
+static constexpr size_t LOSY_NAQ_START = 31;
+static constexpr size_t BOOST_NAQ_END = 0;
+
+#endif
 
 std::vector<float> TAtrac3BitStreamWriter::ATH;
 TAtrac3BitStreamWriter::TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst)
@@ -120,34 +134,15 @@ uint32_t TAtrac3BitStreamWriter::VLCEnc(const uint32_t selector, const int manti
     return bitsUsed;
 }
 
-static inline int ToInt(float x) {
-#if defined(_MSC_VER) && !defined(_WIN64)
-    int n;
-    __asm {
-        fld x
-        fistp n
-    }
-    return n;
-#else
-    return lrint(x);
-#endif
-}
-
-static inline void CalcMantisas(const float* values, const uint32_t first, const uint32_t last, const float mul, int* mantisas) {
-    for (uint32_t j = 0, f = first; f < last; f++, j++) {
-        mantisas[f] = ToInt(values[j] * mul);
-    }
-}
-
 std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
-                                                        const vector<uint32_t>& precisionPerEachBlocks, int* mantisas)
+    const vector<uint32_t>& precisionPerEachBlocks, int* mantisas, vector<float>& energyErr)
 {
 
     const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
     const uint32_t numBlocks = precisionPerEachBlocks.size();
     uint32_t bitsUsed = numBlocks * 3;
 
-    auto lambda = [this, numBlocks, mantisas, &precisionPerEachBlocks, &scaledBlocks](bool clcMode, bool calcMant) {
+    auto lambda = [this, numBlocks, mantisas, &precisionPerEachBlocks, &scaledBlocks, &energyErr](bool clcMode, bool calcMant) {
         uint32_t bits = 0;
         for (uint32_t i = 0; i < numBlocks; ++i) {
             if (precisionPerEachBlocks[i] == 0)
@@ -159,7 +154,7 @@ std::pair<uint8_t, uint32_t> TAtrac3BitStreamWriter::CalcSpecsBitsConsumption(co
             const float mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
             if (calcMant) {
                 const float* values = scaledBlocks[i].Values.data();
-                CalcMantisas(values, first, last, mul, mantisas);
+                energyErr[i] = QuantMantisas(values, first, last, mul, i > LOSY_NAQ_START, mantisas);
             }
             bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr) :
                 VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
@@ -189,6 +184,25 @@ static inline bool CheckBfus(uint16_t* numBfu, const vector<uint32_t>& precision
 
 static const std::pair<uint8_t, vector<uint32_t>> DUMMY_ALLOC{1, vector<uint32_t>{0}};
 
+bool ConsiderEnergyErr(const vector<float>& err, vector<uint32_t>& bits)
+{
+    if (err.size() < bits.size())
+        abort();
+
+    bool adjusted = false;
+    size_t lim = std::min((size_t)BOOST_NAQ_END, bits.size());
+    for (size_t i = 0; i < lim; i++) {
+        float e = err[i];
+        if (((e > 0 && e < 0.7) || e > 1.2) & (bits[i] < 7)) {
+            //std::cerr << "adjust: " << i << " e: " << e << " b: " << bits[i] << std::endl;
+            bits[i]++;
+            adjusted = true;
+        }
+    }
+
+    return adjusted;
+}
+
 std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(const TSingleChannelElement& sce,
     const uint16_t targetBits, int mt[TAtrac3Data::MaxSpecs], float laudness)
 {
@@ -211,6 +225,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
     }
 
     vector<uint32_t> precisionPerEachBlocks(numBfu);
+    vector<float> energyErr(numBfu);
     uint8_t mode;
     bool cont = true;
     while (cont) {
@@ -219,11 +234,17 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
         double minShift = -8;
         for (;;) {
             double shift = (maxShift + minShift) / 2;
-            const vector<uint32_t>& tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift, laudness);
-            auto consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt);
+            vector<uint32_t> tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift, laudness);
+            energyErr.clear();
+            energyErr.resize(numBfu);
+            std::pair<uint8_t, uint32_t> consumption;
+
+            do {
+                consumption = CalcSpecsBitsConsumption(sce, tmpAlloc, mt, energyErr);
+            } while (ConsiderEnergyErr(energyErr, tmpAlloc));
 
             auto bitsUsedByTonal = EncodeTonalComponents(sce, tmpAlloc, nullptr);
-//            std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << " target: " << targetBits << " shift " << shift << " max | min " << maxShift << " " << minShift << " numBfu: " << numBfu << std::endl;
+            //std::cerr << consumption.second << " |tonal: " << bitsUsedByTonal << " target: " << targetBits << " shift " << shift << " max | min " << maxShift << " " << minShift << " numBfu: " << numBfu << std::endl;
             consumption.second += bitsUsedByTonal;
 
             if (consumption.second < targetBits) {
@@ -489,11 +510,25 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
             bitsPerEachBlock[i] = 0;
         } else {
             const uint32_t fix = FixedBitAllocTable[i];
-            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2) + (1.0 - spread) * fix - shift;
+            float x = 6;
+            if (i < 3) {
+                x = 2.8;
+            } else if (i < 10) {
+                x = 2.6;
+            } else if (i < 15) {
+                x = 3.3;
+            } else if (i <= 20) {
+                x = 3.6;
+            } else if (i <= 28) {
+                x = 4.2;
+            }
+            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex / x) + (1.0 - spread) * fix - shift;
             if (tmp > 7) {
                 bitsPerEachBlock[i] = 7;
             } else if (tmp < 0) {
                 bitsPerEachBlock[i] = 0;
+            } else if (tmp == 0) {
+                bitsPerEachBlock[i] = 1;
             } else {
                 bitsPerEachBlock[i] = tmp;
             }

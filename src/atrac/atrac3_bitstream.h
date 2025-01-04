@@ -73,7 +73,7 @@ private:
 
     std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
                                                           const std::vector<uint32_t>& precisionPerEachBlocks,
-                                                          int* mantisas);
+                                                          int* mantisas, std::vector<float>& energyErr);
 
     void EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
                      const std::pair<uint8_t, std::vector<uint32_t>>&, const int mt[TAtrac3Data::MaxSpecs]);

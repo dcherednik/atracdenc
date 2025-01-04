@@ -90,3 +90,15 @@ inline T CalcEnergy(const std::vector<T>& in) {
         });
 }
 
+inline int ToInt(float x) {
+#if defined(_MSC_VER) && !defined(_WIN64)
+    int n;
+    __asm {
+        fld x
+        fistp n
+    }
+    return n;
+#else
+    return lrint(x);
+#endif
+}

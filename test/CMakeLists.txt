@@ -15,6 +15,7 @@ set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/atracdenc_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/atrac3denc_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/transient_detector_ut.cpp
+    ${CMAKE_SOURCE_DIR}/src/atrac/atrac_scale_ut.cpp
 )
 
 add_executable(atracdenc_ut ${atracdenc_ut})
