@@ -52,6 +52,13 @@ inline bool operator> (const TContainerParams& x, const unsigned int y)
 
 class TAtrac3Data {
 public:
+    class TBlockSizeMod {
+    public:
+        constexpr bool ShortWin(uint8_t) const noexcept {
+            return false;
+        }
+    };
+
     static constexpr uint8_t MaxBfus = 32;
     static constexpr uint32_t NumSamples = 1024;
 

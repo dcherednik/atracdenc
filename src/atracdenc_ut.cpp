@@ -23,6 +23,7 @@
 #include <vector>
 using std::vector;
 using namespace NAtracDEnc;
+using namespace NAtrac1;
 
 void CheckResult128(const vector<float>& a, const vector<float>& b) {
     float m = 0.0;
@@ -69,7 +70,7 @@ TEST(TAtrac1MDCT, TAtrac1MDCTLongEncDec) {
     for (int i = 0; i < 256; i++) {
         hi[i] = i;
     }
-    const TBlockSize blockSize(false, false, false);
+    const TAtrac1Data::TBlockSizeMod blockSize(false, false, false);
 
     mdct.Mdct(&specs[0], &low[0], &mid[0], &hi[0], blockSize);
 
@@ -102,7 +103,7 @@ TEST(TAtrac1MDCT, TAtrac1MDCTShortEncDec) {
     }
     const vector<float> hiCopy = hi;
 
-    const TBlockSize blockSize(true, true, true); //short
+    const TAtrac1Data::TBlockSizeMod blockSize(true, true, true); //short
 
     mdct.Mdct(&specs[0], &low[0], &mid[0], &hi[0], blockSize);
 
