@@ -87,9 +87,24 @@ target_link_libraries(at3plus_gha_ut
 
 ###
 
+set(at3plus_mdct_ut
+    ${CMAKE_SOURCE_DIR}/src/atrac/at3p/at3p_mdct_ut.cpp
+)
+
+add_executable(at3plus_mdct_ut ${at3plus_mdct_ut})
+
+target_link_libraries(at3plus_mdct_ut
+    m
+    fft_impl
+    atracdenc_impl
+    GTest::gtest_main
+)
+
+###
 
 enable_testing()
 add_test(ut atracdenc_ut)
 add_test(at3plus_pqf_ut at3plus_pqf_ut)
 add_test(at3plus_bitstream_ut at3plus_bitstream_ut)
 add_test(at3plus_gha_ut at3plus_gha_ut)
+add_test(at3plus_mdct_ut at3plus_mdct_ut)
