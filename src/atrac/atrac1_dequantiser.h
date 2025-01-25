@@ -27,7 +27,7 @@ namespace NAtrac1 {
 class TAtrac1Dequantiser {
 public:
     TAtrac1Dequantiser();
-    void Dequant(NBitStream::TBitStream* stream, const TBlockSize& bs, float specs[512]);
+    void Dequant(NBitStream::TBitStream* stream, const TAtrac1Data::TBlockSizeMod& bs, float specs[512]);
 };
 
 } //namespace NAtrac1

@@ -26,7 +26,7 @@ using namespace NBitStream;
 TAtrac1Dequantiser::TAtrac1Dequantiser() {
 }
 
-void TAtrac1Dequantiser::Dequant(TBitStream* stream, const TBlockSize& bs, float specs[512]) {
+void TAtrac1Dequantiser::Dequant(TBitStream* stream, const TAtrac1Data::TBlockSizeMod& bs, float specs[512]) {
     uint32_t wordLens[TAtrac1Data::MaxBfus];
     uint32_t idScaleFactors[TAtrac1Data::MaxBfus];
     const uint32_t numBFUs = TAtrac1Data::BfuAmountTab[stream->Read(3)];

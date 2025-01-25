@@ -349,7 +349,7 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             sce->Loudness = l;
 
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
-            sce->ScaledBlocks = Scaler.ScaleFrame(specs, TBlockSize());
+            sce->ScaledBlocks = Scaler.ScaleFrame(specs, TAtrac3Data::TBlockSizeMod());
         }
 
         if (meta.Channels == 2 && !Params.ConteinerParams->Js) {

@@ -39,8 +39,8 @@ class TAtrac1MDCT {
     NMDCT::TMIDCT<256> Midct256;
     NMDCT::TMIDCT<64> Midct64;
 public:
-    void IMdct(float specs[512], const TBlockSize& mode, float* low, float* mid, float* hi);
-    void Mdct(float specs[512], float* low, float* mid, float* hi, const TBlockSize& blockSize);
+    void IMdct(float specs[512], const NAtrac1::TAtrac1Data::TBlockSizeMod& mode, float* low, float* mid, float* hi);
+    void Mdct(float specs[512], float* low, float* mid, float* hi, const NAtrac1::TAtrac1Data::TBlockSizeMod& blockSize);
     TAtrac1MDCT()
         : Mdct512(1)
         , Mdct256(0.5)

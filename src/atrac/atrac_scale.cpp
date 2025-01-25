@@ -172,11 +172,12 @@ TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
 }
 
 template<class TBaseData>
-vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<float>& specs, const TBlockSize& blockSize) {
+vector<TScaledBlock> TScaler<TBaseData>::ScaleFrame(const vector<float>& specs, const typename TBaseData::TBlockSizeMod& blockSize) {
     vector<TScaledBlock> scaledBlocks;
     scaledBlocks.reserve(TBaseData::MaxBfus);
     for (uint8_t bandNum = 0; bandNum < TBaseData::NumQMF; ++bandNum) {
-        const bool shortWinMode = !!blockSize.LogCount[bandNum];
+        const bool shortWinMode = blockSize.ShortWin(bandNum);
+
         for (uint8_t blockNum = TBaseData::BlocksPerBand[bandNum]; blockNum < TBaseData::BlocksPerBand[bandNum + 1]; ++blockNum) {
             const uint16_t specNumStart = shortWinMode ? TBaseData::SpecsStartShort[blockNum] :
                                                          TBaseData::SpecsStartLong[blockNum];

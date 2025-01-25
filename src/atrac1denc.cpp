@@ -64,7 +64,7 @@ static void vector_fmul_window(float *dst, const float *src0,
     }
 }
 
-void TAtrac1MDCT::Mdct(float Specs[512], float* low, float* mid, float* hi, const TBlockSize& blockSize) {
+void TAtrac1MDCT::Mdct(float Specs[512], float* low, float* mid, float* hi, const TAtrac1Data::TBlockSizeMod& blockSize) {
     uint32_t pos = 0;
     for (uint32_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << blockSize.LogCount[band];
@@ -97,7 +97,7 @@ void TAtrac1MDCT::Mdct(float Specs[512], float* low, float* mid, float* hi, cons
         pos += bufSz;
     }
 }
-void TAtrac1MDCT::IMdct(float Specs[512], const TBlockSize& mode, float* low, float* mid, float* hi) {
+void TAtrac1MDCT::IMdct(float Specs[512], const TAtrac1Data::TBlockSizeMod& mode, float* low, float* mid, float* hi) {
     uint32_t pos = 0;
     for (size_t band = 0; band < TAtrac1Data::NumQMF; band++) {
         const uint32_t numMdctBlocks = 1 << mode.LogCount[band];
@@ -142,7 +142,7 @@ TPCMEngine::TProcessLambda TAtrac1Decoder::GetLambda() {
 
             TBitStream bitstream(frame->Get(), frame->Size());
 
-            TBlockSize mode(&bitstream);
+            TAtrac1Data::TBlockSizeMod mode(&bitstream);
             TAtrac1Dequantiser dequantiser;
             vector<float> specs;
             specs.resize(512);;
@@ -186,7 +186,7 @@ TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
     auto buf = std::make_shared<TData>(srcChannels);
 
     return [this, srcChannels, bitAlloc, buf](float* data, const TPCMEngine::ProcessMeta& /*meta*/) {
-        TBlockSize blockSz[2];
+        TAtrac1Data::TBlockSizeMod blockSz[2];
 
         uint32_t windowMasks[2] = {0};
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
@@ -213,7 +213,7 @@ TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
                 windowMask = Settings.GetWindowMask();
             }
 
-            blockSz[channel]  = TBlockSize(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
+            blockSz[channel]  = TAtrac1Data::TBlockSizeMod(windowMask & 0x1, windowMask & 0x2, windowMask & 0x4); //low, mid, hi
 
             auto& specs = (*buf)[channel].Specs;
 
