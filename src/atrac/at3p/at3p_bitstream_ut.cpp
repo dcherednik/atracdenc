@@ -1,4 +1,5 @@
 #include "at3p_bitstream.h"
+#include "at3p_bitstream_impl.h"
 #include <gtest/gtest.h>
 #include <cmath>
 
@@ -106,5 +107,33 @@ TEST(AT3PBitstream, ToneFreqBitPack__1_2_1020_1021_1022) {
     EXPECT_EQ(r.Data[3].Bits, 2);
     EXPECT_EQ(r.Data[4].Code, 2);
     EXPECT_EQ(r.Data[4].Bits, 2);
+}
+
+void FillFrameData(TSpecFrame& frame) {
+    frame.NumQuantUnits = 6;
+
+    for (size_t i = 0; i < frame.NumQuantUnits; i++) {
+        frame.WordLen.push_back({6, 6});
+    }
+}
+
+TEST(AT3PBitstream, Wordlen) {
+    std::vector<IBitStreamPartEncoder::TPtr> encoders;
+
+    encoders.emplace_back(new TWordLenEncoder());
+
+    NBitStream::TBitStream bs;
+    TBitStreamEncoder encoder(std::move(encoders));
+
+    std::vector<std::vector<TScaledBlock>> scaledBlocks;
+    scaledBlocks.resize(2);
+
+    TSpecFrame frame(444, 2, scaledBlocks);
+
+    FillFrameData(frame);
+
+    encoder.Do(&frame, bs);
+
+    EXPECT_EQ(bs.GetSizeInBits(), 40);
 }
 

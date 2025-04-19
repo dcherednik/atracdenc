@@ -81,7 +81,7 @@ public:
         TAt3PBitStream bs(out.get(), 2048);
 
         for (size_t i = 0; i < len; i++) {
-            bs.WriteFrame(channels, gha + i);
+        //    bs.WriteFrame(channels, gha + i);
         }
     }
 private:

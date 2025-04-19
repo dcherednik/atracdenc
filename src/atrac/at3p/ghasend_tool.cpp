@@ -63,7 +63,7 @@ void process(const string& in, NAtracDEnc::TAt3PBitStream* bs) {
     frame.Waves[0].WaveSbInfos[0].WaveNums = 1;
     frame.Waves[0].WaveSbInfos[0].Envelope =  {(uint32_t)nums[0], (uint32_t)nums[2]};
 
-    bs->WriteFrame(1, &frame);
+    //bs->WriteFrame(1, &frame);
 }
 
 int main(int argc, char** argv) {

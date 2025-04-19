@@ -16,14 +16,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "at3p_bitstream_impl.h"
 #include "at3p_bitstream.h"
 #include "at3p_gha.h"
 #include "at3p_tables.h"
-#include <lib/bitstream/bitstream.h>
 #include <env.h>
 #include <util.h>
 
+#include "ff/atrac3plus_data.h"
+
 #include <iostream>
+#include <memory>
 
 namespace NAtracDEnc {
 
@@ -88,8 +91,251 @@ TTonePackResult CreateFreqBitPack(const TAt3PGhaData::TWaveParam* const param, i
     }
 }
 
+size_t TDumper::GetConsumption() const noexcept
+{
+    return std::accumulate(Buf.begin(), Buf.end(), 0,
+        [](size_t acc, const std::pair<uint8_t, uint8_t>& x) noexcept -> size_t { return acc + x.second; });
+}
+
+IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHandler&)
+{
+    TSpecFrame* frame = TSpecFrame::Cast(frameData);
+
+    size_t numQuantUnits = 28;
+    frame->NumQuantUnits = numQuantUnits;
+    frame->WordLen.resize(numQuantUnits);
+
+    for (size_t i = 0; i < frame->WordLen.size(); i++) {
+        static uint8_t allocTable[32] = {
+            7, 7, 7, 7, 7, 6, 6, 6,
+            6, 6, 6, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 4,
+            3, 2, 1, 1, 1, 1, 1, 1
+        };
+        frame->WordLen[i].first = allocTable[i];
+        frame->WordLen[i].second = allocTable[i];
+    }
+
+    frame->SfIdx.resize(numQuantUnits);
+
+    for (size_t i = 0; i < frame->SfIdx.size(); i++) {
+        frame->SfIdx[i].first = frame->Chs[0].ScaledBlocks.at(i).ScaleFactorIndex;
+        if (frame->Chs.size() > 1)
+            frame->SfIdx[i].second = frame->Chs[1].ScaledBlocks.at(i).ScaleFactorIndex;
+    }
+
+    frame->SpecTabIdx.resize(numQuantUnits);
+
+    for (size_t i = 0; i < frame->SpecTabIdx.size(); i++) {
+        frame->SpecTabIdx[i].first = 7;
+        frame->SpecTabIdx[i].second = 7;
+    }
+
+    Insert(numQuantUnits - 1, 5);
+    Insert(0, 1); //mute flag
+
+    frame->AllocatedBits = GetConsumption();
+
+    return EStatus::Ok;
+}
+
+IBitStreamPartEncoder::EStatus TWordLenEncoder::Encode(void* frameData, TBitAllocHandler&) {
+    auto specFrame = TSpecFrame::Cast(frameData);
+
+    ASSERT(specFrame->WordLen.size() > specFrame->NumQuantUnits);
+    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+
+        Insert(0, 2); // 0 - constant number of bits
+
+        if (ch == 0) {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->WordLen[i].first, 3);
+            }
+        } else {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->WordLen[i].second, 3);
+            }
+        }
+    }
+
+    return EStatus::Ok;
+}
+
+IBitStreamPartEncoder::EStatus TSfIdxEncoder::Encode(void* frameData, TBitAllocHandler&) {
+    auto specFrame = TSpecFrame::Cast(frameData);
+
+    if (specFrame->SfIdx.empty()) {
+        return EStatus::Ok;
+    }
+
+    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+
+        Insert(0, 2); // 0 - constant number of bits
+
+        if (ch == 0) {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->SfIdx[i].first, 6);
+            }
+        } else {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->SfIdx[i].second, 6);
+            }
+        }
+    }
+
+    return EStatus::Ok;
+}
+
+IBitStreamPartEncoder::EStatus TCodeTabEncoder::Encode(void* frameData, TBitAllocHandler&) {
+    auto specFrame = TSpecFrame::Cast(frameData);
+
+    const size_t useFullTable = 1;
+    Insert(useFullTable, 1); // use full table
+
+    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+
+        Insert(0, 1); // table type
+
+        Insert(0, 2); // 0 - constant number of bits
+
+        Insert(0, 1); // num_coded_vals equal to used_quant_units
+
+        if (ch == 0) {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->SpecTabIdx[i].first, useFullTable + 2);
+            }
+        } else {
+            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+                Insert(specFrame->SpecTabIdx[i].second, useFullTable + 2);
+            }
+        }
+    }
+
+    return EStatus::Ok;
+}
+
+void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec, const size_t idx) {
+    const Atrac3pSpecCodeTab *tab = &atrac3p_spectra_tabs[idx];
+    const std::array<TVlcElement, 256>& vlcTab = HuffTabs.VlcSpecs[idx];
+
+    size_t groupSize = tab->group_size;
+    size_t numCoeffs = tab->num_coeffs;
+    size_t bitsCoeff = tab->bits;
+    bool isSigned  = tab->is_signed;
+
+    for (size_t pos = 0; pos < num_spec;) {
+        if (groupSize != 1) {
+            // TODO: Acording to FFmpeg it should be possible
+            // to skip group, if all rest of coeffs is zero
+            // but this should be checked with real AT3P decoder
+            Insert(1, 1);
+        }
+
+        for (size_t j = 0; j < groupSize; j++) {
+            uint32_t val = 0;
+            int8_t signs[4] = {0};
+            for (size_t i = 0; i < numCoeffs; i++) {
+                int16_t t = qspec[pos++];
+#ifndef NDEBUG
+                {
+                    uint16_t x = std::abs(t);
+                    x >>= (uint16_t)(bitsCoeff - (int)isSigned);
+                    ASSERT(x == 0);
+                }
+#endif
+                if (!isSigned && t != 0) {
+                    signs[i] = t > 0 ? 1 : -1;
+                    if (t < 0)
+                        t = -t;
+                } else {
+                    t = t & ((1u << (bitsCoeff)) - 1);
+                }
+                t <<= (bitsCoeff * i);
+                val |= t;
+            }
+
+            ASSERT(val > 255);
+
+            const TVlcElement& el = vlcTab.at(val);
+
+            Insert(el.Code, el.Len);
+            for (size_t i = 0; i < 4; i++) {
+                if (signs[i] != 0) {
+                    if (signs[i] > 0) {
+                        Insert(0, 1);
+                    } else {
+                        Insert(1, 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+IBitStreamPartEncoder::EStatus TQuantUnitsEncoder::Encode(void* frameData, TBitAllocHandler&) {
+    auto specFrame = TSpecFrame::Cast(frameData);
+    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+        auto& chData = specFrame->Chs.at(ch);
+        auto scaledBlocks = chData.ScaledBlocks;
+
+        int * const mant = chData.Mant;
+        for (size_t qu = 0; qu < specFrame->NumQuantUnits; qu++) {
+            auto lenIdx = (ch == 0) ?
+                        specFrame->WordLen.at(qu).first :
+                        specFrame->WordLen.at(qu).second;
+            const uint32_t first = TScaleTable::BlockSizeTab[qu];
+            const uint32_t last = TScaleTable::BlockSizeTab[qu+1];
+            auto mul = 1/atrac3p_mant_tab[lenIdx];
+
+            const float* values = scaledBlocks.at(qu).Values.data();
+
+            QuantMantisas(values, first, last, mul, false, mant);
+        }
+    }
+
+    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+        auto& chData = specFrame->Chs.at(ch);
+        int * const mant = chData.Mant;
+        for (size_t qu = 0; qu < specFrame->NumQuantUnits; qu++) {
+            const size_t numSpecs = TScaleTable::BlockSizeTab[qu + 1] -
+                TScaleTable::BlockSizeTab[qu];
+            size_t tabIndex = (ch == 0) ?
+                specFrame->SpecTabIdx.at(qu).first :
+                specFrame->SpecTabIdx.at(qu).second;
+            size_t wordLen = (ch == 0) ?
+                specFrame->WordLen.at(qu).first :
+                specFrame->WordLen.at(qu).second;
+
+            tabIndex = tabIndex * 7 + wordLen - 1;
+
+            EncodeQuSpectra(&mant[TScaleTable::BlockSizeTab[qu]], numSpecs, tabIndex);
+        }
+        if (true /*frame.NumUsedQuantUnits > 2*/) {
+            size_t numPwrSpec = atrac3p_subband_to_num_powgrps[atrac3p_qu_to_subband[specFrame->NumQuantUnits - 1]];
+            for (size_t i = 0; i < numPwrSpec; i++) {
+                Insert(15, 4);
+            }
+        }
+    }
+    return EStatus::Ok;
+
+}
+
+static std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
+{
+    vector<IBitStreamPartEncoder::TPtr> parts;
+    parts.emplace_back(new TConfigure());
+    parts.emplace_back(new TWordLenEncoder());
+    parts.emplace_back(new TSfIdxEncoder());
+    parts.emplace_back(new TCodeTabEncoder());
+    parts.emplace_back(new TQuantUnitsEncoder());
+
+    return parts;
+}
+
 TAt3PBitStream::TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz)
     : Container(container)
+    , Encoder(CreateEncParts())
     , FrameSz(frameSz)
 {
     NEnv::SetRoundFloat();
@@ -239,7 +485,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
     }
 }
 
-void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
+void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* /*tonalBlock*/, const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
 {
     NBitStream::TBitStream bitStream;
     // First bit must be zero
@@ -250,34 +496,24 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock)
     // 2 - Nobody know
     bitStream.Write(channels - 1, 2);
 
-    //int num_quant_units =  14;
-    int num_quant_units =  24;
-    bitStream.Write(num_quant_units - 1, 5);
+    TSpecFrame frame(FrameSz * 8, channels, scaledBlocks);
 
-    for (int ch = 0; ch < channels; ch++) {
-        bitStream.Write(0, 2); // channel wordlen mode
-        for (int j = 0; j < num_quant_units; j++) {
-            bitStream.Write(0, 3); // wordlen
-        }
-    }
+    Encoder.Do(&frame, bitStream);
 
-    // Skip some bits to produce correct zero bitstream
     if (channels == 2) {
-        bitStream.Write(0, 7);
-    } else {
-        bitStream.Write(0, 3);
+        bitStream.Write(0, 2); //swap_channels and negate_coeffs
     }
 
-    if (tonalBlock && tonalBlock->NumToneBands) {
-        // Bit indicate tonal block is used
-        bitStream.Write(1, 1);
-        WriteTonalBlock(bitStream, channels, tonalBlock);
-    } else {
-        bitStream.Write(0, 1);
+    for (size_t ch = 0; ch < frame.Chs.size(); ch++) {
+        bitStream.Write(0, 1); // window shape
     }
 
+    for (size_t ch = 0; ch < frame.Chs.size(); ch++) {
+        bitStream.Write(0, 1); //gain comp
+    }
+
+    bitStream.Write(0, 1);
     bitStream.Write(0, 1); // no noise info
-
     // Terminator
     bitStream.Write(3, 2);
 

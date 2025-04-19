@@ -1,9 +1,10 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_C_STANDARD 11)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
+
 include_directories(
     "../src/lib"
 )
@@ -102,9 +103,27 @@ target_link_libraries(at3plus_mdct_ut
 
 ###
 
+set(bs_encode_ut
+    ${CMAKE_SOURCE_DIR}/src/lib/bs_encode/encode_ut.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/bs_encode/encode.cpp
+)
+
+add_executable(bs_encode_ut ${bs_encode_ut})
+
+target_link_libraries(bs_encode_ut
+    m
+    bitstream
+    GTest::gtest_main
+)
+
+###
+
+
+
 enable_testing()
 add_test(ut atracdenc_ut)
 add_test(at3plus_pqf_ut at3plus_pqf_ut)
 add_test(at3plus_bitstream_ut at3plus_bitstream_ut)
 add_test(at3plus_gha_ut at3plus_gha_ut)
 add_test(at3plus_mdct_ut at3plus_mdct_ut)
+add_test(bs_encode_ut bs_encode_ut)

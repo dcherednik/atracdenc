@@ -26,6 +26,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Mantissa table. */
+/* pow(10, x * log10(2) + 0.05) / 2 / ([1,2,3,5,7,15,31] + 0.5) */
+static const float atrac3p_mant_tab[8] = {
+    0.0,
+    0.74801636,
+    0.44882202,
+    0.32058716,
+    0.20400238,
+    0.1496048,
+    0.07239151,
+    0.035619736
+};
+
 /** VLC tables for wordlen */
 static const uint8_t atrac3p_wl_cbs[][12] = {
     {  1,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 },

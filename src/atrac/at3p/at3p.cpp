@@ -22,6 +22,9 @@
 
 #include "at3p_bitstream.h"
 #include "at3p_gha.h"
+#include "at3p_mdct.h"
+#include "at3p_tables.h"
+#include <atrac/atrac_scale.h>
 
 #include <cassert>
 #include <vector>
@@ -43,6 +46,7 @@ private:
     struct TChannelCtx {
         TChannelCtx()
             : PqfCtx(at3plus_pqf_create_a_ctx())
+            , Specs(TAt3PEnc::NumSamples)
         {}
 
         ~TChannelCtx() {
@@ -55,8 +59,12 @@ private:
         float* CurBuf = nullptr;
         float Buf1[TAt3PEnc::NumSamples];
         float Buf2[TAt3PEnc::NumSamples];
+        TAt3pMDCT::THistBuf MdctBuf;
+        std::vector<float> Specs;
     };
 
+    TAt3pMDCT Mdct;
+    TScaler<NAt3p::TScaleTable> Scaler;
     TAt3PBitStream BitStream;
     vector<TChannelCtx> ChannelCtx;
     std::unique_ptr<IGhaProcessor> GhaProcessor;
@@ -65,7 +73,6 @@ private:
 TPCMEngine::EProcessResult TAt3PEnc::TImpl::
 EncodeFrame(const float* data, int channels)
 {
-
     int needMore = 0;
     for (int ch = 0; ch < channels; ch++) {
         float src[TAt3PEnc::NumSamples];
@@ -93,10 +100,27 @@ EncodeFrame(const float* data, int channels)
     const float* b2Cur = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
     const float* b2Next = (channels == 2) ? ChannelCtx[1].NextBuf : nullptr;
 
-
     auto tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next});
 
-    BitStream.WriteFrame(channels, tonalBlock);
+    std::vector<std::vector<TScaledBlock>> scaledBlocks;
+    for (int ch = 0; ch < channels; ch++) {
+        auto& c = ChannelCtx[ch];
+        TAt3pMDCT::TPcmBandsData p;
+        float tmp[2048];
+        //TODO: scale window
+        for (size_t i = 0; i < 2048; i++) {
+            tmp[i] = c.CurBuf[i] / 32768.0;
+        }
+        for (size_t b = 0; b < 16; b++) {
+            p[b] = tmp + b * 128;
+        }
+        Mdct.Do(c.Specs.data(), p, c.MdctBuf);
+
+        const auto& block = Scaler.ScaleFrame(c.Specs, NAt3p::TScaleTable::TBlockSizeMod());
+        scaledBlocks.push_back(block);
+    }
+
+    BitStream.WriteFrame(channels, tonalBlock, scaledBlocks);
 
     for (int ch = 0; ch < channels; ch++) {
         std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);

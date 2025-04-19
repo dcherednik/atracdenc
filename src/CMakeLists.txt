@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_C_STANDARD 11)
 
 #add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
@@ -99,6 +99,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/at3p/at3p_mdct.cpp
     atrac/at3p/at3p_tables.cpp
     lib/mdct/mdct.cpp
+    lib/bs_encode/encode.cpp
 )
 
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
