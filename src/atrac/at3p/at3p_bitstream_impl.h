@@ -56,7 +56,6 @@ struct TSpecFrame {
     static TSpecFrame* Cast(void* p) { return reinterpret_cast<TSpecFrame*>(p); }
 };
 
-
 class TDumper : public IBitStreamPartEncoder {
 public:
     void Dump(NBitStream::TBitStream& bs) override {
@@ -92,22 +91,34 @@ public:
 private:
 };
 
-class TCodeTabEncoder : public TDumper {
-public:
-    TCodeTabEncoder() = default;
-    EStatus Encode(void* frameData, TBitAllocHandler& ba) override;
-private:
-};
-
 class TQuantUnitsEncoder : public TDumper {
 public:
     TQuantUnitsEncoder() = default;
     EStatus Encode(void* frameData, TBitAllocHandler& ba) override;
+    static void EncodeQuSpectra(const int* qspec, const size_t num_spec, const size_t idx,
+        std::vector<std::pair<uint16_t, uint8_t>>& data);
+    static void EncodeCodeTab(bool useFullTable, size_t channels,
+        size_t numQuantUnits, const std::vector<std::pair<uint8_t, uint8_t>>& specTabIdx,
+        std::vector<std::pair<uint16_t, uint8_t>>& data);
+
 private:
-    void EncodeQuSpectra(const int* qspec, const size_t num_spec, const size_t idx);
+    class TUnit {
+    public:
+        static size_t MakeKey(size_t ch, size_t qu, size_t worlen);
+        TUnit(size_t qu, size_t wordlen);
+        size_t GetOrCompute(const float* val, std::vector<std::pair<uint16_t, uint8_t>>& res);
+        const std::vector<int>& GetMantisas() const { return Mantisas; }
+
+    private:
+        uint32_t Wordlen;
+        float Multiplier;
+        uint16_t ConsumedBits; // Number of bits consumed by QuSpectr
+
+        std::vector<int> Mantisas;
+    };
+    // The key is <ch_id, unit_id, wordlen>
+    // will be used to cache unit encoding result duting bit allocation
+    std::map<size_t, TUnit> UnitBuffers;
 };
-
-
-
 
 }

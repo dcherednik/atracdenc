@@ -26,6 +26,7 @@
 #include "ff/atrac3plus_data.h"
 
 #include <iostream>
+#include <limits>
 #include <memory>
 
 namespace NAtracDEnc {
@@ -126,11 +127,6 @@ IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHand
 
     frame->SpecTabIdx.resize(numQuantUnits);
 
-    for (size_t i = 0; i < frame->SpecTabIdx.size(); i++) {
-        frame->SpecTabIdx[i].first = 7;
-        frame->SpecTabIdx[i].second = 7;
-    }
-
     Insert(numQuantUnits - 1, 5);
     Insert(0, 1); //mute flag
 
@@ -186,35 +182,34 @@ IBitStreamPartEncoder::EStatus TSfIdxEncoder::Encode(void* frameData, TBitAllocH
     return EStatus::Ok;
 }
 
-IBitStreamPartEncoder::EStatus TCodeTabEncoder::Encode(void* frameData, TBitAllocHandler&) {
-    auto specFrame = TSpecFrame::Cast(frameData);
+void TQuantUnitsEncoder::EncodeCodeTab(bool useFullTable, size_t channels,
+    size_t numQuantUnits, const std::vector<std::pair<uint8_t, uint8_t>>& specTabIdx,
+    std::vector<std::pair<uint16_t, uint8_t>>& data)
+{
+    data.emplace_back(useFullTable, 1); // use full table
 
-    const size_t useFullTable = 1;
-    Insert(useFullTable, 1); // use full table
+    for (size_t ch = 0; ch < channels; ch++) {
 
-    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
+        data.emplace_back(0, 1); // table type
 
-        Insert(0, 1); // table type
+        data.emplace_back(0, 2); // 0 - constant number of bits
 
-        Insert(0, 2); // 0 - constant number of bits
-
-        Insert(0, 1); // num_coded_vals equal to used_quant_units
+        data.emplace_back(0, 1); // num_coded_vals equal to used_quant_units
 
         if (ch == 0) {
-            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
-                Insert(specFrame->SpecTabIdx[i].first, useFullTable + 2);
+            for (size_t i = 0; i < numQuantUnits; i++) {
+                data.emplace_back(specTabIdx[i].first, useFullTable + 2);
             }
         } else {
-            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
-                Insert(specFrame->SpecTabIdx[i].second, useFullTable + 2);
+            for (size_t i = 0; i < numQuantUnits; i++) {
+                data.emplace_back(specTabIdx[i].second, useFullTable + 2);
             }
         }
     }
-
-    return EStatus::Ok;
 }
 
-void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec, const size_t idx) {
+void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec, const size_t idx,
+    std::vector<std::pair<uint16_t, uint8_t>>& data) {
     const Atrac3pSpecCodeTab *tab = &atrac3p_spectra_tabs[idx];
     const std::array<TVlcElement, 256>& vlcTab = HuffTabs.VlcSpecs[idx];
 
@@ -228,7 +223,7 @@ void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec
             // TODO: Acording to FFmpeg it should be possible
             // to skip group, if all rest of coeffs is zero
             // but this should be checked with real AT3P decoder
-            Insert(1, 1);
+            data.emplace_back(1, 1);
         }
 
         for (size_t j = 0; j < groupSize; j++) {
@@ -258,13 +253,13 @@ void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec
 
             const TVlcElement& el = vlcTab.at(val);
 
-            Insert(el.Code, el.Len);
+            data.emplace_back(el.Code, el.Len);
             for (size_t i = 0; i < 4; i++) {
                 if (signs[i] != 0) {
                     if (signs[i] > 0) {
-                        Insert(0, 1);
+                        data.emplace_back(0, 1);
                     } else {
-                        Insert(1, 1);
+                        data.emplace_back(1, 1);
                     }
                 }
             }
@@ -272,53 +267,111 @@ void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec
     }
 }
 
-IBitStreamPartEncoder::EStatus TQuantUnitsEncoder::Encode(void* frameData, TBitAllocHandler&) {
+size_t TQuantUnitsEncoder::TUnit::MakeKey(size_t ch, size_t qu, size_t worlen) {
+    ASSERT(qu < 32);
+    ASSERT(worlen < 8);
+    return (ch << 8) | (qu << 3) | worlen;
+}
+
+TQuantUnitsEncoder::TUnit::TUnit(size_t qu, size_t wordlen)
+    : Wordlen(wordlen)
+    , Multiplier(1.0f / atrac3p_mant_tab[wordlen])
+{
+    Mantisas.resize(TScaleTable::SpecsPerBlock[qu]);
+}
+
+size_t TQuantUnitsEncoder::TUnit::GetOrCompute(const float* val, std::vector<std::pair<uint16_t, uint8_t>>& res)
+{
+    QuantMantisas(val, 0, Mantisas.size(), Multiplier, false, Mantisas.data());
+
+    std::vector<std::pair<uint16_t, uint8_t>> tmp;
+
+    size_t bestTab = 0;
+    size_t consumed = std::numeric_limits<size_t>::max();
+
+    for (size_t i = 0, tabIndex = Wordlen - 1; i < 8; i++, tabIndex += 7) {
+
+        EncodeQuSpectra(Mantisas.data(), Mantisas.size(), tabIndex, tmp);
+
+        size_t t = std::accumulate(tmp.begin(), tmp.end(), 0,
+            [](size_t acc, const std::pair<uint8_t, uint16_t>& x) noexcept -> size_t
+                { return acc + x.second; });
+
+        if (t < consumed) {
+            consumed = t;
+            ConsumedBits = t;
+            bestTab = i;
+            res.clear();
+            res.swap(tmp);
+            tmp.clear();
+        } else {
+            tmp.clear();
+        }
+    }
+    return bestTab;
+}
+
+IBitStreamPartEncoder::EStatus TQuantUnitsEncoder::Encode(void* frameData, TBitAllocHandler&)
+{
     auto specFrame = TSpecFrame::Cast(frameData);
+    std::vector<
+            std::vector<std::pair<uint16_t, uint8_t>>> data;
     for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
         auto& chData = specFrame->Chs.at(ch);
         auto scaledBlocks = chData.ScaledBlocks;
 
-        int * const mant = chData.Mant;
         for (size_t qu = 0; qu < specFrame->NumQuantUnits; qu++) {
-            auto lenIdx = (ch == 0) ?
-                        specFrame->WordLen.at(qu).first :
-                        specFrame->WordLen.at(qu).second;
-            const uint32_t first = TScaleTable::BlockSizeTab[qu];
-            const uint32_t last = TScaleTable::BlockSizeTab[qu+1];
-            auto mul = 1/atrac3p_mant_tab[lenIdx];
-
-            const float* values = scaledBlocks.at(qu).Values.data();
-
-            QuantMantisas(values, first, last, mul, false, mant);
-        }
-    }
-
-    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
-        auto& chData = specFrame->Chs.at(ch);
-        int * const mant = chData.Mant;
-        for (size_t qu = 0; qu < specFrame->NumQuantUnits; qu++) {
-            const size_t numSpecs = TScaleTable::BlockSizeTab[qu + 1] -
-                TScaleTable::BlockSizeTab[qu];
-            size_t tabIndex = (ch == 0) ?
-                specFrame->SpecTabIdx.at(qu).first :
-                specFrame->SpecTabIdx.at(qu).second;
-            size_t wordLen = (ch == 0) ?
+            size_t len = (ch == 0) ?
                 specFrame->WordLen.at(qu).first :
                 specFrame->WordLen.at(qu).second;
 
-            tabIndex = tabIndex * 7 + wordLen - 1;
+            size_t key = TUnit::MakeKey(ch, qu, len);
 
-            EncodeQuSpectra(&mant[TScaleTable::BlockSizeTab[qu]], numSpecs, tabIndex);
+            TUnit* unit;
+            //  try_emplace
+            auto it = UnitBuffers.find(key);
+            if (it == UnitBuffers.end()) {
+                unit = &(UnitBuffers.emplace(key, TUnit(qu, len)).first->second);
+            } else {
+                unit = &it->second;
+            }
+
+            const float* values = scaledBlocks.at(qu).Values.data();
+
+            data.push_back(std::vector<std::pair<uint16_t, uint8_t>>());
+            auto tabIdx = unit->GetOrCompute(values, data.back());
+
+            if (ch == 0) {
+                specFrame->SpecTabIdx[qu].first = tabIdx;
+            } else {
+                specFrame->SpecTabIdx[qu].second = tabIdx;
+            }
         }
         if (true /*frame.NumUsedQuantUnits > 2*/) {
             size_t numPwrSpec = atrac3p_subband_to_num_powgrps[atrac3p_qu_to_subband[specFrame->NumQuantUnits - 1]];
+            data.push_back(std::vector<std::pair<uint16_t, uint8_t>>());
+            auto& t = data.back();
             for (size_t i = 0; i < numPwrSpec; i++) {
-                Insert(15, 4);
+                t.emplace_back(15, 4);
             }
         }
     }
-    return EStatus::Ok;
 
+    {
+        std::vector<std::pair<uint16_t, uint8_t>> tabIdxData;
+        EncodeCodeTab(true, specFrame->Chs.size(), specFrame->NumQuantUnits, specFrame->SpecTabIdx, tabIdxData);
+        for (size_t i = 0; i < tabIdxData.size(); i++) {
+            Insert(tabIdxData[i].first, tabIdxData[i].second);
+        }
+    }
+
+    for (const auto& x : data) {
+        for (size_t i = 0; i < x.size(); i++) {
+            Insert(x[i].first, x[i].second);
+        }
+    }
+
+    return EStatus::Ok;
 }
 
 static std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
@@ -327,7 +380,6 @@ static std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
     parts.emplace_back(new TConfigure());
     parts.emplace_back(new TWordLenEncoder());
     parts.emplace_back(new TSfIdxEncoder());
-    parts.emplace_back(new TCodeTabEncoder());
     parts.emplace_back(new TQuantUnitsEncoder());
 
     return parts;
