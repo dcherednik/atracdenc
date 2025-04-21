@@ -537,7 +537,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
     }
 }
 
-void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* /*tonalBlock*/, const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
+void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
 {
     NBitStream::TBitStream bitStream;
     // First bit must be zero
@@ -564,7 +564,13 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* /*tonalBlock*/
         bitStream.Write(0, 1); //gain comp
     }
 
-    bitStream.Write(0, 1);
+    if (tonalBlock && tonalBlock->NumToneBands) {
+        bitStream.Write(1, 1);
+        WriteTonalBlock(bitStream, channels, tonalBlock);
+    } else {
+        bitStream.Write(0, 1);
+    }
+
     bitStream.Write(0, 1); // no noise info
     // Terminator
     bitStream.Write(3, 2);

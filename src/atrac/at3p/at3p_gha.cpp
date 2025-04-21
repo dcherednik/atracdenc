@@ -17,6 +17,7 @@
  */
 
 #include "at3p_gha.h"
+#include "ff/atrac3plus.h"
 
 #include <assert.h>
 #include <atrac/atrac_psy_common.h>
@@ -115,6 +116,8 @@ public:
         gha_set_max_magnitude(LibGhaCtx, 32768);
 
         if (!StaticInited) {
+            ff_atrac3p_init_dsp_static();
+
             FillSubbandAth(&SubbandAth[0]);
 
             AmpSfTab = CreateAmpSfTab();
@@ -124,6 +127,16 @@ public:
 
             StaticInited = true;
         }
+
+        for (size_t ch = 0; ch < 2; ch++) {
+           ChUnit.channels[ch].tones_info      = &ChUnit.channels[ch].tones_info_hist[0][0];
+           ChUnit.channels[ch].tones_info_prev = &ChUnit.channels[ch].tones_info_hist[1][0];
+        }
+
+        ChUnit.waves_info      = &ChUnit.wave_synth_hist[0];
+        ChUnit.waves_info_prev = &ChUnit.wave_synth_hist[1];
+        ChUnit.waves_info->tones_present = false;
+        ChUnit.waves_info_prev->tones_present = false;
     }
 
     ~TGhaProcessor()
@@ -131,8 +144,10 @@ public:
         gha_free_ctx(LibGhaCtx);
     }
 
-    const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2) override;
+    const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2, float *w1, float *w2) override;
+
 private:
+    void ApplyFilter(const TAt3PGhaData*, float *b1, float *b2);
     static void FillSubbandAth(float* out);
     static TAmpSfTab CreateAmpSfTab();
     static void CheckResuidalAndApply(float* resuidal, size_t size, void* self) noexcept;
@@ -151,12 +166,15 @@ private:
     gha_ctx_t LibGhaCtx;
     TAt3PGhaData ResultBuf;
     TAt3PGhaData ResultBufHistory;
+
     const bool Stereo;
 
     static float SubbandAth[SUBBANDS];
     static float SineTab[2048];
     static bool StaticInited;
     static TAmpSfTab AmpSfTab;
+
+    Atrac3pChanUnitCtx ChUnit;
 };
 
 bool TGhaProcessor::StaticInited = false;
@@ -292,7 +310,115 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
     memcpy(b, resuidal, sizeof(float) * SAMPLES_PER_SUBBAND);
 }
 
-const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
+void TGhaProcessor::ApplyFilter(const TAt3PGhaData* d, float* b1, float* b2)
+{
+    for (size_t ch_num = 0; ch_num < 2; ch_num++)
+        memset(ChUnit.channels[ch_num].tones_info, 0,
+           sizeof(*ChUnit.channels[ch_num].tones_info) * ATRAC3P_SUBBANDS);
+
+    if (d) {
+        memset(ChUnit.waves_info->waves, 0, sizeof(ChUnit.waves_info->waves));
+        ChUnit.waves_info->num_tone_bands = d->NumToneBands;
+        ChUnit.waves_info->tones_present = true;
+        ChUnit.waves_info->amplitude_mode = 1;
+        ChUnit.waves_info->tones_index = 0;
+    } else {
+        ChUnit.waves_info->tones_present = false;
+    }
+
+    if (d) {
+        for (size_t ch = 0; ch <= (size_t)Stereo; ch++) {
+            for (int i = 0; i < ChUnit.waves_info->num_tone_bands; i++) {
+                if (ch && d->ToneSharing[i]) {
+                    continue;
+                }
+
+                ChUnit.channels[ch].tones_info[i].num_wavs = d->GetNumWaves(ch, i);
+
+                const auto envelope = d->GetEnvelope(ch, i);
+                if (envelope.first != TAt3PGhaData::EMPTY_POINT) {
+                    // start point present
+                    ChUnit.channels[ch].tones_info[i].pend_env.has_start_point = true;
+                    ChUnit.channels[ch].tones_info[i].pend_env.start_pos = envelope.first;
+                } else {
+                    ChUnit.channels[ch].tones_info[i].pend_env.has_start_point = false;
+                    ChUnit.channels[ch].tones_info[i].pend_env.start_pos = -1;
+                }
+
+                if (envelope.second != TAt3PGhaData::EMPTY_POINT) {
+                    // stop point present
+                    ChUnit.channels[ch].tones_info[i].pend_env.has_stop_point  = true;
+                    ChUnit.channels[ch].tones_info[i].pend_env.stop_pos = envelope.second;
+                } else {
+                    ChUnit.channels[ch].tones_info[i].pend_env.has_stop_point  = false;
+                    ChUnit.channels[ch].tones_info[i].pend_env.stop_pos = 32;
+                }
+            }
+
+            for (int sb = 0; sb < ChUnit.waves_info->num_tone_bands; sb++) {
+                if (d->GetNumWaves(ch, sb)) {
+                    if (ChUnit.waves_info->tones_index + ChUnit.channels[ch].tones_info[sb].num_wavs > 48) {
+                        std::cerr << "too many tones: " << ChUnit.waves_info->tones_index + ChUnit.channels[ch].tones_info[sb].num_wavs << std::endl;
+                        abort();
+                    }
+                    ChUnit.channels[ch].tones_info[sb].start_index           = ChUnit.waves_info->tones_index;
+                    ChUnit.waves_info->tones_index += ChUnit.channels[ch].tones_info[sb].num_wavs;
+                }
+            }
+
+            Atrac3pWaveParam *iwav;
+            for (int sb = 0; sb < ChUnit.waves_info->num_tone_bands; sb++) {
+                if (d->GetNumWaves(ch, sb)) {
+                    iwav = &ChUnit.waves_info->waves[ChUnit.channels[ch].tones_info[sb].start_index];
+                    auto w = d->GetWaves(ch, sb);
+                    ChUnit.channels[ch].tones_info[sb].num_wavs = w.second;
+                    for (size_t j = 0; j < w.second; j++) {
+                        iwav[j].freq_index = w.first[j].FreqIndex;
+                        iwav[j].amp_index = w.first[j].AmpIndex;
+                        iwav[j].amp_sf = w.first[j].AmpSf;
+                        iwav[j].phase_index = w.first[j].PhaseIndex;
+                    }
+                }
+            }
+        }
+
+        if (Stereo) {
+            for (int i = 0; i < ChUnit.waves_info->num_tone_bands; i++) {
+                if (d->ToneSharing[i]) {
+                    ChUnit.channels[1].tones_info[i] = ChUnit.channels[0].tones_info[i];
+                }
+
+                if (d->SecondIsLeader) {
+                    std::swap(ChUnit.channels[0].tones_info[i],
+                        ChUnit.channels[1].tones_info[i]);
+                }
+            }
+        }
+    }
+
+    for (size_t ch = 0; ch <= (size_t)Stereo; ch++) {
+        float* x = (ch == 0) ? b1 : b2;
+        if (ChUnit.waves_info->tones_present ||
+            ChUnit.waves_info_prev->tones_present) {
+            for (size_t sb = 0; sb < SUBBANDS; sb++) {
+                if (ChUnit.channels[ch].tones_info[sb].num_wavs ||
+                    ChUnit.channels[ch].tones_info_prev[sb].num_wavs) {
+
+                    ff_atrac3p_generate_tones(&ChUnit, ch, sb,
+                        (x + sb * 128));
+                }
+            }
+        }
+    }
+
+    for (size_t ch = 0; ch <= (size_t)Stereo; ch++) {
+        std::swap(ChUnit.channels[ch].tones_info, ChUnit.channels[ch].tones_info_prev);
+    }
+
+    std::swap(ChUnit.waves_info, ChUnit.waves_info_prev);
+}
+
+const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2, float* w1, float* w2)
 {
     vector<TChannelData> data((size_t)Stereo + 1);
     bool progress[2] = {false};
@@ -322,13 +448,17 @@ const TAt3PGhaData* TGhaProcessor::DoAnalize(TBufPtr b1, TBufPtr b2)
     } while ((progress[0] || progress[1]) && totalTones < 48);
 
     if (totalTones == 0) {
+        ApplyFilter(nullptr, w1, w2);
         return nullptr;
     }
 
     FillResultBuf(data);
+
     ResultBufHistory = ResultBuf;
 
-    return &ResultBuf;
+    ApplyFilter(&ResultBuf, w1, w2);
+
+    return  &ResultBuf;
 }
 
 bool TGhaProcessor::CheckNextFrame(const float* nextSrc, const vector<gha_info>& ghaInfos) const

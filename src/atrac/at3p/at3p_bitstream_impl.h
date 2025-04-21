@@ -48,7 +48,6 @@ struct TSpecFrame {
             : ScaledBlocks(scaledBlock)
         {}
         const std::vector<TScaledBlock>& ScaledBlocks;
-        int Mant[2048];
     };
 
     std::vector<TChannel> Chs;

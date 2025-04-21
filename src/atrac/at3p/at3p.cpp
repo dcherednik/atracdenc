@@ -39,7 +39,9 @@ public:
         : BitStream(out, 2048)
         , ChannelCtx(channels)
         , GhaProcessor(MakeGhaProcessor0(channels == 2))
-    {}
+    {
+        delay.NumToneBands = 0;
+    }
 
     TPCMEngine::EProcessResult EncodeFrame(const float* data, int channels);
 private:
@@ -59,6 +61,7 @@ private:
         float* CurBuf = nullptr;
         float Buf1[TAt3PEnc::NumSamples];
         float Buf2[TAt3PEnc::NumSamples];
+        float PrevBuf[TAt3PEnc::NumSamples];
         TAt3pMDCT::THistBuf MdctBuf;
         std::vector<float> Specs;
     };
@@ -68,6 +71,7 @@ private:
     TAt3PBitStream BitStream;
     vector<TChannelCtx> ChannelCtx;
     std::unique_ptr<IGhaProcessor> GhaProcessor;
+    TAt3PGhaData delay;
 };
 
 TPCMEngine::EProcessResult TAt3PEnc::TImpl::
@@ -95,21 +99,30 @@ EncodeFrame(const float* data, int channels)
 
     assert(needMore == 0);
 
+    float* b1Prev = ChannelCtx[0].PrevBuf;
     const float* b1Cur = ChannelCtx[0].CurBuf;
     const float* b1Next = ChannelCtx[0].NextBuf;
+    float* b2Prev = (channels == 2) ? ChannelCtx[1].PrevBuf : nullptr;
     const float* b2Cur = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
     const float* b2Next = (channels == 2) ? ChannelCtx[1].NextBuf : nullptr;
 
-    auto tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next});
+
+    const TAt3PGhaData* p = nullptr;
+    if (delay.NumToneBands) {
+        p = &delay;
+    }
+
+    const TAt3PGhaData* tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next}, b1Prev, b2Prev);
 
     std::vector<std::vector<TScaledBlock>> scaledBlocks;
     for (int ch = 0; ch < channels; ch++) {
+        float* x = (ch == 0) ? b1Prev : b2Prev;
         auto& c = ChannelCtx[ch];
         TAt3pMDCT::TPcmBandsData p;
         float tmp[2048];
         //TODO: scale window
         for (size_t i = 0; i < 2048; i++) {
-            tmp[i] = c.CurBuf[i] / 32768.0;
+            tmp[i] = x[i] / 32768.0;
         }
         for (size_t b = 0; b < 16; b++) {
             p[b] = tmp + b * 128;
@@ -120,10 +133,16 @@ EncodeFrame(const float* data, int channels)
         scaledBlocks.push_back(block);
     }
 
-    BitStream.WriteFrame(channels, tonalBlock, scaledBlocks);
+    BitStream.WriteFrame(channels, p, scaledBlocks);
 
     for (int ch = 0; ch < channels; ch++) {
+        memcpy(ChannelCtx[ch].PrevBuf, ChannelCtx[ch].CurBuf, sizeof(float) * TAt3PEnc::NumSamples);
         std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
+    }
+    if (tonalBlock) {
+        delay = *tonalBlock;
+    } else {
+        delay.NumToneBands = 0;
     }
 
     return TPCMEngine::EProcessResult::PROCESSED;
