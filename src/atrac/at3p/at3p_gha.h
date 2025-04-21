@@ -69,7 +69,6 @@ public:
     using TBufPtr = std::array<const float*, 2>;
     virtual ~IGhaProcessor() {}
     virtual const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2) = 0;
-    virtual const TAt3PGhaData* Drain() = 0;
 };
 
 std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo);
