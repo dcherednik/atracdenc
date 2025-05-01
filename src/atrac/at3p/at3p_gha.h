@@ -20,6 +20,7 @@
 
 #include <config.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
