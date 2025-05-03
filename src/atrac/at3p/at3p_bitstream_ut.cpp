@@ -128,7 +128,7 @@ TEST(AT3PBitstream, Wordlen) {
     std::vector<std::vector<TScaledBlock>> scaledBlocks;
     scaledBlocks.resize(2);
 
-    TSpecFrame frame(444, 2, scaledBlocks);
+    TSpecFrame frame(444, 28, 2, nullptr, scaledBlocks);
 
     FillFrameData(frame);
 

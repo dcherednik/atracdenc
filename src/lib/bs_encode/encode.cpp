@@ -32,6 +32,7 @@ public:
     void DoSubmit(size_t gotBits) noexcept;
     bool DoCheck(size_t gotBits) const noexcept;
     void DoRun(void* frameData, TBitStream& bs);
+    uint32_t DoGetCurGlobalConsumption() const noexcept;
 private:
     std::vector<IBitStreamPartEncoder::TPtr> Encoders;
     size_t CurEncPos;
@@ -109,6 +110,9 @@ void TBitStreamEncoder::TImpl::DoRun(void* frameData, TBitStream& bs)
             }
             if (status == IBitStreamPartEncoder::EStatus::Repeat) {
                 cont = true;
+                for (size_t i = 0; i < CurEncPos; i++) {
+                    Encoders[i]->Reset();
+                }
                 RepeatEncPos = 0;
                 break;
             }
@@ -118,6 +122,15 @@ void TBitStreamEncoder::TImpl::DoRun(void* frameData, TBitStream& bs)
     for (size_t i = 0; i < Encoders.size(); i++) {
         Encoders[i]->Dump(bs);
     }
+}
+
+uint32_t TBitStreamEncoder::TImpl::DoGetCurGlobalConsumption() const noexcept
+{
+    uint32_t consumption = 0;
+    for (size_t i = 0; i < CurEncPos; i++) {
+        consumption += Encoders[i]->GetConsumption();
+    }
+    return consumption;
 }
 
 /////
@@ -161,4 +174,11 @@ bool TBitAllocHandler::Check(size_t gotBits) const noexcept
     const TBitStreamEncoder::TImpl* self = static_cast<const TBitStreamEncoder::TImpl*>(this);
     return self->DoCheck(gotBits);
 }
+
+uint32_t TBitAllocHandler::GetCurGlobalConsumption() const noexcept
+{
+    const TBitStreamEncoder::TImpl* self = static_cast<const TBitStreamEncoder::TImpl*>(this);
+    return self->DoGetCurGlobalConsumption();
+}
+
 }

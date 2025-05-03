@@ -47,6 +47,10 @@ public:
     void Dump(NBitStream::TBitStream& bs) override {
          EXPECT_EQ(EncCalls, ExpCalls);
     }
+
+    uint32_t GetConsumption() const noexcept override {
+        return 0;
+    }
 private:
     const size_t ExpCalls;
     size_t EncCalls = 0;
@@ -74,6 +78,10 @@ public:
              bs.Write(1, 1);
          }
     }
+
+    uint32_t GetConsumption() const noexcept override {
+        return 1 * Bits;
+    }
 private:
     const size_t ExpCalls;
     size_t EncCalls = 0;
@@ -93,6 +101,10 @@ public:
 
     void Dump(NBitStream::TBitStream& bs) override {
          EXPECT_EQ(EncCalls, ExpCalls);
+    }
+
+    uint32_t GetConsumption() const noexcept override {
+        return 0;
     }
 private:
     const size_t ExpCalls;
@@ -114,6 +126,10 @@ public:
 
     void Dump(NBitStream::TBitStream& bs) override {
          EXPECT_EQ(EncCalls, 1);
+    }
+
+    uint32_t GetConsumption() const noexcept override {
+        return 0;
     }
 private:
     size_t EncCalls = 0;

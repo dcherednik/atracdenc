@@ -52,6 +52,7 @@ public:
 private:
     ICompressedOutput* Container;
     TBitStreamEncoder Encoder;
+    const uint32_t FrameSzToAllocBits;
     const uint16_t FrameSz;
 };
 

@@ -34,6 +34,9 @@ public:
     float Continue() noexcept;
     bool Check(size_t gitBits) const noexcept;
     void Submit(size_t gotBits) noexcept;
+
+    // Returns consumption of all previous encoded parts (except part from this method called)
+    uint32_t GetCurGlobalConsumption() const noexcept;
 };
 
 class IBitStreamPartEncoder {
@@ -47,7 +50,8 @@ public:
     virtual ~IBitStreamPartEncoder() = default;
     virtual EStatus Encode(void* frameData, TBitAllocHandler& ba) = 0;
     virtual void Dump(NBitStream::TBitStream& bs) = 0;
-
+    virtual void Reset() noexcept {};
+    virtual uint32_t GetConsumption() const noexcept = 0;
 };
 
 class TBitStreamEncoder {

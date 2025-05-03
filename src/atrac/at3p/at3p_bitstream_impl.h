@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "atrac/at3p/at3p_gha.h"
 #include <lib/bitstream/bitstream.h>
 #include <lib/bs_encode/encode.h>
 #include <atrac/atrac_scale.h>
@@ -26,9 +27,12 @@
 namespace NAtracDEnc {
 
 struct TSpecFrame {
-    TSpecFrame(size_t sz, size_t channels,
+    TSpecFrame(uint32_t sz, uint32_t numQuantUnits, size_t channels,
+               const TAt3PGhaData* tonalBlock,
                const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
         : SizeBits(sz)
+        , NumQuantUnits(numQuantUnits)
+        , TonalBlock(tonalBlock)
         , AllocatedBits(0)
     {
         Chs.reserve(channels);
@@ -37,8 +41,9 @@ struct TSpecFrame {
         }
     }
 
-    const size_t SizeBits;
-    size_t NumQuantUnits;
+    const uint32_t SizeBits;
+    uint32_t NumQuantUnits;
+    const TAt3PGhaData* TonalBlock;
     std::vector<std::pair<uint8_t, uint8_t>> WordLen;
     std::vector<std::pair<uint8_t, uint8_t>> SfIdx;
     std::vector<std::pair<uint8_t, uint8_t>> SpecTabIdx;
@@ -63,8 +68,12 @@ public:
         }
         Buf.clear();
     }
+    void Reset() noexcept override {
+        Buf.clear();
+    }
+    uint32_t GetConsumption() const noexcept override;
 protected:
-    size_t GetConsumption() const noexcept;
+
     // value, nbits
     void Insert(uint16_t value, uint8_t nbits) { Buf.emplace_back(std::make_pair(value, nbits)); }
     std::vector<std::pair<uint16_t, uint8_t>> Buf;
@@ -119,5 +128,22 @@ private:
     // will be used to cache unit encoding result duting bit allocation
     std::map<size_t, TUnit> UnitBuffers;
 };
+
+class TTonalComponentEncoder : public TDumper {
+public:
+    TTonalComponentEncoder() = default;
+    EStatus Encode(void* frameData, TBitAllocHandler& ba) override;
+    //TODO: find the common way
+    void Dump(NBitStream::TBitStream& bs) override {
+        TDumper::Dump(bs);
+        BitsUsed = 0;
+    }
+private:
+    EStatus CheckFrameDone(TSpecFrame* frame, TBitAllocHandler& ba) noexcept;
+    void WriteTonalBlock(size_t channels, const TAt3PGhaData* tonalBlock);
+    void WriteSubbandFlags(const bool* flags, size_t numFlags);
+    size_t BitsUsed = 0;
+};
+
 
 }

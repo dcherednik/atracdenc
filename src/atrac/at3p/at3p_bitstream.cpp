@@ -92,32 +92,30 @@ TTonePackResult CreateFreqBitPack(const TAt3PGhaData::TWaveParam* const param, i
     }
 }
 
-size_t TDumper::GetConsumption() const noexcept
+uint32_t TDumper::GetConsumption() const noexcept
 {
     return std::accumulate(Buf.begin(), Buf.end(), 0,
-        [](size_t acc, const std::pair<uint8_t, uint8_t>& x) noexcept -> size_t { return acc + x.second; });
+        [](uint32_t acc, const std::pair<uint16_t, uint8_t>& x) noexcept -> uint32_t { return acc + x.second; });
 }
 
 IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHandler&)
 {
     TSpecFrame* frame = TSpecFrame::Cast(frameData);
 
-    size_t numQuantUnits = 28;
-    frame->NumQuantUnits = numQuantUnits;
-    frame->WordLen.resize(numQuantUnits);
+    frame->WordLen.resize(frame->NumQuantUnits);
 
     for (size_t i = 0; i < frame->WordLen.size(); i++) {
         static uint8_t allocTable[32] = {
-            7, 7, 7, 7, 7, 6, 6, 6,
-            6, 6, 6, 5, 5, 5, 5, 5,
-            5, 5, 5, 5, 5, 5, 5, 4,
-            3, 2, 1, 1, 1, 1, 1, 1
+            7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7,
+            7, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 5, 5, 4, 3, 2, 1
         };
         frame->WordLen[i].first = allocTable[i];
         frame->WordLen[i].second = allocTable[i];
     }
 
-    frame->SfIdx.resize(numQuantUnits);
+    frame->SfIdx.resize(frame->NumQuantUnits);
 
     for (size_t i = 0; i < frame->SfIdx.size(); i++) {
         frame->SfIdx[i].first = frame->Chs[0].ScaledBlocks.at(i).ScaleFactorIndex;
@@ -125,9 +123,9 @@ IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHand
             frame->SfIdx[i].second = frame->Chs[1].ScaledBlocks.at(i).ScaleFactorIndex;
     }
 
-    frame->SpecTabIdx.resize(numQuantUnits);
+    frame->SpecTabIdx.resize(frame->NumQuantUnits);
 
-    Insert(numQuantUnits - 1, 5);
+    Insert(frame->NumQuantUnits - 1, 5);
     Insert(0, 1); //mute flag
 
     frame->AllocatedBits = GetConsumption();
@@ -381,6 +379,7 @@ static std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
     parts.emplace_back(new TWordLenEncoder());
     parts.emplace_back(new TSfIdxEncoder());
     parts.emplace_back(new TQuantUnitsEncoder());
+    parts.emplace_back(new TTonalComponentEncoder());
 
     return parts;
 }
@@ -388,52 +387,53 @@ static std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
 TAt3PBitStream::TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz)
     : Container(container)
     , Encoder(CreateEncParts())
+    , FrameSzToAllocBits((uint32_t)frameSz * 8 - 3) //Size of frame in bits for allocation. 3 bits is start bit and channel configuration
     , FrameSz(frameSz)
 {
     NEnv::SetRoundFloat();
 }
 
-static void WriteSubbandFlags(NBitStream::TBitStream& bs, const bool* flags, int numFlags)
+void TTonalComponentEncoder::WriteSubbandFlags(const bool* flags, size_t numFlags)
 {
 
-    int sum = 0;
-    for (int i = 0; i < numFlags; i++) {
+    size_t sum = 0;
+    for (size_t i = 0; i < numFlags; i++) {
         sum += (uint32_t)flags[i];
     }
 
     if (sum == 0) {
-        bs.Write(0, 1);
+        Insert(0, 1);
     } else if (sum == numFlags) {
-        bs.Write(1, 1);
-        bs.Write(0, 1);
+        Insert(1, 1);
+        Insert(0, 1);
     } else {
-        bs.Write(1, 1);
-        bs.Write(1, 1);
-        for (int i = 0; i < numFlags; i++) {
-           bs.Write(flags[i], 1);
+        Insert(1, 1);
+        Insert(1, 1);
+        for (size_t i = 0; i < numFlags; i++) {
+           Insert(flags[i], 1);
         }
     }
 }
 
-static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3PGhaData* tonalBlock)
+void TTonalComponentEncoder::WriteTonalBlock(size_t channels, const TAt3PGhaData* tonalBlock)
 {
     //GHA amplidude mode 1
-    bs.Write(1, 1);
+    Insert(1, 1);
 
     //Num tone bands
     const TVlcElement& tbHuff = HuffTabs.NumToneBands[tonalBlock->NumToneBands - 1];
-    bs.Write(tbHuff.Code, tbHuff.Len);
+    Insert(tbHuff.Code, tbHuff.Len);
 
     if (channels == 2) {
-        WriteSubbandFlags(bs, tonalBlock->ToneSharing, tonalBlock->NumToneBands);
-        WriteSubbandFlags(bs, &tonalBlock->SecondIsLeader, 1);
-        bs.Write(0, 1);
+        WriteSubbandFlags(tonalBlock->ToneSharing, tonalBlock->NumToneBands);
+        WriteSubbandFlags(&tonalBlock->SecondIsLeader, 1);
+        Insert(0, 1);
     }
 
-    for (int ch = 0; ch < channels; ch++) {
+    for (size_t ch = 0; ch < channels; ch++) {
         if (ch) {
             // each channel has own envelope
-            bs.Write(0, 1);
+            Insert(0, 1);
         }
         // Envelope data
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
@@ -445,35 +445,35 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
 
             if (envelope.first != TAt3PGhaData::EMPTY_POINT) {
                 // start point present
-                bs.Write(1, 1);
-                bs.Write(envelope.first, 5);
+                Insert(1, 1);
+                Insert(envelope.first, 5);
             } else {
-                bs.Write(0, 1);
+                Insert(0, 1);
             }
 
             if (envelope.second != TAt3PGhaData::EMPTY_POINT) {
                 // stop point present
-                bs.Write(1, 1);
-                bs.Write(envelope.second, 5);
+                Insert(1, 1);
+                Insert(envelope.second, 5);
             } else {
-                bs.Write(0, 1);
+                Insert(0, 1);
             }
         }
 
         // Num waves
         int mode = 0; //TODO: Calc mode
-        bs.Write(mode, ch + 1);
+        Insert(mode, ch + 1);
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
             if (ch && tonalBlock->ToneSharing[i]) {
                 continue;
             }
-            bs.Write(tonalBlock->GetNumWaves(ch, i), 4);
+            Insert(tonalBlock->GetNumWaves(ch, i), 4);
         }
         // Tones freq
         if (ch) {
             // 0 - independed
             // 1 - delta to leader
-            bs.Write(0, 1);
+            Insert(0, 1);
         }
 
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
@@ -490,17 +490,17 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
             const auto pkt = CreateFreqBitPack(w.first, w.second);
 
             if (numWaves > 1) {
-                bs.Write(static_cast<bool>(pkt.Order), 1);
+                Insert(static_cast<bool>(pkt.Order), 1);
             }
 
             for (const auto& d : pkt.Data) {
-                bs.Write(d.Code, d.Bits);
+                Insert(d.Code, d.Bits);
             }
         }
 
         // Amplitude
         mode = 0; //TODO: Calc mode
-        bs.Write(mode, ch + 1);
+        Insert(mode, ch + 1);
 
         for (int i = 0; i < tonalBlock->NumToneBands; i++) {
             if (ch && tonalBlock->ToneSharing[i]) {
@@ -514,7 +514,7 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
 
             const auto w = tonalBlock->GetWaves(ch, i);
             for (size_t j = 0; j < numWaves; j++) {
-                bs.Write(w.first[j].AmpSf, 6);
+                Insert(w.first[j].AmpSf, 6);
             }
         }
 
@@ -531,10 +531,69 @@ static void WriteTonalBlock(NBitStream::TBitStream& bs, int channels, const TAt3
 
             const auto w = tonalBlock->GetWaves(ch, i);
             for (size_t j = 0; j < w.second; j++) {
-                bs.Write(w.first[j].PhaseIndex, 5);
+                Insert(w.first[j].PhaseIndex, 5);
             }
         }
     }
+}
+
+IBitStreamPartEncoder::EStatus TTonalComponentEncoder::CheckFrameDone(TSpecFrame* frame, TBitAllocHandler& ba) noexcept
+{
+    uint32_t totalConsumption = BitsUsed + ba.GetCurGlobalConsumption();
+
+    if (totalConsumption > frame->SizeBits) {
+        if (frame->NumQuantUnits == 32) {
+            frame->NumQuantUnits = 28;
+        } else {
+            frame->NumQuantUnits--;
+        }
+        return EStatus::Repeat;
+    }
+    return EStatus::Ok;
+}
+
+IBitStreamPartEncoder::EStatus TTonalComponentEncoder::Encode(void* frameData, TBitAllocHandler& ba)
+{
+    auto specFrame = TSpecFrame::Cast(frameData);
+    auto tonalBlock = specFrame->TonalBlock;
+
+    // Check tonal component already encoded
+    if (BitsUsed != 0) {
+        if (tonalBlock && tonalBlock->NumToneBands > specFrame->NumQuantUnits) {
+            std::cerr << "TODO" << std::endl;
+            abort();
+        }
+        return CheckFrameDone(specFrame, ba);
+    }
+
+    const size_t chNum = specFrame->Chs.size();
+
+    if (chNum == 2) {
+        Insert(0, 2); //swap_channels and negate_coeffs
+    }
+
+    for (size_t ch = 0; ch < chNum; ch++) {
+        Insert(0, 1); // window shape
+    }
+
+    for (size_t ch = 0; ch < chNum; ch++) {
+        Insert(0, 1); //gain comp
+    }
+
+    if (tonalBlock && tonalBlock->NumToneBands) {
+        Insert(1, 1);
+        WriteTonalBlock(chNum, tonalBlock);
+    } else {
+        Insert(0, 1);
+    }
+
+    Insert(0, 1); // no noise info
+    // Terminator
+    Insert(3, 2);
+
+    BitsUsed = GetConsumption();
+
+    return CheckFrameDone(specFrame, ba);
 }
 
 void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
@@ -548,34 +607,15 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, co
     // 2 - Nobody know
     bitStream.Write(channels - 1, 2);
 
-    TSpecFrame frame(FrameSz * 8, channels, scaledBlocks);
+    const uint32_t initialNumQuantUnits = 32;
+
+    TSpecFrame frame(FrameSzToAllocBits, initialNumQuantUnits, channels, tonalBlock, scaledBlocks);
 
     Encoder.Do(&frame, bitStream);
 
-    if (channels == 2) {
-        bitStream.Write(0, 2); //swap_channels and negate_coeffs
-    }
-
-    for (size_t ch = 0; ch < frame.Chs.size(); ch++) {
-        bitStream.Write(0, 1); // window shape
-    }
-
-    for (size_t ch = 0; ch < frame.Chs.size(); ch++) {
-        bitStream.Write(0, 1); //gain comp
-    }
-
-    if (tonalBlock && tonalBlock->NumToneBands) {
-        bitStream.Write(1, 1);
-        WriteTonalBlock(bitStream, channels, tonalBlock);
-    } else {
-        bitStream.Write(0, 1);
-    }
-
-    bitStream.Write(0, 1); // no noise info
-    // Terminator
-    bitStream.Write(3, 2);
-
     std::vector<char> buf = bitStream.GetBytes();
+
+    ASSERT(bitStream.GetSizeInBits() > FrameSz * 8);
 
     buf.resize(FrameSz);
     Container->WriteFrame(buf);
