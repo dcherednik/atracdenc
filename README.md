@@ -4,9 +4,15 @@ It is free LGPL implementation of ATRAC1, ATRAC3 encoders.
 Building:
 
 You need:
-* C++11 compiler.
+* C++14 compiler.
 * cmake >= 3.1
 * libsndfiles 
+
+In case of git clone command GHA submodule should be fetched:
+
+```
+git submodule update --init --recursive
+```
 
 binary:
 
@@ -18,9 +24,16 @@ cmake ../
 make
 ```
 
+Binary and tests (for development):
 
-binary and tests:
+Make sure google test library is installed
 
+debian:
+```
+apt-get install libgtest-dev cmake-extras
+```
+
+Now we can build
 ```
 cd test
 cmake ../
