@@ -28,6 +28,7 @@
 
 #include <cassert>
 #include <vector>
+#include <unordered_map>
 
 using std::vector;
 
@@ -35,10 +36,11 @@ namespace NAtracDEnc {
 
 class TAt3PEnc::TImpl {
 public:
-    TImpl(ICompressedOutput* out, int channels)
+    TImpl(ICompressedOutput* out, int channels, TSettings settings)
         : BitStream(out, 2048)
         , ChannelCtx(channels)
         , GhaProcessor(MakeGhaProcessor0(channels == 2))
+        , Settings(settings)
     {
         delay.NumToneBands = 0;
     }
@@ -72,6 +74,7 @@ private:
     vector<TChannelCtx> ChannelCtx;
     std::unique_ptr<IGhaProcessor> GhaProcessor;
     TAt3PGhaData delay;
+    const TSettings Settings;
 };
 
 TPCMEngine::EProcessResult TAt3PEnc::TImpl::
@@ -121,8 +124,14 @@ EncodeFrame(const float* data, int channels)
         TAt3pMDCT::TPcmBandsData p;
         float tmp[2048];
         //TODO: scale window
-        for (size_t i = 0; i < 2048; i++) {
-            tmp[i] = x[i] / 32768.0;
+        if (Settings.UseGha & TSettings::GHA_WRITE_RESIUDAL) {
+            for (size_t i = 0; i < 2048; i++) {
+                tmp[i] = x[i] / 32768.0;
+            }
+        } else {
+            for (size_t i = 0; i < 2048; i++) {
+                tmp[i] = 0.0;
+            }
         }
         for (size_t b = 0; b < 16; b++) {
             p[b] = tmp + b * 128;
@@ -136,10 +145,14 @@ EncodeFrame(const float* data, int channels)
     BitStream.WriteFrame(channels, p, scaledBlocks);
 
     for (int ch = 0; ch < channels; ch++) {
-        memcpy(ChannelCtx[ch].PrevBuf, ChannelCtx[ch].CurBuf, sizeof(float) * TAt3PEnc::NumSamples);
+        if (Settings.UseGha & TSettings::GHA_PASS_INPUT) {
+            memcpy(ChannelCtx[ch].PrevBuf, ChannelCtx[ch].CurBuf, sizeof(float) * TAt3PEnc::NumSamples);
+        } else {
+            memset(ChannelCtx[ch].PrevBuf, 0, sizeof(float) * TAt3PEnc::NumSamples);
+        }
         std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
     }
-    if (tonalBlock) {
+    if (tonalBlock && (Settings.UseGha & TSettings::GHA_WRITE_TONAL)) {
         delay = *tonalBlock;
     } else {
         delay.NumToneBands = 0;
@@ -148,18 +161,96 @@ EncodeFrame(const float* data, int channels)
     return TPCMEngine::EProcessResult::PROCESSED;
 }
 
-TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels)
+TAt3PEnc::TAt3PEnc(TCompressedOutputPtr&& out, int channels, TSettings settings)
     : Out(std::move(out))
     , Channels(channels)
+    , Impl(new TImpl(Out.get(), Channels, settings))
 {
 }
 
 TPCMEngine::TProcessLambda TAt3PEnc::GetLambda() {
-    Impl.reset(new TImpl(Out.get(), Channels));
-
     return [this](float* data, const TPCMEngine::ProcessMeta&) {
         return Impl->EncodeFrame(data, Channels);
     };
+}
+
+static void SetGha(const std::string& str, TAt3PEnc::TSettings& settings) {
+    int mask = std::stoi(str);
+    if (mask > 7 || mask < 0) {
+        throw std::runtime_error("invalud value of GHA processing mask");
+    }
+
+    if (mask & TAt3PEnc::TSettings::GHA_PASS_INPUT)
+        std::cerr << "GHA_PASS_INPUT" << std::endl;
+    if (mask & TAt3PEnc::TSettings::GHA_WRITE_RESIUDAL)
+        std::cerr << "GHA_WRITE_RESIUDAL" << std::endl;
+    if (mask & TAt3PEnc::TSettings::GHA_WRITE_TONAL)
+        std::cerr << "GHA_WRITE_TONAL" << std::endl;
+
+    settings.UseGha = mask;
+}
+
+
+
+void TAt3PEnc::ParseAdvancedOpt(const char* opt, TSettings& settings) {
+    typedef void (*processFn)(const std::string& str, TSettings& settings);
+    static std::unordered_map<std::string, processFn> keys {
+        {"ghadbg", &SetGha}
+    };
+
+    if (opt == nullptr)
+        return;
+
+    const char* start = opt;
+    bool vState = false; //false - key state, true - value state
+    processFn handler = nullptr;
+
+    while (opt) {
+        if (!vState) {
+            if (*opt == ',') {
+                throw std::runtime_error("unexpected \",\" just after key.");
+//                if (opt - start > 0) {
+//                }
+//                opt++;
+//                start = opt;
+            } else if (*opt == '=') {
+                auto it = keys.find(std::string(start, opt - start));
+                if (it == keys.end()) {
+                    throw std::runtime_error(std::string("unexpected advanced option \"")
+                        + std::string(start, opt - start));
+                }
+                handler = it->second;
+                vState = true;
+                opt++;
+                start = opt;
+            } else if (!*opt) {
+                throw std::runtime_error("unexpected end of key token");
+//                if (opt - start > 0) {
+//                }
+//                opt = nullptr;
+            } else {
+                opt++;
+            }
+        } else {
+            if (*opt == ',') {
+                if (opt - start > 0) {
+                    handler(std::string(start, opt - start), settings);
+                }
+                opt++;
+                start = opt;
+                vState = false;
+            } else if (*opt == '=') {
+                throw std::runtime_error("unexpected \"=\" inside value token.");
+            } else if (!*opt) {
+                if (opt - start > 0) {
+                    handler(std::string(start, opt - start), settings);
+                }
+                opt = nullptr;
+            } else {
+                opt++;
+            }
+        }
+    }
 }
 
 }

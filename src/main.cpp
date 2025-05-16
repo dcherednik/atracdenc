@@ -110,6 +110,7 @@ enum EOptions
     O_NOSTDOUT = '4',
     O_NOTONAL = 5,
     O_NOGAINCONTROL = 6,
+    O_ADVANCED_OPT = 7,
 };
 
 static void CheckInputFormat(const TWav* p)
@@ -258,7 +259,8 @@ static void PrepareAtrac3PEncoder(const string& inFile,
                                   uint64_t* totalSamples,
                                   const TWavPtr& wavIO,
                                   TPcmEnginePtr* pcmEngine,
-                                  TAtracProcessorPtr* atracProcessor)
+                                  TAtracProcessorPtr* atracProcessor,
+                                  const char* advancedOpt)
 {
     *totalSamples = wavIO->GetTotalSamples();
     const uint64_t numFrames = (*totalSamples) / 2048;
@@ -300,13 +302,18 @@ static void PrepareAtrac3PEncoder(const string& inFile,
     pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
                                             TPCMEngine::TReaderPtr(wavIO->GetPCMReader())));
-    atracProcessor->reset(new TAt3PEnc(std::move(omaIO), numChannels));
+    TAt3PEnc::TSettings settings;
+    if (advancedOpt) {
+        TAt3PEnc::ParseAdvancedOpt(advancedOpt, settings);
+    }
+    atracProcessor->reset(new TAt3PEnc(std::move(omaIO), numChannels, settings));
 }
 
 
 int main_(int argc, char* const* argv)
 {
     const char* myName = argv[0];
+    const char* advancedOpt = nullptr;
     static struct option longopts[] = {
         { "encode", optional_argument, NULL, O_ENCODE },
         { "decode", no_argument, NULL, O_DECODE },
@@ -317,6 +324,7 @@ int main_(int argc, char* const* argv)
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
         { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
+        { "advanced", required_argument, NULL, O_ADVANCED_OPT},
         { NULL, 0, NULL, 0}
     };
 
@@ -399,6 +407,9 @@ int main_(int argc, char* const* argv)
             case O_NOGAINCONTROL:
                 noGainControl = true;
                 break;
+            case O_ADVANCED_OPT:
+                advancedOpt = optarg;
+                break;
             default:
                 printUsage(myName);
                 return 1;
@@ -466,7 +477,7 @@ int main_(int argc, char* const* argv)
             {
                 wavIO = OpenWavFile(inFile);
                 PrepareAtrac3PEncoder(inFile, outFile, noStdOut, wavIO->GetChannelNum(),
-                    &totalSamples, wavIO, &pcmEngine, &atracProcessor);
+                    &totalSamples, wavIO, &pcmEngine, &atracProcessor, advancedOpt);
                 pcmFrameSz = 2048;
             }
             break;

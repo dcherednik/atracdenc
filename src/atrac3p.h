@@ -26,9 +26,25 @@ namespace NAtracDEnc {
 
 class TAt3PEnc : public IProcessor {
 public:
-    TAt3PEnc(TCompressedOutputPtr&& out, int channels);
+    struct TSettings {
+        enum GhaProcessingFlags : uint8_t {
+            GHA_PASS_INPUT =     1,
+            GHA_WRITE_TONAL =    1 << 1,
+            GHA_WRITE_RESIUDAL = 1 << 2,
+
+            GHA_ENABLED = GHA_PASS_INPUT | GHA_WRITE_TONAL | GHA_WRITE_RESIUDAL
+        };
+        uint8_t UseGha;
+
+        TSettings()
+            : UseGha(GHA_ENABLED)
+        {}
+    };
+    TAt3PEnc(TCompressedOutputPtr&& out, int channels, TSettings settings);
     TPCMEngine::TProcessLambda GetLambda() override;
     static constexpr int NumSamples = 2048;
+    static void ParseAdvancedOpt(const char* opt, TSettings& settings);
+
 private:
     TCompressedOutputPtr Out;
     int Channels;
