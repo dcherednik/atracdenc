@@ -126,7 +126,8 @@ EncodeFrame(const float* data, int channels)
         //TODO: scale window
         if (Settings.UseGha & TSettings::GHA_WRITE_RESIUDAL) {
             for (size_t i = 0; i < 2048; i++) {
-                tmp[i] = x[i] / 32768.0;
+                //TODO: find why we need to add the 0.5db
+                tmp[i] = x[i] / (32768.0 / 1.122018);
             }
         } else {
             for (size_t i = 0; i < 2048; i++) {
