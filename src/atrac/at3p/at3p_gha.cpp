@@ -114,6 +114,7 @@ public:
         , Stereo(stereo)
     {
         gha_set_max_magnitude(LibGhaCtx, 32768);
+        gha_set_upsample(LibGhaCtx, 1);
 
         if (!StaticInited) {
             ff_atrac3p_init_dsp_static();
