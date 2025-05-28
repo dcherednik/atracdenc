@@ -45,12 +45,12 @@ namespace {
 
 uint32_t GhaFreqToIndex(float f, uint32_t sb)
 {
-    return static_cast<uint32_t>(lrintf(1023.0f * (f / M_PI)) & 1023) | (sb << 10);
+    return static_cast<uint32_t>(lrintf(1024.0f * (f / M_PI)) & 1023) | (sb << 10);
 }
 
 uint32_t GhaPhaseToIndex(float p)
 {
-    return static_cast<uint32_t>(lrintf(31.0 * ((p) / (2 * M_PI))) & 31);
+    return static_cast<uint32_t>(lrintf(32.0 * ((p) / (2 * M_PI))) & 31);
 }
 
 uint32_t PhaseIndexToOffset(uint32_t ind)
@@ -266,7 +266,7 @@ void TGhaProcessor::CheckResuidalAndApply(float* resuidal, size_t size, void* d)
             }
         }
 
-        //std::cerr << " " << i << " rms : " << energyIn << " " << energyOut  << "\t\t\t" << ((energyOut < energyIn) ? "+" : "-")  << std::endl;
+        // std::cerr << " " << i << " rms : " << energyIn << " " << energyOut  << "\t\t\t" << ((energyOut < energyIn) ? "+" : "-")  << std::endl;
     }
 
     const auto sb = ctx->Sb;
@@ -492,7 +492,7 @@ bool TGhaProcessor::CheckNextFrame(const float* nextSrc, const vector<gha_info>&
         //std::cerr << buf[i] << " === " << nextSrc[i] << std::endl;
     }
 
-    //std::cerr << "ENERGY: before: " << energyBefore << " after: " << energyAfter << std::endl;
+    // std::cerr << "ENERGY: before: " << energyBefore << " after: " << energyAfter << std::endl;
 
     return energyAfter < energyBefore;
 }
@@ -514,6 +514,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
             auto cit = data.GhaInfos.lower_bound(sb << 10);
             vector<gha_info> tmp;
             for(auto it = cit; it != data.GhaInfos.end() && it->first < (sb + 1) << 10; it++) {
+                // std::cerr << sb << " before: freq: " << it->second.frequency << " magn: " << it->second.magnitude << std::endl;
                 tmp.push_back(it->second);
             }
             if (tmp.size() > 0) {
@@ -560,6 +561,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
 
                         auto it = cit;
                         for (size_t i = 0; i < tmp.size(); i++) {
+                            // std::cerr << sb << " after: freq: " << tmp[i].frequency << " magn: " << tmp[i].magnitude << std::endl;
                             it = data.GhaInfos.erase(it);
                         }
                         for (const auto& x : tmp) {

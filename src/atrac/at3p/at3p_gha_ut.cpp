@@ -93,6 +93,7 @@ private:
     const char* PathPrefix;
 } Dumper;
 
+
 // Single channel simple cases
 
 TEST(AT3PGHA, 689hz0625__full_frame_mono) {
@@ -139,8 +140,8 @@ TEST(AT3PGHA, 689hz0625_900hz__full_frame_mono) {
     EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(0, 0), 2);
     EXPECT_EQ(res.GetWaves(0, 0).second, 2);
-    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 511);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 668);
+    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 512);
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 669);
     Dumper.Dump(&res, 1, 1);
 }
 
@@ -214,7 +215,7 @@ TEST(AT3PGHA, 689hz0625__full_frame_stereo_own) {
     EXPECT_EQ(res.Waves[1].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(1, 0), 1);
     EXPECT_EQ(res.GetWaves(1, 0).second, 1);
-    EXPECT_EQ(res.GetWaves(1, 0).first->FreqIndex, 742);
+    EXPECT_EQ(res.GetWaves(1, 0).first->FreqIndex, 743);
 
     Dumper.Dump(&res, 2, 1);
 }
@@ -233,8 +234,8 @@ TEST(AT3PGHA, 689hz0625__full_frame_stereo_multiple_second) {
     EXPECT_EQ(res.Waves[1].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(1, 0), 2);
     EXPECT_EQ(res.GetWaves(1, 0).second, 2);
-    EXPECT_EQ(res.GetWaves(1, 0).first[0].FreqIndex, 511);
-    EXPECT_EQ(res.GetWaves(1, 0).first[1].FreqIndex, 668);
+    EXPECT_EQ(res.GetWaves(1, 0).first[0].FreqIndex, 512);
+    EXPECT_EQ(res.GetWaves(1, 0).first[1].FreqIndex, 669);
     Dumper.Dump(&res, 2, 1);
 }
 
@@ -501,7 +502,7 @@ TEST(AT3PGHA, 100hz__two_frames_mono) {
         EXPECT_EQ(res.GetWaves(0, 0).second, 1);
         EXPECT_EQ(res.GetWaves(0, 0).first->FreqIndex, 74);
         EXPECT_EQ(res.GetWaves(0, 0).first->AmpSf, 62);
-        EXPECT_EQ(res.GetWaves(0, 0).first->PhaseIndex, 20);
+        EXPECT_EQ(res.GetWaves(0, 0).first->PhaseIndex, 21);
 
         resBuf.push_back(res);
     }
@@ -545,7 +546,7 @@ TEST(AT3PGHA, 100hz_than_500hz_than_100hz__3_frames_mono) {
         EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
         EXPECT_EQ(res.GetNumWaves(0, 0), 1);
         EXPECT_EQ(res.GetWaves(0, 0).second, 1);
-        EXPECT_EQ(res.GetWaves(0, 0).first->FreqIndex, 371);
+        EXPECT_EQ(res.GetWaves(0, 0).first->FreqIndex, 372);
         EXPECT_EQ(res.GetWaves(0, 0).first->AmpSf, 62);
         EXPECT_EQ(res.GetWaves(0, 0).first->PhaseIndex, 0);
 
@@ -628,9 +629,9 @@ TEST(AT3PGHA, 689hz0625_1000hz__two_frames_mono) {
     EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(0, 0), 2);
     EXPECT_EQ(res.GetWaves(0, 0).second, 2);
-    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 511);
+    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 512);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].AmpSf, 58);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 742); //TODO: should be 743
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 743);
     EXPECT_EQ(res.GetWaves(0, 0).first[1].AmpSf, 58);
 }
 
@@ -651,9 +652,9 @@ TEST(AT3PGHA, 500hz_1000hz__two_frames_mono) {
     EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(0, 0), 2);
     EXPECT_EQ(res.GetWaves(0, 0).second, 2);
-    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 371);
+    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 372);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].AmpSf, 58);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 742); //TODO: should be 743
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 743);
     EXPECT_EQ(res.GetWaves(0, 0).first[1].AmpSf, 46);
 }
 
@@ -674,9 +675,9 @@ TEST(AT3PGHA, 500hz_1000hz__phase_two_frames_mono) {
     EXPECT_EQ(res.Waves[0].WaveSbInfos.size(), 1);
     EXPECT_EQ(res.GetNumWaves(0, 0), 2);
     EXPECT_EQ(res.GetWaves(0, 0).second, 2);
-    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 371);
+    EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 372);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].AmpSf, 59);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 742); //TODO: should be 743
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 743);
     EXPECT_EQ(res.GetWaves(0, 0).first[1].AmpSf, 46);
     Dumper.Dump(&res, 1, 1);
 }
@@ -701,9 +702,9 @@ TEST(AT3PGHA, 250hz_500hz_1000hz__two_frames_mono) {
     EXPECT_EQ(res.GetWaves(0, 0).second, 3);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 186);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].AmpSf, 58);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 371);
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 372);
     EXPECT_EQ(res.GetWaves(0, 0).first[1].AmpSf, 50);
-    EXPECT_EQ(res.GetWaves(0, 0).first[2].FreqIndex, 742);
+    EXPECT_EQ(res.GetWaves(0, 0).first[2].FreqIndex, 743);
     EXPECT_EQ(res.GetWaves(0, 0).first[2].AmpSf, 46);
 }
 
@@ -728,10 +729,58 @@ TEST(AT3PGHA, 250hz_500hz_1000hz_1200hz__two_frames_mono) {
     EXPECT_EQ(res.GetWaves(0, 0).second, 4);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].FreqIndex, 186);
     EXPECT_EQ(res.GetWaves(0, 0).first[0].AmpSf, 58);
-    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 371);
+    EXPECT_EQ(res.GetWaves(0, 0).first[1].FreqIndex, 372);
     EXPECT_EQ(res.GetWaves(0, 0).first[1].AmpSf, 54);
-    EXPECT_EQ(res.GetWaves(0, 0).first[2].FreqIndex, 742);
+    EXPECT_EQ(res.GetWaves(0, 0).first[2].FreqIndex, 743);
     EXPECT_EQ(res.GetWaves(0, 0).first[2].AmpSf, 50);
-    EXPECT_EQ(res.GetWaves(0, 0).first[3].FreqIndex, 891);
+    EXPECT_EQ(res.GetWaves(0, 0).first[3].FreqIndex, 892);
     EXPECT_EQ(res.GetWaves(0, 0).first[3].AmpSf, 46);
+}
+
+void CheckReduction(float f, uint32_t expFreqIndex){
+    vector<float> buf(2048 * 3);
+    Gen({f, 0, 16384, 0, 384}, buf);
+
+    memcpy(&buf[2048], &buf[128], sizeof(float) * 128);
+    memcpy(&buf[4096], &buf[256], sizeof(float) * 128);
+    memset(&buf[128], 0, sizeof(float) * 256);
+
+    auto processor = MakeGhaProcessor0(false);
+    float w1[2048] = {0};
+    float w2[2048] = {0};
+    {
+        const auto res = processor->DoAnalize({&buf[0], &buf[2048]}, {nullptr, nullptr}, w1, w2);
+        EXPECT_EQ(res->NumToneBands, 1);
+        EXPECT_EQ(res->Waves[0].WaveParams.size(), 1);
+        EXPECT_EQ(res->GetWaves(0, 0).first[0].FreqIndex, expFreqIndex);
+    }
+    {
+        memcpy(&w1[0], &buf[0], sizeof(float) * 2048);
+        const auto res = processor->DoAnalize({&buf[2048], &buf[4096]}, {nullptr, nullptr}, w1, w2);
+        EXPECT_EQ(res->NumToneBands, 1);
+        EXPECT_EQ(res->Waves[0].WaveParams.size(), 1);
+        EXPECT_EQ(res->GetWaves(0, 0).first[0].FreqIndex, expFreqIndex);
+        double e1 = 0;
+        double e2 = 0;
+        for (size_t i = 0; i < 128; i++) {
+            e1 += w1[i] * w1[i];
+            e2 += buf[i] * buf[i];
+        }
+        std::cerr << 5 * log(e2/e1) << std::endl;
+        float reduction = 5 * log(e2/e1);
+        EXPECT_GE(reduction, 50);
+    }
+
+}
+
+TEST(AT3PGHA, 269hz166_long_frame_mono) {
+    CheckReduction(269.166, 200);
+}
+
+TEST(AT3PGHA, 999hz948_long_frame_mono) {
+    CheckReduction(999.948, 743);
+}
+
+TEST(AT3PGHA, 1345hz826_long_frame_mono) {
+    CheckReduction(1345.826, 1000);
 }
