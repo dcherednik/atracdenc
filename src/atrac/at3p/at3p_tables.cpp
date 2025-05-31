@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "util.h"
 #include "at3p_tables.h"
 #include "ff/atrac3plus_data.h"
 
@@ -71,7 +72,7 @@ constexpr uint32_t TScaleTable::BlocksPerBand[NumQMF + 1];
 constexpr uint32_t TScaleTable::SpecsPerBlock[MaxBfus];
 constexpr uint32_t TScaleTable::BlockSizeTab[MaxBfus + 1];
 
-static uint16_t __attribute__ ((noinline)) GenHuffmanEncTable(const uint8_t *cb, const uint8_t *xlat, uint16_t outLen, TVlcElement* const out)
+static uint16_t atde_noinline GenHuffmanEncTable(const uint8_t *cb, const uint8_t *xlat, uint16_t outLen, TVlcElement* const out)
 {
     uint16_t index = 0;
     uint16_t code = 0;

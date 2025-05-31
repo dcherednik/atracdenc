@@ -1,6 +1,7 @@
 #include "at3p_bitstream.h"
 #include "at3p_gha.h"
 #include "oma.h"
+#include "util.h"
 #include <gtest/gtest.h>
 #include <cmath>
 #include <vector>
@@ -18,7 +19,7 @@ struct TTestParam {
     uint16_t end;
 };
 
-static void __attribute__ ((noinline)) Gen(const TTestParam& p, vector<float>& out)
+static void atde_noinline Gen(const TTestParam& p, vector<float>& out)
 {
     float freq = p.freq / (44100.0 / 16.0);
     float a = p.amplitude;
@@ -35,7 +36,7 @@ static TAt3PGhaData DoAnalize(IGhaProcessor* p, IGhaProcessor::TBufPtr b1, IGhaP
     return *p->DoAnalize(b1, b2, w1, w2);
 }
 
-static const TAt3PGhaData __attribute__ ((noinline)) GenAndRunGha(vector<TTestParam> p1, vector<TTestParam> p2)
+static const TAt3PGhaData atde_noinline GenAndRunGha(vector<TTestParam> p1, vector<TTestParam> p2)
 {
     vector<float> buf1(2048 * 2);
 

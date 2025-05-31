@@ -24,7 +24,7 @@
 
 namespace NAtracDEnc {
 
-class TScaledBlock;
+struct TScaledBlock;
 
 struct TAt3PGhaData;
 
