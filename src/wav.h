@@ -28,18 +28,15 @@
 class TFileAlreadyExists : public std::exception {
 };
 
-class TNoDataToRead : public std::exception {
-};
-
 class TWavPcmReader : public IPCMReader {
 public:
-    typedef std::function<void(TPCMBuffer& data, const uint32_t size)> TLambda;
+    typedef std::function<bool(TPCMBuffer& data, const uint32_t size)> TLambda;
     TLambda Lambda;
     TWavPcmReader(TLambda lambda)
         : Lambda(lambda)
     {}
-    void Read(TPCMBuffer& data , const uint32_t size) const override {
-        Lambda(data, size);
+    bool Read(TPCMBuffer& data , const uint32_t size) const override {
+        return Lambda(data, size);
     }
 };
 

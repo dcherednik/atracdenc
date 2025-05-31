@@ -33,6 +33,11 @@
 #define ASSERT(x) assert(x)
 #endif
 
+#if defined(_MSC_VER)
+#    define atde_noinline __declspec(noinline)
+#else
+#    define atde_noinline __attribute__((noinline))
+#endif
 
 template<class T>
 inline void SwapArray(T* p, const size_t len) {

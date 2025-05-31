@@ -371,6 +371,7 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
         }
 
         bitStreamWriter->WriteSoundUnit(SingleChannelElements, Loudness);
+        return TPCMEngine::EProcessResult::PROCESSED;
     };
 }
 

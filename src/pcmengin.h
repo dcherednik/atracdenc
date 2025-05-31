@@ -28,6 +28,9 @@
 #include <assert.h>
 #include <string.h>
 
+class TNoDataToRead : public std::exception {
+};
+
 class TPCMBufferTooSmall : public std::exception {
     virtual const char* what() const throw() {
         return "PCM buffer too small";
@@ -99,7 +102,7 @@ class IPCMWriter {
 
 class IPCMReader {
     public:
-        virtual void Read(TPCMBuffer& data , const uint32_t size) const = 0;
+        virtual bool Read(TPCMBuffer& data , const uint32_t size) const = 0;
         IPCMReader() {};
         virtual ~IPCMReader() {};
 };
@@ -116,6 +119,7 @@ private:
     TWriterPtr Writer;
     TReaderPtr Reader;
     uint64_t Processed = 0;
+    uint64_t ToDrain = 0;
 public:
         TPCMEngine(uint16_t bufSize, size_t numChannels)
            : Buffer(bufSize, numChannels) {
@@ -137,23 +141,45 @@ public:
             , Reader(std::move(reader)) {
         }
 
-        typedef std::function<void(float* data, const ProcessMeta& meta)> TProcessLambda;
+        enum class EProcessResult {
+            LOOK_AHEAD, // need more data to process
+            PROCESSED,
+        };
+
+        typedef std::function<EProcessResult(float* data, const ProcessMeta& meta)> TProcessLambda;
 
         uint64_t ApplyProcess(size_t step, TProcessLambda lambda) {
             if (step > Buffer.Size()) {
                 throw TPCMBufferTooSmall();
             }
 
+            bool drain = false;
             if (Reader) {
                 const uint32_t sizeToRead = Buffer.Size();
-                Reader->Read(Buffer, sizeToRead);
+                const bool ok = Reader->Read(Buffer, sizeToRead);
+                if (!ok) {
+                    if (ToDrain) {
+                        drain = true;
+                    } else {
+                        throw TNoDataToRead();
+                    }
+                }
             }
 
             size_t lastPos = 0;
             ProcessMeta meta = {Buffer.Channels()};
+
             for (size_t i = 0; i + step <= Buffer.Size(); i+=step) {
-                lambda(Buffer[i], meta);
-                lastPos = i + step;
+                auto res = lambda(Buffer[i], meta);
+                if (res == EProcessResult::PROCESSED) {
+                    lastPos += step;
+                    if (drain && ToDrain--) {
+                        break;
+                    }
+                } else {
+                    assert(!drain);
+                    ToDrain++;
+                }
             }
 
             assert(lastPos == Buffer.Size());

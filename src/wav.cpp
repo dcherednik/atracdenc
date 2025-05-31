@@ -51,10 +51,12 @@ IPCMReader* TWav::GetPCMReader() const {
         size_t read;
         if ((read = Impl->Read(data, size)) != size) {
             if (!read)
-                throw TNoDataToRead();
+                return false;
 
             data.Zero(read, size - read);
         }
+
+        return true;
     });
 }
 

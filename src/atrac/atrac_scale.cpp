@@ -19,6 +19,7 @@
 #include "atrac_scale.h"
 #include "atrac1.h"
 #include "atrac3.h"
+#include "atrac/at3p/at3p_tables.h"
 #include "util.h"
 #include <cmath>
 #include <iostream>
@@ -192,5 +193,8 @@ class TScaler<NAtrac1::TAtrac1Data>;
 
 template
 class TScaler<NAtrac3::TAtrac3Data>;
+
+template
+class TScaler<NAt3p::TScaleTable>;
 
 } //namespace NAtracDEnc

@@ -1,9 +1,13 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1...3.26)
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_C_STANDARD 11)
 
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fno-omit-frame-pointer")
+
+include_directories(
+    "../src/lib"
+)
 
 set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/lib/mdct/mdct_ut.cpp
@@ -52,6 +56,74 @@ target_link_libraries(at3plus_pqf_ut
     GTest::gtest_main
 )
 
+###
+
+set(at3plus_bitstream_ut
+    ${CMAKE_SOURCE_DIR}/src/atrac/at3p/at3p_bitstream_ut.cpp
+)
+
+add_executable(at3plus_bitstream_ut ${at3plus_bitstream_ut})
+
+target_link_libraries(at3plus_bitstream_ut
+    m
+    fft_impl
+    atracdenc_impl
+    GTest::gtest_main
+)
+
+###
+
+set(at3plus_gha_ut
+    ${CMAKE_SOURCE_DIR}/src/atrac/at3p/at3p_gha_ut.cpp
+)
+
+add_executable(at3plus_gha_ut ${at3plus_gha_ut})
+
+target_link_libraries(at3plus_gha_ut
+    m
+    fft_impl
+    atracdenc_impl
+    GTest::gtest_main
+)
+
+###
+
+set(at3plus_mdct_ut
+    ${CMAKE_SOURCE_DIR}/src/atrac/at3p/at3p_mdct_ut.cpp
+)
+
+add_executable(at3plus_mdct_ut ${at3plus_mdct_ut})
+
+target_link_libraries(at3plus_mdct_ut
+    m
+    fft_impl
+    atracdenc_impl
+    GTest::gtest_main
+)
+
+###
+
+set(bs_encode_ut
+    ${CMAKE_SOURCE_DIR}/src/lib/bs_encode/encode_ut.cpp
+    ${CMAKE_SOURCE_DIR}/src/lib/bs_encode/encode.cpp
+)
+
+add_executable(bs_encode_ut ${bs_encode_ut})
+
+target_link_libraries(bs_encode_ut
+    m
+    bitstream
+    GTest::gtest_main
+)
+
+###
+
+
+
 enable_testing()
 add_test(ut atracdenc_ut)
 add_test(at3plus_pqf_ut at3plus_pqf_ut)
+add_test(at3plus_bitstream_ut at3plus_bitstream_ut)
+add_test(at3plus_gha_ut at3plus_gha_ut)
+add_test(at3plus_mdct_ut at3plus_mdct_ut)
+add_test(bs_encode_ut bs_encode_ut)
