@@ -27,9 +27,13 @@
 
 #include <assert.h>
 #include <vector>
+#include <memory>
 
 namespace NAtracDEnc {
 
+namespace NAtrac1 {
+    class IAtrac1BitAlloc;
+}
 
 class TAtrac1MDCT {
     NMDCT::TMDCT<512> Mdct512;
@@ -62,6 +66,7 @@ class TAtrac1Encoder : public IProcessor, public TAtrac1MDCT {
     Atrac1AnalysisFilterBank<float> AnalysisFilterBank[2];
 
     const std::vector<float> LoudnessCurve;
+    std::vector<std::unique_ptr<NAtrac1::IAtrac1BitAlloc>> BitAllocs;
 
     class TTransientDetectors {
         std::vector<TTransientDetector> transientDetectorLow;

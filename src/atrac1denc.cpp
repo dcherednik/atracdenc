@@ -166,10 +166,10 @@ TPCMEngine::TProcessLambda TAtrac1Decoder::GetLambda() {
 
 TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
     const uint32_t srcChannels = Aea->GetChannelNum();
-    vector<IAtrac1BitAlloc*> bitAlloc(srcChannels);
 
-    for (auto& x : bitAlloc) {
-        x = new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch());
+    BitAllocs.reserve(srcChannels);
+    for (uint32_t ch = 0; ch < srcChannels; ch++) {
+        BitAllocs.emplace_back(new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
     }
 
     struct TChannelData {
@@ -185,7 +185,7 @@ TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
     using TData = vector<TChannelData>;
     auto buf = std::make_shared<TData>(srcChannels);
 
-    return [this, srcChannels, bitAlloc, buf](float* data, const TPCMEngine::ProcessMeta& /*meta*/) {
+    return [this, srcChannels, buf](float* data, const TPCMEngine::ProcessMeta& /*meta*/) {
         TAtrac1Data::TBlockSizeMod blockSz[2];
 
         uint32_t windowMasks[2] = {0};
@@ -234,7 +234,7 @@ TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
         }
 
         for (uint32_t channel = 0; channel < srcChannels; channel++) {
-            bitAlloc[channel]->Write(Scaler.ScaleFrame((*buf)[channel].Specs, blockSz[channel]), blockSz[channel], Loudness / LoudFactor);
+            BitAllocs[channel]->Write(Scaler.ScaleFrame((*buf)[channel].Specs, blockSz[channel]), blockSz[channel], Loudness / LoudFactor);
         }
 
         return TPCMEngine::EProcessResult::PROCESSED;
