@@ -37,6 +37,8 @@ struct THuffTables {
     THuffTables();
     std::array<TVlcElement, 16> NumToneBands;
     std::array<std::array<TVlcElement, 256>, 112> VlcSpecs;
+    std::array<std::array<TVlcElement, 8>, 4> WordLens;
+    std::array<std::array<TVlcElement, 8>, 4> CodeTables;
 };
 
 struct TScaleTable {

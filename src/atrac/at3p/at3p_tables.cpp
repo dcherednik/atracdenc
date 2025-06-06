@@ -112,6 +112,11 @@ THuffTables::THuffTables()
         }
     }
 
+    for (size_t i = 0, x = 0; i < WordLens.size(); i++) {
+        x += GenHuffmanEncTable(&atrac3p_wl_cbs[i][0], &atrac3p_wl_ct_xlats[x], WordLens[i]);
+        x += GenHuffmanEncTable(&atrac3p_ct_cbs[i][0], &atrac3p_wl_ct_xlats[x], CodeTables[i]);
+    }
+
     for (int i = 0, x = 0; i < 112; i++) {
         if (atrac3p_spectra_cbs[i][0] >= 0) {
             x += GenHuffmanEncTable((uint8_t*)&atrac3p_spectra_cbs[i][0], &atrac3p_spectra_xlats[x], VlcSpecs[i]);

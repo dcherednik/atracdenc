@@ -134,6 +134,6 @@ TEST(AT3PBitstream, Wordlen) {
 
     encoder.Do(&frame, bs);
 
-    EXPECT_EQ(bs.GetSizeInBits(), 40);
+    EXPECT_EQ(bs.GetSizeInBits(), 28);
 }
 

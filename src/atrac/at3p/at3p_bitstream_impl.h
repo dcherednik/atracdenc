@@ -26,6 +26,10 @@
 
 namespace NAtracDEnc {
 
+namespace NAt3p {
+struct TVlcElement;
+}
+
 struct TSpecFrame {
     TSpecFrame(uint32_t sz, uint32_t numQuantUnits, size_t channels,
                const TAt3PGhaData* tonalBlock,
@@ -90,6 +94,7 @@ public:
     TWordLenEncoder() = default;
     EStatus Encode(void* frameData, TBitAllocHandler& ba) override;
 private:
+    void VlEncode(const std::array<NAt3p::TVlcElement, 8>& wlTab, size_t idx, size_t sz, const int8_t* data) noexcept;
 };
 
 class TSfIdxEncoder : public TDumper {

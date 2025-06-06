@@ -133,22 +133,113 @@ IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHand
     return EStatus::Ok;
 }
 
+size_t FindBestWlDeltaEncode(const int8_t* delta, uint32_t sz, size_t tableStart, size_t tableEndl) noexcept {
+    size_t best = 0;
+    size_t consumed = std::numeric_limits<size_t>::max();
+    static_assert(HuffTabs.WordLens.size() == 4, "unexpected wordlen huffman code table size");
+    for (size_t i = tableStart; i <= tableEndl; i++) {
+        const std::array<TVlcElement, 8>& wlTab = HuffTabs.WordLens[i];
+        size_t t = 0;
+        for (size_t j = 1; j < sz; j++) {
+            t += wlTab[delta[j]].Len;
+        }
+        if (t < consumed) {
+            consumed = t;
+            best = i;
+        }
+    }
+
+    return best;
+}
+
+void TWordLenEncoder::VlEncode(const std::array<TVlcElement, 8>& wlTab, size_t idx, size_t sz, const int8_t* data) noexcept {
+    Insert(3, 2); // 0 - constant number of bits, 3 - VLC
+    Insert(0, 2); // weight_idx
+    Insert(0, 2); // chan->num_coded_vals = ctx->num_quant_units;
+
+    Insert(idx, 2);
+    Insert(data[0], 3);
+    for (size_t i = 1; i < sz; i++) {
+        Insert(wlTab[data[i]].Code,  wlTab[data[i]].Len);
+    }
+}
+
 IBitStreamPartEncoder::EStatus TWordLenEncoder::Encode(void* frameData, TBitAllocHandler&) {
     auto specFrame = TSpecFrame::Cast(frameData);
 
     ASSERT(specFrame->WordLen.size() > specFrame->NumQuantUnits);
-    for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
 
-        Insert(0, 2); // 0 - constant number of bits
+    int8_t deltasCh0[32];
+    //int8_t deltasCh1[32];
+    int8_t interChDeltas[32];
+    int8_t maxDeltaCh0 = 0;
+    //int8_t maxDeltaCh1 = 0;
+    int8_t maxInterChDelta;
 
-        if (ch == 0) {
-            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
-                Insert(specFrame->WordLen[i].first, 3);
-            }
+    {
+        int8_t t = specFrame->WordLen[0].second - specFrame->WordLen[0].first;
+        maxInterChDelta = abs(t);
+        interChDeltas[0] = t & 7;
+    }
+
+    deltasCh0[0] = specFrame->WordLen[0].first;
+    //deltasCh1[0] = specFrame->WordLen[0].second;
+
+    for (size_t i = 1; i < specFrame->NumQuantUnits; i++) {
+        int8_t deltaCh0 = specFrame->WordLen[i].first - specFrame->WordLen[i-1].first;
+        //int8_t deltaCh1 = specFrame->WordLen[i].second - specFrame->WordLen[i-1].second;
+        int8_t t = specFrame->WordLen[i].second - specFrame->WordLen[i].first;
+        //0 - 7, so only 3 bits
+        maxDeltaCh0 |= abs(deltaCh0);
+        //maxDeltaCh1 |= abs(deltaCh1);
+        deltasCh0[i] = deltaCh0 & 7;
+        //deltasCh1[i] = deltaCh1 & 7;
+
+        maxInterChDelta |= abs(t);
+        interChDeltas[i] = t & 7;
+    }
+
+    {
+        size_t tableStart, tableEnd;
+        if (maxDeltaCh0 >= 3) {
+            tableStart = 2;
+            tableEnd = 3;
+        } else if (maxDeltaCh0 == 2) {
+            tableStart = 1;
+            tableEnd = 1;
         } else {
-            for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
-                Insert(specFrame->WordLen[i].second, 3);
-            }
+            tableStart = 0;
+            tableEnd = 0;
+        }
+
+        const size_t idx = FindBestWlDeltaEncode(deltasCh0, specFrame->NumQuantUnits, tableStart, tableEnd);
+        const std::array<TVlcElement, 8>& wlTab = HuffTabs.WordLens[idx];
+
+        VlEncode(wlTab, idx, specFrame->NumQuantUnits, deltasCh0);
+    }
+
+    if (specFrame->Chs.size() == 2) {
+        size_t tableStart, tableEnd;
+        if (maxInterChDelta >= 3) {
+            tableStart = 2;
+            tableEnd = 3;
+        } else if (maxInterChDelta == 2) {
+            tableStart = 1;
+            tableEnd = 1;
+        } else {
+            tableStart = 0;
+            tableEnd = 0;
+        }
+
+        const size_t idx = FindBestWlDeltaEncode(interChDeltas, specFrame->NumQuantUnits, tableStart, tableEnd);
+        const std::array<TVlcElement, 8>& wlTab = HuffTabs.WordLens[idx];
+
+        Insert(1, 2); // 0 - constant number of bits
+        Insert(0, 2); // chan->num_coded_vals = ctx->num_quant_units;
+
+        Insert(idx, 2);
+        for (size_t i = 0; i < specFrame->NumQuantUnits; i++) {
+            Insert(wlTab[interChDeltas[i]].Code,  wlTab[interChDeltas[i]].Len);
         }
     }
 
