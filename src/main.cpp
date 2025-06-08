@@ -124,9 +124,9 @@ static void CheckInputFormat(const TWav* p)
 
 static TWavPtr OpenWavFile(const string& inFile)
 {
-    TWav* wavPtr = new TWav(inFile);
-    CheckInputFormat(wavPtr);
-    return TWavPtr(wavPtr);
+    TWavPtr wavPtr = std::make_unique<TWav>(inFile);
+    CheckInputFormat(wavPtr.get());
+    return wavPtr;
 }
 
 static void PrepareAtrac1Encoder(const string& inFile,
