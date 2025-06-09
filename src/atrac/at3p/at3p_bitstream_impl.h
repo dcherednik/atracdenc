@@ -19,6 +19,7 @@
  */
 
 #include "atrac/at3p/at3p_gha.h"
+#include "at3p_bitstream.h"
 #include <lib/bitstream/bitstream.h>
 #include <lib/bs_encode/encode.h>
 #include <atrac/atrac_scale.h>
@@ -33,7 +34,7 @@ struct TVlcElement;
 struct TSpecFrame {
     TSpecFrame(uint32_t sz, uint32_t numQuantUnits, size_t channels,
                const TAt3PGhaData* tonalBlock,
-               const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
+               const std::vector<TAt3PBitStream::TSingleChannelElement>& sces)
         : SizeBits(sz)
         , NumQuantUnits(numQuantUnits)
         , TonalBlock(tonalBlock)
@@ -41,7 +42,7 @@ struct TSpecFrame {
     {
         Chs.reserve(channels);
         for (size_t i = 0; i < channels; i++) {
-            Chs.emplace_back(TChannel(scaledBlocks[i]));
+            Chs.emplace_back(TChannel(sces[i]));
         }
     }
 
@@ -53,10 +54,10 @@ struct TSpecFrame {
     std::vector<std::pair<uint8_t, uint8_t>> SpecTabIdx;
 
     struct TChannel {
-        TChannel(const std::vector<TScaledBlock>& scaledBlock)
-            : ScaledBlocks(scaledBlock)
+        TChannel(const TAt3PBitStream::TSingleChannelElement& sce)
+            : Sce(sce)
         {}
-        const std::vector<TScaledBlock>& ScaledBlocks;
+        const TAt3PBitStream::TSingleChannelElement& Sce;
     };
 
     std::vector<TChannel> Chs;

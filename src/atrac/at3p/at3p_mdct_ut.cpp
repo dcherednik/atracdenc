@@ -38,7 +38,7 @@ TEST(TAtpMDCT, ZeroOneBlock) {
             pcm[i] = &zero[i * 128];
         }
 
-        mdct.Do(specs.data(), pcm, buff);
+        mdct.Do(specs.data(), pcm, buff, TAt3pMDCTWin::SINE);
 
         for(auto s: specs)
             EXPECT_NEAR(s, 0.0, 0.0000000001);
@@ -53,15 +53,14 @@ TEST(TAtpMDCT, ZeroOneBlock) {
             pcm[i] = &zero[i * 128];
         }
 
-        midct.Do(specs.data(), pcm, buff);
+        midct.Do(specs.data(), pcm, buff, TAt3pMDCTWin::SINE);
 
         for(size_t i = 0; i < zero.size(); ++i)
             EXPECT_NEAR(zero[i], 0.0, 0.0000000001);
     }
 }
 
-
-TEST(TAtpMDCT, DC) {
+static void DoAt3pMDCTDcTest(TAt3pMDCTWin first, TAt3pMDCTWin second) {
     std::array<float, 4096> specs;
     std::array<float, 2048> dc;
 
@@ -79,8 +78,8 @@ TEST(TAtpMDCT, DC) {
             pcm[i] = &dc[i * 128];
         }
 
-        mdct.Do(specs.data(),        pcm, buff);
-        mdct.Do(specs.data() + 2048, pcm, buff);
+        mdct.Do(specs.data(),        pcm, buff, first);
+        mdct.Do(specs.data() + 2048, pcm, buff, second);
     }
 
     {
@@ -96,11 +95,26 @@ TEST(TAtpMDCT, DC) {
             pcm[i] = &result[i * 128];
         }
 
-        midct.Do(specs.data(),        pcm, buff);
-        midct.Do(specs.data() + 2048, pcm, buff);
+        midct.Do(specs.data(),        pcm, buff, first);
+        midct.Do(specs.data() + 2048, pcm, buff, second);
 
         for(size_t i = 0; i < result.size(); ++i) {
             EXPECT_NEAR(result[i], dc[i], 0.000001);
         }
     }
+}
+TEST(TAtpMDCT, DCSineWin) {
+    DoAt3pMDCTDcTest(TAt3pMDCTWin::SINE, TAt3pMDCTWin::SINE);
+}
+
+TEST(TAtpMDCT, DCSteepWin) {
+    DoAt3pMDCTDcTest(TAt3pMDCTWin::STEEP, TAt3pMDCTWin::STEEP);
+}
+
+TEST(TAtpMDCT, DCSineSteepWin) {
+    DoAt3pMDCTDcTest(TAt3pMDCTWin::SINE, TAt3pMDCTWin::STEEP);
+}
+
+TEST(TAtpMDCT, DCSteepSineWin) {
+    DoAt3pMDCTDcTest(TAt3pMDCTWin::STEEP, TAt3pMDCTWin::SINE);
 }

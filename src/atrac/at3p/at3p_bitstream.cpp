@@ -118,9 +118,9 @@ IBitStreamPartEncoder::EStatus TConfigure::Encode(void* frameData, TBitAllocHand
     frame->SfIdx.resize(frame->NumQuantUnits);
 
     for (size_t i = 0; i < frame->SfIdx.size(); i++) {
-        frame->SfIdx[i].first = frame->Chs[0].ScaledBlocks.at(i).ScaleFactorIndex;
+        frame->SfIdx[i].first = frame->Chs[0].Sce.ScaledBlocks.at(i).ScaleFactorIndex;
         if (frame->Chs.size() > 1)
-            frame->SfIdx[i].second = frame->Chs[1].ScaledBlocks.at(i).ScaleFactorIndex;
+            frame->SfIdx[i].second = frame->Chs[1].Sce.ScaledBlocks.at(i).ScaleFactorIndex;
     }
 
     frame->SpecTabIdx.resize(frame->NumQuantUnits);
@@ -407,7 +407,7 @@ IBitStreamPartEncoder::EStatus TQuantUnitsEncoder::Encode(void* frameData, TBitA
             std::vector<std::pair<uint16_t, uint8_t>>> data;
     for (size_t ch = 0; ch < specFrame->Chs.size(); ch++) {
         auto& chData = specFrame->Chs.at(ch);
-        auto scaledBlocks = chData.ScaledBlocks;
+        auto scaledBlocks = chData.Sce.ScaledBlocks;
 
         for (size_t qu = 0; qu < specFrame->NumQuantUnits; qu++) {
             size_t len = (ch == 0) ?
@@ -664,7 +664,20 @@ IBitStreamPartEncoder::EStatus TTonalComponentEncoder::Encode(void* frameData, T
     }
 
     for (size_t ch = 0; ch < chNum; ch++) {
-        Insert(0, 1); // window shape
+        TAt3pMDCTWin winType = specFrame->Chs[ch].Sce.SubbandInfo.Win;
+        uint8_t sbNum = atrac3p_qu_to_subband[specFrame->NumQuantUnits - 1] + 1;
+        if (winType.IsAllSine()) {
+            Insert(0, 1);
+        } else if (winType.IsAllSteep(sbNum)) {
+            Insert(1, 1);
+            Insert(0, 1);
+        } else {
+            Insert(1, 1);
+            Insert(1, 1);
+            for (size_t i = 0; i < sbNum; i++) {
+                Insert(winType.IsSbSteep(i), 1);
+            }
+        }
     }
 
     for (size_t ch = 0; ch < chNum; ch++) {
@@ -687,7 +700,7 @@ IBitStreamPartEncoder::EStatus TTonalComponentEncoder::Encode(void* frameData, T
     return CheckFrameDone(specFrame, ba);
 }
 
-void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, const std::vector<std::vector<TScaledBlock>>& scaledBlocks)
+void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, const std::vector<TSingleChannelElement>& sces)
 {
     NBitStream::TBitStream bitStream;
     // First bit must be zero
@@ -700,7 +713,7 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, co
 
     const uint32_t initialNumQuantUnits = 32;
 
-    TSpecFrame frame(FrameSzToAllocBits, initialNumQuantUnits, channels, tonalBlock, scaledBlocks);
+    TSpecFrame frame(FrameSzToAllocBits, initialNumQuantUnits, channels, tonalBlock, sces);
 
     Encoder.Do(&frame, bitStream);
 

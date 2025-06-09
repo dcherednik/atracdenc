@@ -117,7 +117,8 @@ EncodeFrame(const float* data, int channels)
 
     const TAt3PGhaData* tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next}, b1Prev, b2Prev);
 
-    std::vector<std::vector<TScaledBlock>> scaledBlocks;
+    std::vector<TAt3PBitStream::TSingleChannelElement> sces;
+    sces.resize(channels);
     for (int ch = 0; ch < channels; ch++) {
         float* x = (ch == 0) ? b1Prev : b2Prev;
         auto& c = ChannelCtx[ch];
@@ -137,13 +138,13 @@ EncodeFrame(const float* data, int channels)
         for (size_t b = 0; b < 16; b++) {
             p[b] = tmp + b * 128;
         }
-        Mdct.Do(c.Specs.data(), p, c.MdctBuf);
 
-        const auto& block = Scaler.ScaleFrame(c.Specs, NAt3p::TScaleTable::TBlockSizeMod());
-        scaledBlocks.push_back(block);
+        Mdct.Do(c.Specs.data(), p, c.MdctBuf, sces[ch].SubbandInfo.Win);
+
+        sces[ch].ScaledBlocks = Scaler.ScaleFrame(c.Specs, NAt3p::TScaleTable::TBlockSizeMod());
     }
 
-    BitStream.WriteFrame(channels, p, scaledBlocks);
+    BitStream.WriteFrame(channels, p, sces);
 
     for (int ch = 0; ch < channels; ch++) {
         if (Settings.UseGha & TSettings::GHA_PASS_INPUT) {

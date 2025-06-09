@@ -20,6 +20,7 @@
 
 #include "compressed_io.h"
 #include "at3p_gha.h"
+#include "at3p_mdct.h"
 #include <lib/bs_encode/encode.h>
 
 namespace NAtracDEnc {
@@ -47,8 +48,15 @@ TTonePackResult CreateFreqBitPack(const TAt3PGhaData::TWaveParam* param, int len
 
 class TAt3PBitStream {
 public:
+    struct TSubbandInfos {
+        TAt3pMDCTWin Win;
+    };
+    struct TSingleChannelElement {
+        TSubbandInfos SubbandInfo;
+        std::vector<TScaledBlock> ScaledBlocks;
+    };
     TAt3PBitStream(ICompressedOutput* container, uint16_t frameSz);
-    void WriteFrame(int channels, const TAt3PGhaData* tonalData, const std::vector<std::vector<TScaledBlock>>& scaledBlocks);
+    void WriteFrame(int channels, const TAt3PGhaData* tonalData, const std::vector<TSingleChannelElement>& scaledBlocks);
 private:
     ICompressedOutput* Container;
     TBitStreamEncoder Encoder;
