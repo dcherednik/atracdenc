@@ -125,10 +125,10 @@ TEST(AT3PBitstream, Wordlen) {
     NBitStream::TBitStream bs;
     TBitStreamEncoder encoder(std::move(encoders));
 
-    std::vector<std::vector<TScaledBlock>> scaledBlocks;
-    scaledBlocks.resize(2);
+    std::vector<TAt3PBitStream::TSingleChannelElement> sce;
+    sce.resize(2);
 
-    TSpecFrame frame(444, 28, 2, nullptr, scaledBlocks);
+    TSpecFrame frame(444, 28, 2, nullptr, sce);
 
     FillFrameData(frame);
 
