@@ -201,7 +201,6 @@ static void PrepareAtrac3Encoder(const string& inFile,
                                  TPcmEnginePtr* pcmEngine,
                                  TAtracProcessorPtr* atracProcessor)
 {
-    std::cout << "WARNING: ATRAC3 is uncompleted, result will be not good )))" << std::endl;
     const int numChannels = encoderSettings.SourceChannels;
     *totalSamples = wavIO->GetTotalSamples();
     const uint64_t numFrames = (*totalSamples) / 1024;
