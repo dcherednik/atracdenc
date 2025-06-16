@@ -12,11 +12,11 @@
 . ftr VB CB
 . ftr VBI CBI
 .\}
-.TH "ATRACDENC" "1" "9 November 2023" "atracdenc 0.1.0" "User Manual"
+.TH "ATRACDENC" "1" "16 Jun 2025" "atracdenc 0.2.0" "User Manual"
 .hy
 .SH NAME
 .PP
-atracdenc - encode to or decode from ATRAC format
+atracdenc - encode to or decode from ATRAC family formats
 .SH SYNOPSIS
 .PP
 atracdenc [options] {-e <codec> | \[en]encode=<codec> | -d |
@@ -24,8 +24,8 @@ atracdenc [options] {-e <codec> | \[en]encode=<codec> | -d |
 .PP
 .SH DESCRIPTION
 .PP
-atracdenc is an audio converter that can encode into ATRAC1
-or ATRAC3 compatible format and decode from ATRAC1.
+atracdenc is an audio converter that can encode into ATRAC1, ATRAC3
+or ATRAC3PLUS compatible format and decode from ATRAC1.
 .PP
 For ATRAC1 (also known as ATRAC SP on MiniDisk devices) AEA audio
 container is used. Only one bitrate (292 kbit/s) is specified.
@@ -33,6 +33,8 @@ container is used. Only one bitrate (292 kbit/s) is specified.
 For ATRCA3 (also known as ATRAC LP on MiniDisk devices) OMA, AT3(riff)
 and RealMedia container is supported. In the case of OMA and AT3 container, compatible bitrates are 66150 (LP4), 104738 and 132300 (LP2) bits/s. 
 The RealMedia container supports 66150, 93713, 104738, 132300, 146081, 176400, 264600 and 352800 bits/s.
+.PP
+For ATRAC3PLUS currently only OMA container is supported with highest bitrate 352800 bits/s
 .SH OPTIONS
 .TP
 .B \-h
@@ -46,7 +48,7 @@ Use - to read from stdin.
 Path to the output file. The container format is chosen automaticaly according to the file extension. 
 .TP
 .B \-e <codec>
-Encode mode. <codec> is a codec name must be one of atrac1, atrac3, atrac3_lp2, atrac3_lp4.
+Encode mode. <codec> is a codec name must be one of atrac1, atrac3, atrac3_lp4 or atarc3plus
 .TP
 .B \--encode=<codec>
 Alias for -e.
@@ -68,7 +70,7 @@ Set constant amount of used BFU (ATRAC1, ATRAC3).
 .B \--bfuidxfast
 Enable fast search of BFU amount (ATRAC1).
 .TP
-.B \--notransient[=mask]
+.B \--notransient[=mask] (ATRAC1)
 Disable transient detection and use an optional mask \
 to set bands with a forced short MDCT window.
 .TP
@@ -100,7 +102,6 @@ ATRAC3 LP4 compatible encoding (low quality)
 -o
 .I out.oma
 
-
 .LP
 ATRAC3 + RealAudio container + max supported bitrate
 .IP
@@ -109,3 +110,12 @@ ATRAC3 + RealAudio container + max supported bitrate
 .I in.wav
 -o
 .I out.rm
+
+.LP
+ATRAC3PLUS compatible encoding
+.IP
+.B atracdenc \-e atrac3plus
+-i
+.I in.wav
+-o
+.I out.oma

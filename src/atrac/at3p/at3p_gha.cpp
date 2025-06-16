@@ -19,7 +19,7 @@
 #include "at3p_gha.h"
 #include "ff/atrac3plus.h"
 
-#include <assert.h>
+#include <util.h>
 #include <atrac/atrac_psy_common.h>
 #include <libgha/include/libgha.h>
 
@@ -574,7 +574,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
                             data.GhaInfos.insert({newIndex, x});
                         }
                     } else {
-                        std::cerr << "jackpot! same freq index after adjust call, sb: " << sb << " " << std::endl;
+                        // std::cerr << "jackpot! same freq index after adjust call, sb: " << sb << " " << std::endl;
                         data.GhaInfos.erase(data.LastAddedFreqIdx[sb]);
                         totalTones--;
                         data.MarkSubbandDone(sb);
@@ -601,7 +601,7 @@ bool TGhaProcessor::DoRound(TChannelData& data, size_t& totalTones) const
             if (data.SubbandDone[sb] == 0) {
                 bool ins = data.GhaInfos.insert({freqIndex, res}).second;
                 data.LastAddedFreqIdx[sb] = freqIndex;
-                assert(ins);
+                ASSERT(ins);
             } else {
                 const auto it = data.GhaInfos.lower_bound(freqIndex);
                 const size_t minFreqDistanse = 20; // Now we unable to handle tones with close frequency
