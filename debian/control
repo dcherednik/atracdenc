@@ -1,0 +1,18 @@
+Source: atracdenc
+Section: sound
+Priority: optional
+Maintainer: Daniil Cherednik <dan.cherednik@gmail.com>
+Bugs: mailto:pkgsup@mastervirt.ru
+Homepage: https://github.com/dcherednik/atracdenc
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+	       libsndfile1-dev
+Standards-Version: 0.2.0
+
+Package: atracdenc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Open source ATRAC compatible encoder.
+ Atracdenc is a program which can be used to create ATRAC compatible
+ audio files.
+

@@ -1,0 +1,10 @@
+atracdenc (0.2.0) UNRELEASED; urgency=low
+
+  * ATH and some bit allocation tuning for ATRAC1 compatible encoding.
+  * ATH, energy aware quanitization and tuning for ATRAC3 compatible
+    encoding.
+  * Noticeable improvements for LP4 mode (but still not perfect on some
+    tracks for LP4 bitrate)
+  * Initial implementation of ATRAC3PLUS compatible encoding.
+
+ -- Daniil Cherednik <pkgsup@mastervirt.ru>  Mon, 16 Jun 2025 22:21:54 +0200
