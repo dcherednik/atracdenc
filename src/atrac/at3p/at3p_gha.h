@@ -20,6 +20,7 @@
 
 #include <config.h>
 
+#include <cstdint>
 #include <array>
 #include <memory>
 #include <vector>

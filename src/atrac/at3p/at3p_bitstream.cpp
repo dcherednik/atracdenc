@@ -167,7 +167,7 @@ void TWordLenEncoder::VlEncode(const std::array<TVlcElement, 8>& wlTab, size_t i
 IBitStreamPartEncoder::EStatus TWordLenEncoder::Encode(void* frameData, TBitAllocHandler&) {
     auto specFrame = TSpecFrame::Cast(frameData);
 
-    ASSERT(specFrame->WordLen.size() > specFrame->NumQuantUnits);
+    ASSERT(specFrame->WordLen.size() >= specFrame->NumQuantUnits);
 
     int8_t deltasCh0[32];
     //int8_t deltasCh1[32];
