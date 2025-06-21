@@ -18,7 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "atrac/at3p/at3p_gha.h"
+#include "at3p_gha.h"
 #include "at3p_bitstream.h"
 #include <lib/bitstream/bitstream.h>
 #include <lib/bs_encode/encode.h>

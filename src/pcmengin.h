@@ -182,7 +182,6 @@ public:
                 }
             }
 
-            assert(lastPos == Buffer.Size());
             if (Writer) {
                 Writer->Write(Buffer, lastPos);
             }

@@ -167,7 +167,7 @@ void TWordLenEncoder::VlEncode(const std::array<TVlcElement, 8>& wlTab, size_t i
 IBitStreamPartEncoder::EStatus TWordLenEncoder::Encode(void* frameData, TBitAllocHandler&) {
     auto specFrame = TSpecFrame::Cast(frameData);
 
-    ASSERT(specFrame->WordLen.size() > specFrame->NumQuantUnits);
+    ASSERT(specFrame->WordLen.size() >= specFrame->NumQuantUnits);
 
     int8_t deltasCh0[32];
     //int8_t deltasCh1[32];
@@ -338,7 +338,7 @@ void TQuantUnitsEncoder::EncodeQuSpectra(const int* qspec, const size_t num_spec
                 val |= t;
             }
 
-            ASSERT(val > 255);
+            ASSERT(val <= 255);
 
             const TVlcElement& el = vlcTab.at(val);
 
@@ -719,7 +719,7 @@ void TAt3PBitStream::WriteFrame(int channels, const TAt3PGhaData* tonalBlock, co
 
     std::vector<char> buf = bitStream.GetBytes();
 
-    ASSERT(bitStream.GetSizeInBits() > FrameSz * 8);
+    ASSERT(bitStream.GetSizeInBits() <= FrameSz * 8);
 
     buf.resize(FrameSz);
     Container->WriteFrame(buf);
