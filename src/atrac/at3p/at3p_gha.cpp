@@ -132,6 +132,10 @@ public:
         for (size_t ch = 0; ch < 2; ch++) {
            ChUnit.channels[ch].tones_info      = &ChUnit.channels[ch].tones_info_hist[0][0];
            ChUnit.channels[ch].tones_info_prev = &ChUnit.channels[ch].tones_info_hist[1][0];
+           for (size_t sb = 0; sb < ATRAC3P_SUBBANDS; sb++) {
+               ChUnit.channels[ch].tones_info[sb].num_wavs = 0;
+               ChUnit.channels[ch].tones_info_prev[sb].num_wavs = 0;
+           }
         }
 
         ChUnit.waves_info      = &ChUnit.wave_synth_hist[0];
