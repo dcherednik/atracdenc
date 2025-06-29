@@ -122,7 +122,7 @@ static void waves_synth(Atrac3pWaveSynthParams *synth_param,
 
     /* fade out with steep Hann window if requested */
     if (envelope->has_stop_point) {
-        pos = (envelope->stop_pos + 1 << 2) - reg_offset;
+        pos = ((envelope->stop_pos + 1) << 2) - reg_offset;
         if (pos > 0 && pos <= 128) {
             out[pos - 4] *= hann_window[96];
             out[pos - 3] *= hann_window[64];
