@@ -59,9 +59,9 @@ class TAtrac1Encoder : public IProcessor, public TAtrac1MDCT {
     TCompressedOutputPtr Aea;
     const NAtrac1::TAtrac1EncodeSettings Settings;
 
-    float PcmBufLow[2][256 + 16];
-    float PcmBufMid[2][256 + 16];
-    float PcmBufHi[2][512 + 16];
+    std::array<std::array<float, 256 + 16>, 2> PcmBufLow;
+    std::array<std::array<float, 256 + 16>, 2> PcmBufMid;
+    std::array<std::array<float, 512 + 16>, 2> PcmBufHi;
 
     Atrac1AnalysisFilterBank<float> AnalysisFilterBank[2];
 

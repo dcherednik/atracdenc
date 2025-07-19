@@ -87,7 +87,7 @@ class TAtrac3Encoder : public IProcessor, public TAtrac3MDCT {
     const std::vector<float> LoudnessCurve;
     TDelayBuffer<float, 8, 256> PcmBuffer; //8 = 2 channels * 4 bands
 
-    float PrevPeak[2][4]; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
+    float PrevPeak[2][4] = {{0.0}}; //2 channel, 4 band - peak level (after windowing), used to check overflow during scalling
 
     Atrac3AnalysisFilterBank<float> AnalysisFilterBank[2];
 

@@ -61,10 +61,10 @@ private:
 
         float* NextBuf = Buf1;
         float* CurBuf = nullptr;
-        float Buf1[TAt3PEnc::NumSamples];
-        float Buf2[TAt3PEnc::NumSamples];
-        float PrevBuf[TAt3PEnc::NumSamples];
-        TAt3pMDCT::THistBuf MdctBuf;
+        float Buf1[TAt3PEnc::NumSamples] = {0};
+        float Buf2[TAt3PEnc::NumSamples] = {0};
+        float PrevBuf[TAt3PEnc::NumSamples] = {0};
+        TAt3pMDCT::THistBuf MdctBuf = {{{0}}};
         std::vector<float> Specs;
     };
 
