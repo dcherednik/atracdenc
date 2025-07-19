@@ -36,6 +36,9 @@ using std::vector;
 TAtrac1Encoder::TAtrac1Encoder(TCompressedOutputPtr&& aea, TAtrac1EncodeSettings&& settings)
     : Aea(std::move(aea))
     , Settings(std::move(settings))
+    , PcmBufLow({{{0}}})
+    , PcmBufMid({{{0}}})
+    , PcmBufHi({{{0}}})
     , LoudnessCurve(CreateLoudnessCurve(TAtrac1Data::NumSamples))
 {
 }

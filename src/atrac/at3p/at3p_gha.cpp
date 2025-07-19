@@ -96,6 +96,8 @@ class TGhaProcessor : public IGhaProcessor {
         TChannelGhaCbCtx(TChannelData* data, size_t sb)
             : Data(data)
             , Sb(sb)
+            , AdjustStatus(EAdjustStatus::Ok)
+            , FrameSz(0)
         {}
         TChannelData* Data;
         size_t Sb;
@@ -105,7 +107,7 @@ class TGhaProcessor : public IGhaProcessor {
             Ok,
             Repeat
         } AdjustStatus;
-        size_t FrameSz = 0;
+        size_t FrameSz;
     };
 
 public:
@@ -128,6 +130,8 @@ public:
 
             StaticInited = true;
         }
+
+        memset(&ChUnit, 0, sizeof(ChUnit));
 
         for (size_t ch = 0; ch < 2; ch++) {
            ChUnit.channels[ch].tones_info      = &ChUnit.channels[ch].tones_info_hist[0][0];

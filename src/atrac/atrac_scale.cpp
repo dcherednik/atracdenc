@@ -35,7 +35,7 @@ using std::endl;
 
 using std::abs;
 
-static const float MAX_SCALE = 1.0;
+static constexpr float MAX_SCALE = 1.0;
 
 float QuantMantisas(const float* in, const uint32_t first, const uint32_t last, const float mul, bool ea, int* const mantisas)
 {
