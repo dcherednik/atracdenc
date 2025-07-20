@@ -63,7 +63,7 @@ class TAtrac1Encoder : public IProcessor, public TAtrac1MDCT {
     std::array<std::array<float, 256 + 16>, 2> PcmBufMid;
     std::array<std::array<float, 512 + 16>, 2> PcmBufHi;
 
-    Atrac1AnalysisFilterBank<float> AnalysisFilterBank[2];
+    Atrac1AnalysisFilterBank AnalysisFilterBank[2];
 
     const std::vector<float> LoudnessCurve;
     std::vector<std::unique_ptr<NAtrac1::IAtrac1BitAlloc>> BitAllocs;
@@ -117,7 +117,7 @@ class TAtrac1Decoder : public IProcessor, public TAtrac1MDCT {
     int32_t PcmValueMax = 1;
     int32_t PcmValueMin = -1;
 
-    Atrac1SynthesisFilterBank<float> SynthesisFilterBank[2];
+    Atrac1SynthesisFilterBank SynthesisFilterBank[2];
 public:
     TAtrac1Decoder(TCompressedInputPtr&& aea);
     TPCMEngine::TProcessLambda GetLambda() override;
