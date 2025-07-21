@@ -17,8 +17,8 @@
  */
 
 #include "atrac_scale.h"
-#include "atrac1.h"
-#include "atrac3.h"
+#include "at1/atrac1.h"
+#include "at3/atrac3.h"
 #include "atrac/at3p/at3p_tables.h"
 #include "util.h"
 #include <cmath>

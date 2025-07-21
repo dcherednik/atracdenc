@@ -21,7 +21,6 @@
 #include <array>
 #include <map>
 #include <math.h>
-#include "config.h"
 
 namespace NBitStream {
     class TBitStream;

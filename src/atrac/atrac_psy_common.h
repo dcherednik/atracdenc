@@ -18,6 +18,7 @@
 
 #pragma once
 #include "atrac_scale.h"
+#include <stddef.h>
 
 namespace NAtracDEnc {
 

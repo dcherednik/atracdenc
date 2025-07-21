@@ -17,13 +17,13 @@
  */
 
 #include "atrac1_bitalloc.h"
-#include "atrac_psy_common.h"
-#include "atrac_scale.h"
 #include "atrac1.h"
+#include <atrac/atrac_psy_common.h>
+#include <atrac/atrac_scale.h>
 #include <math.h>
 #include <cassert>
-#include "bitstream/bitstream.h"
-#include "../env.h"
+#include <bitstream/bitstream.h>
+#include <env.h>
 
 namespace NAtracDEnc {
 namespace NAtrac1 {
