@@ -21,15 +21,14 @@
 
 #include "../config.h"
 
-template<class TPCM, int nIn>
+template<size_t nIn>
 class TQmf {
     static const float TapHalf[24];
     float QmfWindow[48];
-    TPCM PcmBuffer[nIn + 46];
+    float PcmBuffer[nIn + 46];
     float PcmBufferMerge[nIn + 46];
-    float DelayBuff[46];
 public:
-    TQmf() {
+    TQmf() noexcept {
         const int sz = sizeof(QmfWindow)/sizeof(QmfWindow[0]);
 
         for (size_t i = 0 ; i < sz/2; i++) {
@@ -41,13 +40,12 @@ public:
         }
     }
 
-    void Analysis(TPCM* in, float* lower, float* upper) {
+    void Analysis(const float* in, float* lower, float* upper) noexcept {
         float temp;
-        for (size_t i = 0; i < 46; i++)
-            PcmBuffer[i] = PcmBuffer[nIn + i];
 
-        for (size_t i = 0; i < nIn; i++)
-            PcmBuffer[46+i] = in[i];
+        memcpy(&PcmBuffer[0], &PcmBuffer[nIn], 46 * sizeof(float));
+
+        memcpy(&PcmBuffer[46], in, nIn * sizeof(float));
 
         for (size_t j = 0; j < nIn; j+=2) {
             lower[j/2] = upper[j/2] = 0.0;
@@ -61,10 +59,9 @@ public:
         }
     }
 
-    void Synthesis(TPCM* out, float* lower, float* upper) {
-        memcpy(&PcmBufferMerge[0], &DelayBuff[0], 46*sizeof(float));
+    void Synthesis(float* out, const float* lower, const float* upper) noexcept {
         float* newPart = &PcmBufferMerge[46];
-        for (int i = 0; i < nIn; i+=4) {
+        for (size_t i = 0; i < nIn; i+=4) {
             newPart[i+0] = lower[i/2] + upper[i/2];
             newPart[i+1] = lower[i/2] - upper[i/2];
             newPart[i+2] = lower[i/2 + 1] + upper[i/2 + 1];
@@ -84,12 +81,12 @@ public:
             winP += 2;
             out += 2;
         }
-        memcpy(&DelayBuff[0], &PcmBufferMerge[nIn], 46*sizeof(float));
+        memcpy(&PcmBufferMerge[0], &PcmBufferMerge[nIn], 46 * sizeof(float));
     }
 };
 
-template<class TPCM, int nIn>
-const float TQmf<TPCM, nIn>::TapHalf[24] = {
+template<size_t nIn>
+const float TQmf<nIn>::TapHalf[24] = {
     -0.00001461907,  -0.00009205479, -0.000056157569,  0.00030117269,
     0.0002422519,    -0.00085293897, -0.0005205574,    0.0020340169,
     0.00078333891,   -0.0042153862,  -0.00075614988,   0.0078402944,

@@ -22,20 +22,19 @@
 
 namespace NAtracDEnc {
 
-template<class TIn>
 class Atrac3AnalysisFilterBank {
     const static int nInSamples = 1024;
-    TQmf<TIn, nInSamples> Qmf1;
-    TQmf<TIn, nInSamples / 2> Qmf2;
-    TQmf<TIn, nInSamples / 2> Qmf3;
+    TQmf<nInSamples> Qmf1;
+    TQmf<nInSamples / 2> Qmf2;
+    TQmf<nInSamples / 2> Qmf3;
     std::vector<float> Buf1;
     std::vector<float> Buf2;
 public:
-    Atrac3AnalysisFilterBank() {
+    Atrac3AnalysisFilterBank() noexcept {
         Buf1.resize(nInSamples);
         Buf2.resize(nInSamples);
     }
-    void Analysis(TIn* pcm, float* subs[4]) {
+    void Analysis(const float* pcm, float* subs[4]) noexcept {
         Qmf1.Analysis(pcm, Buf1.data(), Buf2.data());
         Qmf2.Analysis(Buf1.data(), subs[0], subs[1]);
         Qmf3.Analysis(Buf2.data(), subs[3], subs[2]);
