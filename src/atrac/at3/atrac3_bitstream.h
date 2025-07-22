@@ -18,14 +18,14 @@
 
 #pragma once
 #include "atrac3.h"
-#include "atrac1.h"
-#include "../aea.h"
-#include "../oma.h"
-#include "../atrac/atrac1.h"
-#include "atrac_scale.h"
+#include <compressed_io.h>
+#include <atrac/atrac_scale.h>
 #include <vector>
 #include <utility>
-#include "../env.h"
+
+namespace NBitStream {
+    class TBitStream;
+}
 
 namespace NAtracDEnc {
 namespace NAtrac3 {

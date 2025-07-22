@@ -17,7 +17,9 @@
  */
 
 #include "atrac1_dequantiser.h"
+#include "lib/bitstream/bitstream.h"
 #include <string.h>
+
 namespace NAtracDEnc {
 namespace NAtrac1 {
 

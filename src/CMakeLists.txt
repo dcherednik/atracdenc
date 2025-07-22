@@ -81,17 +81,17 @@ set(SOURCE_ATRACDENC_IMPL
     env.cpp
     transient_detector.cpp
     atrac1denc.cpp
-    atrac/atrac1.cpp
-    atrac/atrac1_dequantiser.cpp
+    atrac/at1/atrac1.cpp
+    atrac/at1/atrac1_bitalloc.cpp
+    atrac/at1/atrac1_dequantiser.cpp
     atrac/atrac_scale.cpp
     atrac/atrac_psy_common.cpp
-    atrac/atrac1_bitalloc.cpp
     oma.cpp
     rm.cpp
     at3.cpp
     atrac3denc.cpp
-    atrac/atrac3.cpp
-    atrac/atrac3_bitstream.cpp
+    atrac/at3/atrac3.cpp
+    atrac/at3/atrac3_bitstream.cpp
     atrac/atrac3plus_pqf/atrac3plus_pqf.c
     atrac/at3p/ff/atrac3plusdsp.c
     atrac/at3p/at3p.cpp

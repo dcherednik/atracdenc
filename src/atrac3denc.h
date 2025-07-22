@@ -17,16 +17,14 @@
  */
 
 #pragma once
-#include "config.h"
 #include "pcmengin.h"
 #include "aea.h"
-#include "atrac/atrac3.h"
-#include "atrac/atrac3_qmf.h"
-#include "transient_detector.h"
+#include "atrac/at3/atrac3.h"
+#include "atrac/at3/atrac3_qmf.h"
 #include "delay_buffer.h"
 #include "util.h"
 
-#include "atrac/atrac3_bitstream.h"
+#include "atrac/at3/atrac3_bitstream.h"
 #include "atrac/atrac_scale.h"
 #include "lib/mdct/mdct.h"
 #include "gain_processor.h"

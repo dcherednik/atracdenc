@@ -18,8 +18,6 @@
 
 #pragma once
 #include "atrac1.h"
-#include "atrac_scale.h"
-
 
 namespace NAtracDEnc {
 namespace NAtrac1 {

@@ -29,6 +29,7 @@
 #include "aea.h"
 #include "rm.h"
 #include "at3.h"
+#include "oma.h"
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"

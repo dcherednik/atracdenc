@@ -20,8 +20,8 @@
 #include "pcmengin.h"
 #include "aea.h"
 #include "transient_detector.h"
-#include "atrac/atrac1.h"
-#include "atrac/atrac1_qmf.h"
+#include "atrac/at1/atrac1.h"
+#include "atrac/at1/atrac1_qmf.h"
 #include "atrac/atrac_scale.h"
 #include "lib/mdct/mdct.h"
 

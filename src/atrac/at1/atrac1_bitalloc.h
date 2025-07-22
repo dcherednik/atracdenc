@@ -17,9 +17,9 @@
  */
 
 #pragma once
-#include "atrac_scale.h"
-#include "atrac/atrac1.h"
-#include "../aea.h"
+#include "atrac1.h"
+#include <atrac/atrac_scale.h>
+#include <compressed_io.h>
 #include <vector>
 #include <map>
 #include <cstdint>

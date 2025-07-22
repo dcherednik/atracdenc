@@ -22,9 +22,6 @@
 #include <map>
 #include <cstdint>
 
-#include "lib/bitstream/bitstream.h"
-#include "../config.h"
-
 namespace NAtracDEnc {
 
 float QuantMantisas(const float* in, uint32_t first, uint32_t last, float mul, bool ea, int* mantisas);

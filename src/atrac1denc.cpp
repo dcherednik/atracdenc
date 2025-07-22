@@ -20,10 +20,10 @@
 
 #include "atrac1denc.h"
 #include "bitstream/bitstream.h"
-#include "atrac/atrac1.h"
-#include "atrac/atrac1_dequantiser.h"
-#include "atrac/atrac1_qmf.h"
-#include "atrac/atrac1_bitalloc.h"
+#include "atrac/at1/atrac1.h"
+#include "atrac/at1/atrac1_dequantiser.h"
+#include "atrac/at1/atrac1_qmf.h"
+#include "atrac/at1/atrac1_bitalloc.h"
 #include "atrac/atrac_psy_common.h"
 #include "util.h"
 
