@@ -17,6 +17,7 @@
  */
 
 #pragma once
+#include <config.h>
 #include <cstdint>
 #include <array>
 #include <map>
