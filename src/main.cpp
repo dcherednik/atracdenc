@@ -333,7 +333,6 @@ int main_(int argc, char* const* argv)
     string outFile;
     uint32_t mode = 0;
     uint32_t bfuIdxConst = 0; //0 - auto, no const
-    bool fastBfuNumSearch = false;
     bool noStdOut = false;
     bool noGainControl = false;
     bool noTonalComponents = false;
@@ -386,7 +385,7 @@ int main_(int argc, char* const* argv)
                 bfuIdxConst = checkedStoi(optarg, 1, 32, 0);
                 break;
             case O_BFUIDXFAST:
-                fastBfuNumSearch = true;
+                cout << "--bfuidxfast option is deprecated and will be removed." << endl;
                 break;
             case O_NOTRANSIENT:
                 windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_NOTRANSIENT;
@@ -448,7 +447,7 @@ int main_(int argc, char* const* argv)
                         "Values [1;8] is allowed");
                 }
                 using NAtrac1::TAtrac1Data;
-                NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, fastBfuNumSearch, windowMode, winMask);
+                NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, windowMode, winMask);
                 PrepareAtrac1Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac1Data::NumSamples;

@@ -19,6 +19,7 @@
 #pragma once
 #include "atrac1.h"
 #include <atrac/atrac_scale.h>
+#include <lib/bs_encode/encode.h>
 #include <compressed_io.h>
 #include <vector>
 #include <map>
@@ -41,34 +42,18 @@ class TBitsBooster {
     uint32_t MaxBitsPerIteration;
     uint32_t MinKey;
 public:
-    TBitsBooster();
-    uint32_t ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target);
+    TBitsBooster() noexcept;
+    uint32_t ApplyBoost(std::vector<uint32_t>* bitsPerEachBlock, uint32_t cur, uint32_t target) const noexcept;
 };
 
-class TAtrac1BitStreamWriter {
-    ICompressedOutput* Container;
+class TAt1BitAlloc : public TBitsBooster, public IAtrac1BitAlloc {
 public:
-    explicit TAtrac1BitStreamWriter(ICompressedOutput* container);
-
-    void WriteBitStream(const std::vector<uint32_t>& bitsPerEachBlock, const std::vector<TScaledBlock>& scaledBlocks,
-                        uint32_t bfuAmountIdx, const TAtrac1Data::TBlockSizeMod& blockSize);
-};
-
-class TAtrac1SimpleBitAlloc : public TAtrac1BitStreamWriter, public TBitsBooster, public virtual IAtrac1BitAlloc {
-    std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks, const uint32_t bfuNum,
-                                             const float spread, const float shift,
-                                             const TAtrac1Data::TBlockSizeMod& blockSize,
-                                             const float loudness);
-    const uint32_t BfuIdxConst;
-    const bool FastBfuNumSearch;
-    static std::vector<float> ATHLong;
-
-    uint32_t GetMaxUsedBfuId(const std::vector<uint32_t>& bitsPerEachBlock);
-    uint32_t CheckBfuUsage(bool* changed, uint32_t curBfuId, const std::vector<uint32_t>& bitsPerEachBlock);
-public:
-    TAtrac1SimpleBitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst, bool fastBfuNumSearch);
-    ~TAtrac1SimpleBitAlloc() {};
+    TAt1BitAlloc(ICompressedOutput* container, uint32_t bfuIdxConst) noexcept;
     uint32_t Write(const std::vector<TScaledBlock>& scaledBlocks, const TAtrac1Data::TBlockSizeMod& blockSize, float loudness) override;
+private:
+    TBitStreamEncoder Encoder;
+    ICompressedOutput* Container;
+    const uint32_t BfuIdxConst;
 };
 
 } //namespace NAtrac1

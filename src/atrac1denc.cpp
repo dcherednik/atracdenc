@@ -172,7 +172,7 @@ TPCMEngine::TProcessLambda TAtrac1Encoder::GetLambda() {
 
     BitAllocs.reserve(srcChannels);
     for (uint32_t ch = 0; ch < srcChannels; ch++) {
-        BitAllocs.emplace_back(new TAtrac1SimpleBitAlloc(Aea.get(), Settings.GetBfuIdxConst(), Settings.GetFastBfuNumSearch()));
+        BitAllocs.emplace_back(new TAt1BitAlloc(Aea.get(), Settings.GetBfuIdxConst()));
     }
 
     struct TChannelData {

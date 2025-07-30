@@ -33,7 +33,8 @@ public:
     void Start(size_t targetBits, float minLambda, float maxLambda) noexcept;
     float Continue() noexcept;
     bool Check(size_t gitBits) const noexcept;
-    void Submit(size_t gotBits) noexcept;
+    // returns true if binsearch for this allocation finished
+    bool Submit(size_t gotBits) noexcept;
 
     // Returns consumption of all previous encoded parts (except part from this method called)
     uint32_t GetCurGlobalConsumption() const noexcept;
