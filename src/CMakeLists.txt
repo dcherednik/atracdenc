@@ -101,6 +101,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/at3p/at3p_tables.cpp
     lib/mdct/mdct.cpp
     lib/bs_encode/encode.cpp
+    qmf/qmf.cpp
 )
 
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})

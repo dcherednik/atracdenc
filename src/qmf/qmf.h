@@ -21,19 +21,23 @@
 
 #include "../config.h"
 
-template<size_t nIn>
-class TQmf {
+class TQmfCommon {
+protected:
+    TQmfCommon() noexcept;
+    static float QmfWindow[48];
+public:
+    // Compute the frequency response.
+    static bool CalcFreqResp(size_t sz, float* buf) noexcept;
+};
+
+template <size_t nIn>
+class TQmf : public TQmfCommon {
     static const float TapHalf[24];
-    float QmfWindow[48];
+
     float PcmBuffer[nIn + 46];
     float PcmBufferMerge[nIn + 46];
 public:
     TQmf() noexcept {
-        const int sz = sizeof(QmfWindow)/sizeof(QmfWindow[0]);
-
-        for (size_t i = 0 ; i < sz/2; i++) {
-            QmfWindow[i] = QmfWindow[ sz - 1 - i] = TapHalf[i] * 2.0;
-        }
         for (size_t i = 0; i < sizeof(PcmBuffer)/sizeof(PcmBuffer[0]); i++) {
             PcmBuffer[i] = 0;
             PcmBufferMerge[i] = 0;
@@ -83,15 +87,5 @@ public:
         }
         memcpy(&PcmBufferMerge[0], &PcmBufferMerge[nIn], 46 * sizeof(float));
     }
-};
-
-template<size_t nIn>
-const float TQmf<nIn>::TapHalf[24] = {
-    -0.00001461907,  -0.00009205479, -0.000056157569,  0.00030117269,
-    0.0002422519,    -0.00085293897, -0.0005205574,    0.0020340169,
-    0.00078333891,   -0.0042153862,  -0.00075614988,   0.0078402944,
-    -0.000061169922, -0.01344162,    0.0024626821,     0.021736089,
-    -0.007801671,    -0.034090221,   0.01880949,       0.054326009,
-    -0.043596379,    -0.099384367,   0.13207909,       0.46424159
 };
 
