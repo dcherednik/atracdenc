@@ -1,3 +1,9 @@
+atracdenc (0.2.2) UNRELEASED; urgency=low
+
+  * Disable FMA for libgha.
+
+ -- Daniil Cherednik <pkgsup@mastervirt.ru>  Mon, 23 Aug 2025 21:51:24 +0200
+
 atracdenc (0.2.1) UNRELEASED; urgency=low
 
   * Fix multiple uninitialized memory usage.
