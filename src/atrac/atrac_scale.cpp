@@ -155,11 +155,11 @@ TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
     const float scaleFactor = scaleIter->first;
     const uint8_t scaleFactorIndex = scaleIter->second;
     TScaledBlock res(scaleFactorIndex);
-    float maxEnergy = 0.0;
+    res.Energy = 0.0;
     for (uint16_t i = 0; i < len; ++i) {
         float scaledValue = in[i] / scaleFactor;
         float energy = in[i] * in[i];
-        maxEnergy = std::max(maxEnergy, energy);
+        res.Energy += energy;
         if (abs(scaledValue) >= 1.0) {
             if (abs(scaledValue) > 1.0) {
                 cerr << "clipping, scaled value: "<< scaledValue << endl;
@@ -168,7 +168,6 @@ TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
         }
         res.Values.push_back(scaledValue);
     }
-    res.MaxEnergy = maxEnergy;
     return res;
 }
 

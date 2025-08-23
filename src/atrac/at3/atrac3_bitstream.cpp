@@ -17,6 +17,7 @@
  */
 
 #include "atrac3_bitstream.h"
+#include "qmf/qmf.h"
 #include <atrac/atrac_psy_common.h>
 #include <bitstream/bitstream.h>
 #include <util.h>
@@ -65,17 +66,18 @@ TAtrac3BitStreamWriter::TAtrac3BitStreamWriter(ICompressedOutput* container, con
     if (ATH.size()) {
         return;
     }
+
     ATH.reserve(TAtrac3Data::MaxBfus);
     auto ATHSpec = CalcATH(1024, 44100);
     for (size_t bandNum = 0; bandNum < TAtrac3Data::NumQMF; ++bandNum) {
         for (size_t blockNum = TAtrac3Data::BlocksPerBand[bandNum]; blockNum < TAtrac3Data::BlocksPerBand[bandNum + 1]; ++blockNum) {
-           const size_t specNumStart =  TAtrac3Data::SpecsStartLong[blockNum];
-           float x = 999;
-           for (size_t line = specNumStart; line < specNumStart + TAtrac3Data::SpecsPerBlock[blockNum]; line++) {
+            const size_t specNumStart =  TAtrac3Data::SpecsStartLong[blockNum];
+            float x = 999;
+            for (size_t line = specNumStart; line < specNumStart + TAtrac3Data::SpecsPerBlock[blockNum]; line++) {
                 x = fmin(x, ATHSpec[line]);
-           }
-           x = pow(10, 0.1 * x);
-           ATH.push_back(x / 100); //reduce efficiency of ATH, but prevents aliasing problem, TODO: fix it?
+            }
+            x = pow(10, 0.1 * x);
+            ATH.push_back(x);
         }
     }
 }
@@ -265,7 +267,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
             } else {
                 precisionPerEachBlocks = tmpAlloc;
                 mode = consumption.first;
-                cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);;
+                cont = !BfuIdxConst && CheckBfus(&numBfu, precisionPerEachBlocks);
                 break;
             }
         }
@@ -506,8 +508,8 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         float ath = ATH[i] * loudness;
-        //std::cerr << "block: " << i << " Loudness: " << loudness << " " << 10 * log10(scaledBlocks[i].MaxEnergy / ath) << std::endl;
-        if (scaledBlocks[i].MaxEnergy < ath) {
+
+        if (scaledBlocks[i].Energy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
             const uint32_t fix = FixedBitAllocTable[i];

@@ -131,7 +131,7 @@ static vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scal
         const float fix = shortBlock ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
         float ath = At1ATHLong[i] * loudness;
         //std::cerr << "block: " << i << " Loudness: " << loudness << " " << 10 * log10(scaledBlocks[i].MaxEnergy / ath) << std::endl;
-        if (!shortBlock && scaledBlocks[i].MaxEnergy < ath) {
+        if (!shortBlock && scaledBlocks[i].Energy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
             int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2f) + (1.0f - spread) * fix - shift;

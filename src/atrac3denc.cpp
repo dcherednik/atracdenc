@@ -370,7 +370,7 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             SingleChannelElements[1].SubbandInfo.Info.resize(1);
         }
 
-        bitStreamWriter->WriteSoundUnit(SingleChannelElements, Loudness);
+        bitStreamWriter->WriteSoundUnit(SingleChannelElements, Loudness / LoudFactor);
         return TPCMEngine::EProcessResult::PROCESSED;
     };
 }
