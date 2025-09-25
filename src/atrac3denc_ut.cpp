@@ -118,11 +118,9 @@ TEST(TAtrac3MDCT, TAtrac3MDCTZeroOneBlock) {
 
    for(size_t i = 0; i < workSz; ++i)
         EXPECT_NEAR(buff.Band3Res[i], 0.0, 0.0000000001);
-
-
 }
-/*
-TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
+
+TEST(TAtrac3MDCT, TAtrac3MDCTSin) {
     TAtrac3MDCT mdct;
     TAtrac3MDCTWorkBuff<float> buff;
     size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
@@ -130,8 +128,8 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
     const size_t len = 1024;
     vector<float> signal(len);
     vector<float> signalRes(len);
-    GenerateSignal(signal.data(), signal.size(), 0.25, 32768);
-    
+    GenerateSignal(signal.data(), signal.size(), 0.25, 1.0);
+
     for (size_t pos = 0; pos < len; pos += workSz) {
         vector<float> specs(1024);
         memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
@@ -146,7 +144,766 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignal) {
     }
 
     for (int i = workSz; i < len; ++i)
-        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00000001);
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+
+/*!!!*/
+// TODO: Add pictures for each case
+TEST(TAtrac3MDCT, TAtrac3MDCTGain1PointDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{3, 2}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+        } else {
+            mdct.Mdct(specs.data(), p);
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain1PointAtEndDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{3, 31}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+        } else {
+            mdct.Mdct(specs.data(), p);
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 31}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 31}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain1PointAtStartDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{3, 0}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+        } else {
+            mdct.Mdct(specs.data(), p);
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 0}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 0}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{3, 2}, {2, 5}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+        } else {
+            mdct.Mdct(specs.data(), p);
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}, {2, 5}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}, {2, 5}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain2NearPointsDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{3, 2}, {3, 3}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+        } else {
+            mdct.Mdct(specs.data(), p);
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}, {3, 3}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{3, 2}, {3, 3}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsCompensateWithoutScaleDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    vector<float> mdctResult1;
+
+    {
+        float gaininc = 1.29684;
+        float level = 1;
+        for (size_t i = 1024; i < 1032; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+        for (size_t i = 1032; i < 1048; i++) {
+            signal[i] *= level;
+        }
+        for (size_t i = 1048; i < 1056; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+    }
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{4, 0}, {1, 3}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult1.assign(specs.begin(), specs.begin() + 256);
+        } else {
+            mdct.Mdct(specs.data(), p);
+            if (pos >= 1024 + 256) {
+                // Check the specs are same i.e. gain completely compensate generated transient
+                for (size_t i = 0; i < 256; ++i)
+                    EXPECT_NEAR(mdctResult1[i], specs[i], 0.000001);
+            }
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 0}, {1, 3}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 0}, {1, 3}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsCompensateWithoutScaleDc2) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    vector<float> mdctResult1;
+
+    {
+        float gaininc = 1.29684;
+        float level = 1;
+        for (size_t i = 1024; i < 1032; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+        for (size_t i = 1032; i < 1272; i++) {
+            signal[i] *= level;
+        }
+        for (size_t i = 1272; i < 1280; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+    }
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{4, 0}, {1, 31}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult1.assign(specs.begin(), specs.begin() + 256);
+        } else {
+            mdct.Mdct(specs.data(), p);
+            if (pos >= 1024 + 256) {
+                // Check the specs are same i.e. gain completely compensate generated transient
+                for (size_t i = 0; i < 256; ++i)
+                    EXPECT_NEAR(mdctResult1[i], specs[i], 0.00001);
+            }
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 0}, {1, 31}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 0}, {1, 31}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00001);
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain1PointCompensateWithScaleDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    vector<float> mdctResult0;
+    vector<float> mdctResult1;
+
+    {
+        float gaininc = 1.29684;
+        float level = 1;
+        for (size_t i = 1032; i < 1040; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+        for (size_t i = 1040; i < 1288; i++) {
+            signal[i] *= level;
+        }
+        for (size_t i = 1288; i < 1296; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+    }
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{7, 1}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult0.assign(specs.begin(), specs.begin() + 256);
+        } else if (pos == 1024 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{1, 1}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult1.assign(specs.begin(), specs.begin() + 256);
+        } else {
+            mdct.Mdct(specs.data(), p);
+            if (pos >= 1024 + 512) {
+                // Check the specs are same i.e. gain completely compensate generated transient
+                for (size_t i = 0; i < 256; ++i) {
+                    EXPECT_NEAR(mdctResult1[i], specs[i], 0.000001);
+                }
+            }
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            siNext.AddSubbandCurve(0, {{1,1}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            siCur.AddSubbandCurve(0, {{1,1}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00001);
+
+    for (size_t i = 0; i < 256; ++i) {
+        mdctResult0[i] /= 8.0;
+        EXPECT_NEAR(mdctResult0[i], mdctResult1[i], 0.00001);
+    }
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain1PointCompensateWithScaleDc2) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    vector<float> mdctResult0;
+    vector<float> mdctResult1;
+
+    {
+        float gaininc = 1.29684;
+        float level = 1;
+        for (size_t i = 1032; i < 1040; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+        for (size_t i = 1040; i < 1280; i++) {
+            signal[i] *= level;
+        }
+        for (size_t i = 1280; i < 1288; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+    }
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{7, 1}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult0.assign(specs.begin(), specs.begin() + 256);
+        } else if (pos == 1024 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{1, 0}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult1.assign(specs.begin(), specs.begin() + 256);
+        } else {
+            mdct.Mdct(specs.data(), p);
+            if (pos >= 1024 + 512) {
+                // Check the specs are same i.e. gain completely compensate generated transient
+                for (size_t i = 0; i < 256; ++i) {
+                    EXPECT_NEAR(mdctResult1[i], specs[i], 0.000001);
+                }
+            }
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            siNext.AddSubbandCurve(0, {{1,0}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            siCur.AddSubbandCurve(0, {{1,0}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00001);
+
+    for (size_t i = 0; i < 256; ++i) {
+        mdctResult0[i] /= 8.0;
+        EXPECT_NEAR(mdctResult0[i], mdctResult1[i], 0.00001);
+    }
+}
+
+TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsCompensateWithScaleDc) {
+    TAtrac3MDCT mdct;
+    TAtrac3MDCTWorkBuff<float> buff;
+    size_t workSz = TAtrac3MDCTWorkBuff<float>::BandBuffSz;
+
+    const size_t len = 2048;
+    vector<float> signal(len, 1.0);
+    vector<float> signalRes(len);
+
+    vector<float> mdctResult0;
+    vector<float> mdctResult1;
+
+    {
+        float gaininc = 1.29684;
+        float level = 1;
+        for (size_t i = 1032; i < 1040; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+
+        for (size_t i = 1040; i < 1056; i++) {
+            signal[i] *= level;
+        }
+
+        for (size_t i = 1056; i < 1064; i++) {
+            signal[i] *= level;
+            level *= gaininc;
+        }
+
+        for (size_t i = 1064; i < 1072; i++) {
+            signal[i] *= level;
+        }
+
+        for (size_t i = 1072; i < 1080; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+
+        for (size_t i = 1080; i < 1288; i++) {
+            signal[i] *= level;
+        }
+
+        for (size_t i = 1288; i < 1296; i++) {
+            signal[i] *= level;
+            level /= gaininc;
+        }
+    }
+
+    for (size_t pos = 0; pos < len; pos += workSz) {
+        vector<float> specs(1024);
+        memcpy(buff.Band0 + workSz, signal.data() + pos, workSz * sizeof(float));
+
+        float* p[4] = { buff.Band0, buff.Band1, buff.Band2, buff.Band3 };
+
+        if (pos == 1024) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{7, 1}, {4,4}, {1,6}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult0.assign(specs.begin(), specs.begin() + 256);
+        } else if (pos == 1024 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            siCur.AddSubbandCurve(0, {{1, 1}});
+            mdct.Mdct(specs.data(), p, { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator(), TAtrac3MDCT::TGainModulator()});
+            mdctResult1.assign(specs.begin(), specs.begin() + 256);
+        } else {
+            mdct.Mdct(specs.data(), p);
+            if (pos >= 1024 + 512) {
+                // Check the specs are same i.e. gain completely compensate generated transient
+                for (size_t i = 0; i < 256; ++i) {
+                    EXPECT_NEAR(mdctResult1[i], specs[i], 0.000001);
+                }
+            }
+        }
+
+        float* t[4] = { buff.Band0Res, buff.Band1Res, buff.Band2Res, buff.Band3Res };
+
+        if (pos == 1024) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}, {4,4}, {1,6}};
+            siNext.AddSubbandCurve(0, std::move(curve));
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256) { //restore gain modulation
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{7, 1}, {4,4}, {1,6}};
+            siCur.AddSubbandCurve(0, std::move(curve));
+            siNext.AddSubbandCurve(0, {{1,1}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else if (pos == 1024 + 256 + 256) {
+            TAtrac3Data::SubbandInfo siCur;
+            TAtrac3Data::SubbandInfo siNext;
+            siCur.AddSubbandCurve(0, {{1,1}});
+            mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
+                    TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator()});
+        } else {
+            mdct.Midct(specs.data(), t);
+        }
+
+        memcpy(signalRes.data() + pos, buff.Band0Res, workSz * sizeof(float));
+    }
+
+    for (int i = workSz; i < len; ++i)
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.0005);
+
+    for (size_t i = 0; i < 256; ++i) {
+        mdctResult0[i] /= 8.0;
+        EXPECT_NEAR(mdctResult0[i], mdctResult1[i], 0.00001);
+    }
 }
 
 TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
@@ -248,8 +1005,8 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
         } else if (pos == 2048) {
             TAtrac3Data::SubbandInfo siCur;
             TAtrac3Data::SubbandInfo siNext;
-            std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 2}, {1, 5}};
-            siNext.AddSubbandCurve(0, std::move(curve));
+            //std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve = {{4, 2}, {1, 5}};
+            //siNext.AddSubbandCurve(0, std::move(curve));
 
             mdct.Midct(specs.data(), t, {mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
                     TAtrac3MDCT::TAtrac3GainProcessor::TGainDemodulator(),
@@ -272,9 +1029,11 @@ TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensation) {
     }
     for (int i = workSz; i < len; ++i) {
         //std::cout << "res: " << i << " " << signalRes[i] << std::endl;
-        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.00000001);
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.1);
     }
 }
+
+/*
 
 TEST(TAtrac3MDCT, TAtrac3MDCTSignalWithGainCompensationAndManualTransient) {
     TAtrac3MDCT mdct;

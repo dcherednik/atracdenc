@@ -75,8 +75,8 @@ void TAtrac3MDCT::Midct(float specs[1024], float* bands[4], TGainDemodulatorArra
         vector<float> inv  = Midct512(curSpec);
         assert(inv.size()/2 == 256);
         for (int j = 0; j < 256; ++j) {
-            inv[j] *= /*2 */ TAtrac3Data::DecodeWindow[j];
-            inv[511 - j] *= /*2*/ TAtrac3Data::DecodeWindow[j];
+            inv[j] *= 2 * TAtrac3Data::DecodeWindow[j];
+            inv[511 - j] *= 2 * TAtrac3Data::DecodeWindow[j];
         }
         if (demodFn) {
             demodFn(dstBuff, inv.data(), prevBuff);

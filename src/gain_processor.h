@@ -69,17 +69,17 @@ public:
                                    - giNow[i].Level + T::GainInterpolationPosShift;
                 float gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
-                    //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << std::endl;
+                    //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << " | cur: " <<  cur[pos] << " prev: " << prev[pos] << std::endl;
                     out[pos] = (cur[pos] * scale + prev[pos]) * level;
                 }
                 for (; pos < lastPos + T::LocSz; pos++) {
-                    //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << " gainInc: " << gainInc << std::endl;
+                    //std::cout << "pos: " << pos << " scale: " << scale << " level: " << level << " gainInc: " << gainInc << " | cur: " <<  cur[pos] << " prev: " << prev[pos] << std::endl;
                     out[pos] = (cur[pos] * scale + prev[pos]) * level;
                     level *= gainInc;
                 }
             }
             for (; pos < T::MDCTSz/2; pos++) {
-                //std::cout << "pos: " << pos << " scale: " << scale << std::endl;
+                //std::cout << "pos: " << pos << " scale: " << scale << " | cur: " <<  cur[pos] << " prev: " << prev[pos] << std::endl;
                 out[pos] = cur[pos] * scale + prev[pos];
             }
         };
@@ -99,13 +99,14 @@ public:
                                    - giCur[i].Level + T::GainInterpolationPosShift;
                 float gainInc = T::GainInterpolation[incPos];
                 for (; pos < lastPos; pos++) {
-                    //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " bufNext: " << bufNext[pos] << std::endl;
+                    //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " new bufNext: "
+                    //          << (bufNext[pos] / level) << " new bufCur: " << (bufCur[pos] / scale) << std::endl;
                     bufCur[pos] /= scale;
                     bufNext[pos] /= level;
                 }
                 for (; pos < lastPos + T::LocSz; pos++) {
-
-                    //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " (gainInc) " << gainInc << " bufNext: " << bufNext[pos] << std::endl;
+                    //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " <<  bufCur[pos]  << " level: " << level << " (gainInc) " << gainInc << " new bufNext: "
+                    //          << (bufNext[pos] / level) << " new bufCur: " << (bufCur[pos] / scale) << std::endl;
                     bufCur[pos] /= scale;
                     bufNext[pos] /= level;
                     //std::cout << "mod pos: " << pos << " scale: " << scale << " level: " << level << " gainInc: " << gainInc << std::endl;
@@ -113,8 +114,7 @@ public:
                 }
             }
             for (; pos < T::MDCTSz/2; pos++) {
-
-                //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " << bufCur[pos] << " new value: " << bufCur[pos] / scale<<std::endl;
+                //std::cout << "mod pos: " << pos << " scale: " << scale << " bufCur: " << bufCur[pos] << " new bufCur: " << bufCur[pos] / scale << "next: " << bufNext[pos] <<std::endl;
                 bufCur[pos] /= scale;
             }
         };
