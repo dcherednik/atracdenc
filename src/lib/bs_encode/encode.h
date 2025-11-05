@@ -21,6 +21,7 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <cstdint>
 
 namespace NBitStream {
 class TBitStream;
