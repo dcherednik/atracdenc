@@ -24,6 +24,7 @@
 #include <functional>
 #include <cstdlib>
 #include <iostream>
+#include <cstdint>
 
 #include <assert.h>
 #include <string.h>
