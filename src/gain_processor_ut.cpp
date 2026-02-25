@@ -1383,6 +1383,208 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_DcSignal) {
 
 
 /*
+ * Exploratory test: QUIET->LOUD transient inside bufNext.
+ *
+ * Signal:
+ *   frame 0 = all quiet (A=1)  — primes overlap
+ *   frame 1 = quiet [0..63] + loud [64..255]  — QUIET->LOUD step at bufNext[64]
+ *   frame 2 = all loud (A=8)   — continuation
+ *
+ * Fill in si1.AddSubbandCurve / si2.AddSubbandCurve to explore how different
+ * gain choices affect HF leakage in each frame.  Key cases to try:
+ *
+ *   si1={{1,8}}  — covers only quiet prefix; loud [72..255] in REMAINDER (untouched)
+ *                  → contrast 0.125:8 = worse than unmodulated 1:8
+ *
+ *   si1={{1,31}} — covers all of bufNext (no remainder); loud [64..247] in
+ *                  constant region, divided by 8 → step 0.125:1 instead of 1:8
+ *
+ *   si1=empty, si2={{1,31}}
+ *                — next-frame approach: loud bufNext_2 covered by gain on frame 2
+ *
+ * Compare hf1_mod / hf2_mod vs hf1_nomod / hf2_nomod to quantify the effect.
+ */
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_QuietToLoudTransient) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float gainInc_atk = std::pow(2.0f,  3.0f / 8.0f);
+    const float A_loud  = 8.0f;
+    const float A_quiet = 1.0f;
+    const float f       = 0.125f;
+
+    auto sineAt = [f](size_t i) {
+        return std::sin((float(M_PI) / 2.0f) * float(i) * f);
+    };
+
+    // Build signal across 3 frames:
+    //   frame 0 = all quiet (primes overlap buffer at A_quiet level)
+    //   frame 1 = quiet [0..63] + loud [64..255] — QUIET->LOUD step at bufNext[64]
+    //   frame 2 = all loud (continuation)
+    vector<float> signal(kHalf * 3);
+
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_quiet * sineAt(i);
+
+    for (size_t i = kHalf; i < kHalf + 64; ++i)
+        signal[i] = A_quiet * sineAt(i);
+    {
+        float g = 1.0f;                                  // [8..15]: ramp gainInc_atk^k
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + 56 + k] *= g;
+    }
+
+    for (size_t i = kHalf + 64; i < kHalf * 2; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    // Returns {frame1_specs, frame2_specs}.
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        // Frame 0: prime overlap with quiet signal.
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        // Frame 1: QUIET->LOUD step at bufNext[64].
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si1;
+            si1.AddSubbandCurve(0, {{7, 7}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si1.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        // Frame 2: all loud continuation.
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si2;
+            /* si2.AddSubbandCurve(0, {...}); */
+            mdct.Mdct(specs2.data(), p2,
+                { mdct.GainProcessor.Modulate(si2.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs2.data(), p2);
+        }
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 30;
+
+    float hf1_nomod = 0.0f, hf1_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf1_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf1_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+
+    EXPECT_LT(hf1_mod * 10.0f, hf1_nomod);
+    EXPECT_GT(hf1_nomod, 0.0f);
+
+    EXPECT_LE(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_QuietToLoudTransient Frame 1\\n"
+        "QUIET->LOUD at bufNext[64]",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_QuietToLoudTransient Frame 2\\n"
+        "Loud continuation",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    // Round-trip: Mdct(Modulate) -> Midct(Demodulate) recovers original signal
+    // with one-frame delay.  Frame 2 has no compensating gain (loud bufCur and
+    // loud bufNext are already matched after frame 1 amplified the overlap).
+    //
+    //   frame 1 Midct: Demodulate(siCur=empty, siNext={{7,7}})
+    //     scale = GainLevel[7] = 0.125 pre-scales cur, undoing the x8 amplification
+    //     on frame 1's bufNext that Modulate applied.
+    //
+    //   frame 2 Midct: Demodulate(siCur={{7,7}}, siNext=empty)
+    //     scale = 1.0 (no frame-2 gain); giNow={{7,7}} de-amplifies the overlap
+    //     (prev[]) that was stored from frame 1's IMDCT second half.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{7, 7}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{7, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{7, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+}
+
+/*
  * Fifth frequency-domain test: DC signal shaped as in
  * TAtrac3MDCTGain1PointCompensateWithScaleDc2.
  *
