@@ -902,33 +902,30 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_TransientIn
  * Third frequency-domain test: attack AND release transient within one frame.
  *
  * Signal: quiet(A=1) for bufCur and bufNext[0..31], a LOUD burst(A=8) for
- * bufNext[32..95], then quiet(A=1) for bufNext[96..255].  The attack and
+ * bufNext[40..95], then quiet(A=1) for bufNext[104..255].  The attack and
  * release edges are pre-shaped with the gain-interpolation ramp rate so that
  * the modulation cancels them exactly.
  *
- * Three-point gain envelope: {{7,4},{4,12},{7,31}}
- *   scale = GainLevel[7] = 2^(4-7) = 0.125  →  bufCur ×8 (quiet → LOUD)
+ * Two-point gain envelope: {{4,4},{1,12}}
+ *   scale = GainLevel[4] = 1.0  →  bufCur unchanged (quiet stays quiet ✓)
  *
- *   Constant  [ 0, 32):  bufNext / 0.125      = ×8  (quiet → LOUD ✓)
- *   Transition[32, 40):  level ramps 0.125→1  (Level 7→4, gainInc = 2^(+3/8))
- *   Constant  [40, 96):  bufNext / 1.0              (LOUD burst, unchanged ✓)
- *   Transition[96,104):  level ramps 1→0.125  (Level 4→7, gainInc = 2^(-3/8))
- *   Constant [104,248):  bufNext / 0.125      = ×8  (quiet → LOUD ✓)
- *   Transition[248,256): level ramps 0.125→1  (Level 7→neutral, same rate)
- *                        EncodeWindow[7..0] ≈ 0.023..0.0015 → gain spike
- *                        at near-zero window position: negligible leakage.
+ *   Constant  [ 0, 32):  bufNext / 1.0    = A_quiet (unchanged ✓)
+ *   Transition[32, 40):  level ramps 1→8  (Level 4→1, gainInc = 2^(+3/8))
+ *   Constant  [40, 96):  bufNext / 8      = A_loud/8 = A_quiet (attenuated ✓)
+ *   Transition[96,104):  level ramps 8→1  (Level 1→neutral, gainInc = 2^(-3/8))
+ *   Remainder[104,256):  bufNext untouched = A_quiet (already at target ✓)
  *
  * The signal ramps at [32..39] and [96..103] are constructed to match gainInc
  * exactly (signal[32+k] = A_quiet×gainInc_atk^k, signal[96+k] = A_loud×gainInc_rel^k)
  * so Modulate divides them out perfectly → modulated MDCT input is uniformly
- * 8×sin throughout the window → near-zero HF leakage.
+ * A_quiet throughout → near-zero HF leakage.
  *
  * Without modulation the window sees amplitude change from quiet(1) through the
  * burst(8) and back, producing substantial HF leakage in the unmodulated spectrum.
  *
- * Note: the modulation makes the overlap (bufCur) look LOUD, so the decoder's
- * next frame sees an apparent transient and must apply a compensating gain to
- * restore the original signal – but that round-trip is not exercised here.
+ * Frame 2: plain quiet (A=1); no compensating gain needed.  The modulated
+ * bufCur is EncodeWindow×(A_quiet×sin) which already matches the quiet bufNext
+ * → MDCT input uniform → near-zero leakage.
  */
 TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRelease) {
     TAtrac3MDCT mdct;
@@ -940,8 +937,8 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
     const float f       = 0.125f;
 
     // Gain interpolation rates for the two transitions:
-    //   Attack  (Level 7→4): gainInc = 2^(+3/8) so after 8 steps 0.125→1.0
-    //   Release (Level 4→7): gainInc = 2^(-3/8) so after 8 steps 1.0→0.125
+    //   Attack  (Level 4→1): gainInc = 2^(+3/8) so after 8 steps 1.0→8.0
+    //   Release (Level 1→4): gainInc = 2^(-3/8) so after 8 steps 8.0→1.0
     const float gainInc_atk = std::pow(2.0f,  3.0f / 8.0f); // ≈ 1.2968
     const float gainInc_rel = std::pow(2.0f, -3.0f / 8.0f); // ≈ 0.7706
 
@@ -966,48 +963,33 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
         signal[i] = A_quiet * sineAt(i);
 
     // Attack ramp [32..39]: amplitude = A_quiet × gainInc_atk^k.
-    // At gain-transition pos (32+k), level = 0.125 × gainInc_atk^k, so
-    // modulated = (A_quiet × gainInc_atk^k) / (0.125 × gainInc_atk^k) = 8×sin. ✓
+    // At gain-transition pos (32+k), level = 1.0 × gainInc_atk^k, so
+    // modulated = (A_quiet × gainInc_atk^k) / (1.0 × gainInc_atk^k) = A_quiet. ✓
     {
         float g = 1.0f;
         for (int k = 0; k < 8; ++k, g *= gainInc_atk)
             signal[kHalf + 32 + k] = A_quiet * g * sineAt(kHalf + 32 + k);
     }
 
-    // Burst body [40..95]: A_loud; divided by level=1.0 → unchanged at 8×sin. ✓
+    // Burst body [40..95]: A_loud; divided by level=8.0 → A_loud/8 = A_quiet. ✓
     for (size_t i = kHalf + 40; i < kHalf + 96; ++i)
         signal[i] = A_loud * sineAt(i);
 
     // Release ramp [96..103]: amplitude = A_loud × gainInc_rel^k.
-    // At gain-transition pos (96+k), level = 1.0 × gainInc_rel^k, so
-    // modulated = (A_loud × gainInc_rel^k) / (gainInc_rel^k) = 8×sin. ✓
+    // At gain-transition pos (96+k), level = 8.0 × gainInc_rel^k, so
+    // modulated = (A_loud × gainInc_rel^k) / (8.0 × gainInc_rel^k) = A_quiet. ✓
     {
         float g = 1.0f;
         for (int k = 0; k < 8; ++k, g *= gainInc_rel)
             signal[kHalf + 96 + k] = A_loud * g * sineAt(kHalf + 96 + k);
     }
 
-    // Post-release quiet [104..255]: A_quiet; divided by level=0.125 → 8×sin. ✓
+    // Post-release quiet [104..255]: A_quiet; in remainder (untouched) → A_quiet. ✓
     for (size_t i = kHalf + 104; i < kHalf * 2; ++i)
         signal[i] = A_quiet * sineAt(i);
 
-    // Frame 2: bufNext pre-shaped for {{1,1}} compensation (mirrors the pattern in
-    // TAtrac3MDCTGain1PointCompensateWithScaleDc).
-    // The modulated bufCur carries A_loud×sin (scale=GainLevel[7]=0.125 → ×8).
-    // Compensation Level=1 (scale=8) divides ALL bufCur by 8, and also:
-    //   Location=1 (lastPos=8): bufNext[0..7] divided by 8 + transition [8..15].
-    // To make modifiedBufNext uniform at A_quiet:
-    //   bufNext[0..7]   = A_loud              → /8 = A_quiet ✓
-    //   bufNext[8+k]    = A_loud×gainInc_rel^k → /(8×gainInc_rel^k) = A_quiet ✓
-    //   bufNext[16..255]= A_quiet              → untouched = A_quiet ✓
-    for (size_t i = kHalf * 2; i < kHalf * 2 + 8; ++i)
-        signal[i] = A_loud * sineAt(i);
-    {
-        float g = 1.0f;
-        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
-            signal[kHalf * 2 + 8 + k] = A_loud * g * sineAt(kHalf * 2 + 8 + k);
-    }
-    for (size_t i = kHalf * 2 + 16; i < kHalf * 3; ++i)
+    // Frame 2: quiet continuation; no compensating gain needed.
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
         signal[i] = A_quiet * sineAt(i);
 
     // Returns {frame1_specs, frame2_specs}.
@@ -1028,11 +1010,10 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
         float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
         if (withModulation) {
             TAtrac3Data::SubbandInfo si;
-            // {7,4}:  scale=0.125, lastPos=32  — quiet pre-attack amplified ×8
-            // {4,12}: neutral,     lastPos=96  — loud burst left unchanged
-            // {7,31}: scale=0.125, lastPos=248 — quiet post-release amplified ×8;
-            //         final transition [248..255] is at near-zero MDCT window.
-            si.AddSubbandCurve(0, {{7, 4}, {4, 12}, {7, 31}});
+            // {4,4}: scale=1.0,  lastPos=32 — quiet prefix unchanged
+            // {1,12}: level=8.0, lastPos=96 — loud burst attenuated ÷8 → A_quiet
+            //         remainder [104..255] untouched = A_quiet ✓
+            si.AddSubbandCurve(0, {{4, 4}, {1, 12}});
             mdct.Mdct(specs1.data(), p1,
                 { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
                   TAtrac3MDCT::TGainModulator(),
@@ -1042,31 +1023,12 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
             mdct.Mdct(specs1.data(), p1);
         }
 
-        // Frame 2: quiet continuation.
-        // Modulated: bufCur = EncodeWindow × (A_loud×sin) — scale=GainLevel[7]=0.125
-        //   divided all of bufCur by 0.125, so modifiedBufNext was uniform A_loud×sin.
-        //   bufNext = A_quiet×sin → mismatch unless compensated.
-        //   Compensating gain {{1,1}}: Level=1 → scale=8, divides all bufCur by 8,
-        //   bringing EncodeWindow×A_loud down to EncodeWindow×A_quiet — matching bufNext.
-        //   Location=1 (lastPos=8) also attenuates bufNext[0..7] to ease the transition.
-        // Nomod: bufCur has the quiet→burst→quiet amplitude shape windowed inside it
-        //   → large amplitude variation → HF leakage.  Compensated mod case has less.
+        // Frame 2: quiet continuation; no compensating gain needed.
+        // Modulated bufCur is EncodeWindow×(A_quiet×sin) — uniform → low HF.
+        // Nomod bufCur carries the burst amplitude shape → HF leakage.
         memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
         float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
-        if (withModulation) {
-            TAtrac3Data::SubbandInfo si2;
-            // Level=1 → scale=8: compensates the ×8 that bufCur received from the
-            // previous frame's gain {{7,4},{4,12},{7,31}} (GainLevel[7]=0.125 = ×8).
-            // Location=1 → lastPos=8: bufNext[0..7] also attenuated + short transition.
-            si2.AddSubbandCurve(0, {{1, 1}});
-            mdct.Mdct(specs2.data(), p2,
-                { mdct.GainProcessor.Modulate(si2.GetGainPoints(0)),
-                  TAtrac3MDCT::TGainModulator(),
-                  TAtrac3MDCT::TGainModulator(),
-                  TAtrac3MDCT::TGainModulator() });
-        } else {
-            mdct.Mdct(specs2.data(), p2);
-        }
+        mdct.Mdct(specs2.data(), p2);
 
         return {specs1, specs2};
     };
@@ -1092,25 +1054,25 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
     EXPECT_GT(hf_nomod, 0.0f);
 
     // Frame 2: nomod has the burst amplitude shape in bufCur → HF leakage.
-    // Mod uses compensating gain {{1,1}} to scale A_loud bufCur back down → less HF.
+    // Mod has uniform A_quiet bufCur → near-zero HF leakage.
     float hf2_nomod = 0.0f, hf2_mod = 0.0f;
     for (int k = kHfStart; k < 256; ++k) {
         hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
         hf2_mod   += specs2_mod[k]   * specs2_mod[k];
     }
-    EXPECT_LE(hf2_mod, hf2_nomod);
+    EXPECT_LT(hf2_mod * 10.0f, hf2_nomod);
 
     MaybePlotMdctEnergy(
         "GainModulation_ReducesSpectralEnergy_AttackAndRelease Frame 1\\n"
-        "Burst bufNext[32..95], gain {{7,4},{4,12},{7,31}}, ramp-shaped edges",
+        "Burst bufNext[40..95], gain {{4,4},{1,12}}, ramp-shaped edges",
         specs1_nomod, specs1_mod, kHfStart);
     MaybePlotMdctEnergy(
         "GainModulation_ReducesSpectralEnergy_AttackAndRelease Frame 2\\n"
-        "Quiet continuation, compensating gain {{1,1}}",
+        "Quiet continuation, no compensating gain",
         specs2_nomod, specs2_mod, kHfStart);
 
     // Round-trip: Mdct(Modulate) → Midct(Demodulate) recovers original signal
-    // with one-frame delay.  Frame 2 uses compensating gain {{1,1}}.
+    // with one-frame delay.  Frame 2 needs no compensating gain.
     {
         vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
                       enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
@@ -1126,30 +1088,254 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
 
             if (frame == 1) {
                 TAtrac3Data::SubbandInfo si;
-                si.AddSubbandCurve(0, {{7, 4}, {4, 12}, {7, 31}});
+                si.AddSubbandCurve(0, {{4, 4}, {1, 12}});
                 mdct.Mdct(sp.data(), p,
                     { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
                       TAtrac3MDCT::TGainModulator(),
                       TAtrac3MDCT::TGainModulator(),
                       TAtrac3MDCT::TGainModulator() });
                 TAtrac3Data::SubbandInfo siCur, siNext;
-                siNext.AddSubbandCurve(0, {{7, 4}, {4, 12}, {7, 31}});
+                siNext.AddSubbandCurve(0, {{4, 4}, {1, 12}});
                 mdct.Midct(sp.data(), t,
                     { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
                       TAtrac3MDCT::TGainDemodulator(),
                       TAtrac3MDCT::TGainDemodulator(),
                       TAtrac3MDCT::TGainDemodulator() });
             } else if (frame == 2) {
-                TAtrac3Data::SubbandInfo si2;
-                si2.AddSubbandCurve(0, {{1, 1}});
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{4, 4}, {1, 12}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+}
+
+/*
+ * LOUD->QUIET->LOUD dip transient within one frame.
+ *
+ * Signal: loud(A=8) for bufCur and bufNext[0..31], a quiet dip(A=1) for
+ * bufNext[40..95], then loud(A=8) again for bufNext[104..255].  The release
+ * and attack edges are pre-shaped with the gain-interpolation ramp rate so
+ * that the modulation cancels them exactly.
+ *
+ * Strategy: keep the loud prefix and tail at their original level; amplify
+ * only the quiet dip to match.  scale=1.0 leaves bufCur (loud) unchanged.
+ *
+ * Two-point gain envelope: {{4,4},{7,12}}
+ *   scale = GainLevel[4] = 1.0  ->  bufCur (loud) unchanged ✓
+ *
+ *   Constant  [ 0, 32):  bufNext / 1.0      = A_loud  (loud prefix, unchanged ✓)
+ *   Transition[32, 40):  level ramps 1->0.125 (Level 4->7, gainInc = 2^(-3/8))
+ *   Constant  [40, 96):  bufNext / 0.125    = A_loud  (quiet dip amplified x8 ✓)
+ *   Transition[96,104):  level ramps 0.125->1 (Level 7->neutral, gainInc = 2^(+3/8))
+ *   Remainder[104,256):  bufNext untouched  = A_loud  (loud tail already at target ✓)
+ *
+ * The signal ramps at [32..39] and [96..103] are constructed to match gainInc
+ * exactly (signal[32+k] = A_loud*gainInc_rel^k, signal[96+k] = A_quiet*gainInc_atk^k)
+ * so Modulate divides them out perfectly -> modulated MDCT input is uniformly
+ * A_loud*sin throughout the window -> near-zero HF leakage.
+ *
+ * Frame 2: plain loud (A=8); no compensating gain needed.  The modulated
+ * bufCur is EncodeWindow*(A_loud*sin) which already matches the loud bufNext
+ * -> MDCT input uniform -> near-zero leakage.  Without modulation, frame 2's
+ * bufCur carries the loud->quiet->loud shape -> HF leakage.
+ */
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_ReleaseAndAttack) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float A_loud  = 8.0f;
+    const float A_quiet = 1.0f;
+    const float f       = 0.125f;
+
+    // Gain interpolation rates for the two transitions:
+    //   Release (Level 1->4): gainInc = 2^(-3/8) so after 8 steps 8.0->1.0
+    //   Attack  (Level 4->1): gainInc = 2^(+3/8) so after 8 steps 1.0->8.0
+    const float gainInc_atk = std::pow(2.0f,  3.0f / 8.0f); // ≈ 1.2968
+    const float gainInc_rel = std::pow(2.0f, -3.0f / 8.0f); // ≈ 0.7706
+
+    auto sineAt = [f](size_t i) {
+        return std::sin((float(M_PI) / 2.0f) * float(i) * f);
+    };
+
+    // Build signal across 3 frames:
+    //   frame 0 = all loud (primes overlap)
+    //   frame 1 = loud [0..31] + release ramp [32..39] + quiet dip [40..95]
+    //             + attack ramp [96..103] + loud [104..255]
+    //   frame 2 = pre-shaped for compensating gain {{7,1}}
+    vector<float> signal(kHalf * 3);
+
+    // Frame 0: all loud.
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    // Frame 1 bufNext:
+    // Loud prefix [0..31].
+    for (size_t i = kHalf; i < kHalf + 32; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    // Release ramp [32..39]: amplitude = A_loud * gainInc_rel^k.
+    // At gain-transition pos (32+k), level = 8 * gainInc_rel^k, so
+    // modulated = (A_loud * gainInc_rel^k) / (8 * gainInc_rel^k) = 1.0*sin. ✓
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
+            signal[kHalf + 32 + k] = A_loud * g * sineAt(kHalf + 32 + k);
+    }
+
+    // Quiet dip [40..95]: A_quiet; divided by level=1.0 -> unchanged at 1.0*sin. ✓
+    for (size_t i = kHalf + 40; i < kHalf + 96; ++i)
+        signal[i] = A_quiet * sineAt(i);
+
+    // Attack ramp [96..103]: amplitude = A_quiet * gainInc_atk^k.
+    // At gain-transition pos (96+k), level = 1.0 * gainInc_atk^k, so
+    // modulated = (A_quiet * gainInc_atk^k) / (gainInc_atk^k) = 1.0*sin. ✓
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + 96 + k] = A_quiet * g * sineAt(kHalf + 96 + k);
+    }
+
+    // Loud suffix [104..255]: A_loud; in remainder, untouched = A_loud. ✓
+    for (size_t i = kHalf + 104; i < kHalf * 2; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    // Frame 2: plain loud continuation.  No compensation needed: the modulated
+    // bufCur is EncodeWindow*(A_loud*sin) which already matches loud bufNext.
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    // Returns {frame1_specs, frame2_specs}.
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        // Frame 0: prime overlap with loud signal.
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        // Frame 1: dip signal.
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si;
+            // {4,4}:  scale=1.0, lastPos=32  — loud prefix unchanged
+            // {7,12}: scale=0.125, lastPos=96 — quiet dip amplified x8 -> A_loud;
+            //         remainder [104..255] untouched (already at A_loud).
+            si.AddSubbandCurve(0, {{4, 4}, {7, 12}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        // Frame 2: plain loud continuation, no compensating gain.
+        // Mod:   bufCur = EncodeWindow*(A_loud*sin) — uniform, matches loud bufNext.
+        // Nomod: bufCur = EncodeWindow*[loud->quiet->loud] — HF leakage from the dip.
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs2.data(), p2);
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 30;
+
+    // Frame 1: HF energy above the sine fundamental.
+    float hf_nomod = 0.0f, hf_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+    // With modulation the MDCT input is 1.0*sin uniformly -> near-zero HF leakage.
+    // Without modulation the dip amplitude envelope produces real HF leakage.
+    EXPECT_LT(hf_mod * 10.0f, hf_nomod);
+    EXPECT_GT(hf_nomod, 0.0f);
+
+    // Frame 2: nomod bufCur carries loud->quiet->loud shape -> HF leakage.
+    // Mod bufCur is uniform A_loud (from frame 1's modulated output) -> less HF.
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+    EXPECT_LT(hf2_mod * 10.0f, hf2_nomod);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_ReleaseAndAttack Frame 1\\n"
+        "Dip bufNext[40..95], gain {{4,4},{7,12}}, ramp-shaped edges",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_ReleaseAndAttack Frame 2\\n"
+        "Loud continuation, no compensating gain needed",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    // Round-trip: Mdct(Modulate) -> Midct(Demodulate) recovers original signal
+    // with one-frame delay.  Frame 2 has no compensating gain.
+    //   frame 1 Midct: Demodulate(siCur=empty, siNext={{4,4},{7,12}})
+    //     scale = GainLevel[4] = 1.0; giNow=empty -> no effect on prev[].
+    //   frame 2 Midct: Demodulate(siCur={{4,4},{7,12}}, siNext=empty)
+    //     scale = 1.0; giNow={{4,4},{7,12}} de-amplifies the overlap prev[].
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{4, 4}, {7, 12}});
                 mdct.Mdct(sp.data(), p,
-                    { mdct.GainProcessor.Modulate(si2.GetGainPoints(0)),
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
                       TAtrac3MDCT::TGainModulator(),
                       TAtrac3MDCT::TGainModulator(),
                       TAtrac3MDCT::TGainModulator() });
                 TAtrac3Data::SubbandInfo siCur, siNext;
-                siCur.AddSubbandCurve(0, {{7, 4}, {4, 12}, {7, 31}});
-                siNext.AddSubbandCurve(0, {{1, 1}});
+                siNext.AddSubbandCurve(0, {{4, 4}, {7, 12}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{4, 4}, {7, 12}});
                 mdct.Midct(sp.data(), t,
                     { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
                       TAtrac3MDCT::TGainDemodulator(),
