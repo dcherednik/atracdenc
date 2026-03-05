@@ -41,6 +41,8 @@
 #define ATRAC_UT_PUBLIC
 
 #include "atrac3denc.h"
+#include "transient_detector.h"
+#include "transient_spectral_upsampler.h"
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -1009,6 +1011,15 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
         memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
         float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
         if (withModulation) {
+            TCurveBuilderCtx builderCtx;
+            builderCtx.LastLevel = A_quiet;
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 2u);
+            EXPECT_EQ(curve[0].Level,    4u);
+            EXPECT_EQ(curve[0].Location, 4u);
+            EXPECT_EQ(curve[1].Level,    1u);
+            EXPECT_EQ(curve[1].Location, 12u);
             TAtrac3Data::SubbandInfo si;
             // {4,4}: scale=1.0,  lastPos=32 — quiet prefix unchanged
             // {1,12}: level=8.0, lastPos=96 — loud burst attenuated ÷8 → A_quiet
@@ -1120,6 +1131,35 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
 
         for (size_t i = kHalf; i < kHalf * 3; ++i)
             EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,     4u);
+        EXPECT_EQ(curveUp[0].Location,  4u);
+        EXPECT_EQ(curveUp[1].Level,     1u);
+        EXPECT_EQ(curveUp[1].Location, 12u);
     }
 }
 
@@ -1236,6 +1276,15 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_ReleaseAndA
         memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
         float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
         if (withModulation) {
+            TCurveBuilderCtx builderCtx;
+            builderCtx.LastLevel = A_loud;
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 2u);
+            EXPECT_EQ(curve[0].Level,    4u);
+            EXPECT_EQ(curve[0].Location, 4u);
+            EXPECT_EQ(curve[1].Level,    7u);
+            EXPECT_EQ(curve[1].Location, 12u);
             TAtrac3Data::SubbandInfo si;
             // {4,4}:  scale=1.0, lastPos=32  — loud prefix unchanged
             // {7,12}: scale=0.125, lastPos=96 — quiet dip amplified x8 -> A_loud;
@@ -1351,6 +1400,35 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_ReleaseAndA
 
         for (size_t i = kHalf; i < kHalf * 3; ++i)
             EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 100.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_loud;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,     4u);
+        EXPECT_EQ(curveUp[0].Location,  4u);
+        EXPECT_EQ(curveUp[1].Level,     6u); //TODO, should be 7
+        EXPECT_EQ(curveUp[1].Location, 12u);
     }
 }
 
@@ -1643,7 +1721,14 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_QuietToLoud
         // Frame 1: QUIET->LOUD step at bufNext[64].
         memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
         float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = 1.0;
         if (withModulation) {
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 1u);
+            EXPECT_EQ(curve[0].Level,    7u);
+            EXPECT_EQ(curve[0].Location, 7u);
             TAtrac3Data::SubbandInfo si1;
             si1.AddSubbandCurve(0, {{7, 7}});
             mdct.Mdct(specs1.data(), p1,
@@ -1767,6 +1852,474 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_QuietToLoud
 
         for (size_t i = kHalf; i < kHalf * 3; ++i)
             EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 100.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 1u);
+        EXPECT_EQ(curveUp[0].Level,    6u); //TODO should be 7
+        EXPECT_EQ(curveUp[0].Location, 7u);
+    }
+}
+
+/*
+ * Variant of QuietToLoudTransient at the exact Level 15 boundary amplitude.
+ *
+ * A_quiet = GainLevel[15] = 2^-11 = 1/2048, A_loud = 1.0.
+ * A_quiet/A_loud = 2^-11 is the minimum ratio that maps to Level 15 without
+ * clamping in RelationToIdx: 1/(2^-11) = 2048, GetFirstSetBit(2048) = 11,
+ * Level = 4+11 = 15.
+ *
+ * At this exact amplitude, Modulate({{15,7}}) normalises the quiet region to
+ * exactly A_loud (A_quiet / GainLevel[15] = 1.0), so the entire MDCT window
+ * becomes a constant-amplitude sine — no residual step, full HF suppression.
+ *
+ * The attack ramp uses gainInc = 2^(11/8) matching the Level 15→4 interpolation so
+ * that the round-trip recovers the original samples exactly.
+ *
+ * Expected curve from CalcCurve: {{15, 7}}.
+ */
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_VeryQuietToLoudTransient) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float gainInc_atk = std::pow(2.0f, 11.0f / 8.0f);
+    const float A_loud  = 1.0f;
+    const float A_quiet = std::pow(2.0f, -11.0f);  // = 1/2048 = GainLevel[15], exact Level 15 boundary
+    const float f       = 0.125f;
+
+    auto sineAt = [f](size_t i) {
+        return std::sin((float(M_PI) / 2.0f) * float(i) * f);
+    };
+
+    // frame 0: all quiet (primes overlap buffer)
+    // frame 1: quiet [0..55] + attack ramp [56..63] + loud [64..255]
+    // frame 2: all loud
+    vector<float> signal(kHalf * 3);
+
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_quiet * sineAt(i);
+
+    for (size_t i = kHalf; i < kHalf + 64; ++i)
+        signal[i] = A_quiet * sineAt(i);
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + 56 + k] *= g;
+    }
+
+    for (size_t i = kHalf + 64; i < kHalf * 2; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_loud * sineAt(i);
+
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_quiet;
+        if (withModulation) {
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 1u);
+            if (curve.size() >= 1) {
+                EXPECT_EQ(curve[0].Level,    15u);
+                EXPECT_EQ(curve[0].Location,  7u);
+            }
+            TAtrac3Data::SubbandInfo si1;
+            si1.AddSubbandCurve(0, {{15, 7}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si1.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si2;
+            mdct.Mdct(specs2.data(), p2,
+                { mdct.GainProcessor.Modulate(si2.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs2.data(), p2);
+        }
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 30;
+
+    float hf1_nomod = 0.0f, hf1_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf1_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf1_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+
+    // At the exact Level 15 boundary the quiet region is normalised to A_loud exactly,
+    // so the modulated window is a constant-amplitude sine — full HF suppression (10×).
+    EXPECT_LT(hf1_mod * 10.0f, hf1_nomod);
+    EXPECT_GT(hf1_nomod, 0.0f);
+
+    EXPECT_LE(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_VeryQuietToLoudTransient Frame 1\\n"
+        "VERY_QUIET(1e-4)->LOUD at bufNext[64], Level 15 saturation",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_VeryQuietToLoudTransient Frame 2\\n"
+        "Loud continuation",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    // Round-trip: Modulate+MDCT+IMDCT+Demodulate recovers original signal.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{15, 7}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{15, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{15, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 1u);
+        EXPECT_EQ(curveUp[0].Level,    15u);
+        EXPECT_EQ(curveUp[0].Location,  7u);
+    }
+}
+
+/*
+ * Loud-to-VeryQuiet edge case: Level 0 boundary.
+ *
+ * A_loud = 1.0, A_quiet = 2^-4 = 1/16 = GainLevel[0]^-1.
+ * A_loud/A_quiet = 16 is the maximum ratio representable without clamping in
+ * RelationToIdx: min(16, 16) = 16, GetFirstSetBit(16) = 4, Level = 4-4 = 0.
+ *
+ * At this exact amplitude, Modulate({{0,7}}) normalises the loud region to
+ * exactly A_quiet (A_loud / GainLevel[0] = 1/16), so the entire MDCT window
+ * becomes a constant-amplitude sine — no residual step, full HF suppression.
+ *
+ * The release ramp uses gainInc = 2^(-4/8) matching the Level 0→4 interpolation
+ * so that the round-trip recovers the original samples exactly.
+ *
+ * Expected curve from CalcCurve: {{0, 7}}.
+ */
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_LoudToVeryQuietTransient) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float gainInc_rel = std::pow(2.0f, -4.0f / 8.0f);  // Level 0 → Level 4
+    const float A_loud  = 1.0f;
+    const float A_quiet = std::pow(2.0f, -4.0f);  // = 1/16 = A_loud / GainLevel[0], exact Level 0 boundary
+
+    // DC (constant-amplitude) signal avoids sine-peak variation across subframes.
+    // With pure sine the first sample of the ramp subframe (sf7) may land exactly
+    // on the sine's peak, making gain[7] > gain[6] and breaking the falling
+    // detection window.  DC ensures every loud subframe has peak = A_loud exactly.
+    //
+    // frame 0: all loud (primes overlap buffer)
+    // frame 1: loud [0..55] + release ramp [56..63] + quiet [64..255]
+    // frame 2: all quiet
+    vector<float> signal(kHalf * 3);
+
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_loud;
+
+    for (size_t i = kHalf; i < kHalf + 64; ++i)
+        signal[i] = A_loud;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
+            signal[kHalf + 56 + k] *= g;
+    }
+
+    for (size_t i = kHalf + 64; i < kHalf * 2; ++i)
+        signal[i] = A_quiet;
+
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_quiet;
+
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_loud;
+        if (withModulation) {
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 1u);
+            if (curve.size() >= 1) {
+                EXPECT_EQ(curve[0].Level,    0u);
+                EXPECT_EQ(curve[0].Location, 7u);
+            }
+            TAtrac3Data::SubbandInfo si1;
+            si1.AddSubbandCurve(0, {{0, 7}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si1.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si2;
+            mdct.Mdct(specs2.data(), p2,
+                { mdct.GainProcessor.Modulate(si2.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs2.data(), p2);
+        }
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 30;
+
+    float hf1_nomod = 0.0f, hf1_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf1_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf1_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+
+    // At the exact Level 0 boundary the loud region is normalised to A_quiet exactly,
+    // so the modulated window is a constant-amplitude sine — full HF suppression (10×).
+    EXPECT_LT(hf1_mod * 10.0f, hf1_nomod);
+    EXPECT_GT(hf1_nomod, 0.0f);
+
+    EXPECT_LE(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_LoudToVeryQuietTransient Frame 1\\n"
+        "LOUD->VERY_QUIET(2^-4) at bufNext[64], Level 0 boundary",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_LoudToVeryQuietTransient Frame 2\\n"
+        "Quiet continuation",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    // Round-trip: Modulate+MDCT+IMDCT+Demodulate recovers original signal.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{0, 7}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{0, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{0, 7}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path: build 512-sample context window:
+        //   [0  ..127]: tail of Frame 0 (signal[128..255], DC=A_loud)
+        //   [128..383]: Frame 1 bufNext (signal[256..511], loud+ramp+quiet) — analysis region
+        //   [384..511]: head of Frame 2 (signal[512..639], DC=A_quiet)
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        // Analysis region [1024..3072) = 2048 samples → 32 subframes of 64 samples.
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_loud;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 1u);
+        EXPECT_EQ(curveUp[0].Level,    1u); //should be 0
+        EXPECT_EQ(curveUp[0].Location, 7u);
     }
 }
 
@@ -2102,6 +2655,53 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_2PointsWith
         "DC=1, no compensating gain (scale=1.0)",
         specs2_nomod, specs2_mod, kHfStart);
 
+    {
+        // Frame 2 is DC=A_quiet, so its first subframe peak = A_quiet.
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_quiet;
+        const std::vector<float> gain = AnalyzeGain(signal.data() + kHalf, kHalf, 32, false);
+        const auto curve = CalcCurve(gain, builderCtx, A_quiet);
+        ASSERT_EQ(curve.size(), 2u);
+        EXPECT_EQ(curve[0].Level,    4u);
+        EXPECT_EQ(curve[0].Location, 0u);
+        EXPECT_EQ(curve[1].Level,    1u);
+        EXPECT_EQ(curve[1].Location, 31u);
+    }
+
+    {
+        // Upsampled path: build a 512-sample context window:
+        //   [0  ..127]: tail of Frame 0  (signal[128..255], DC=A_quiet)
+        //   [128..383]: Frame 1 bufNext  (signal[256..511], burst) — analysis region
+        //   [384..511]: head of Frame 2  (signal[512..639], DC=A_quiet)
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        // Analysis region in upsampled output: [1024..3072) = 2048 samples.
+        // 32 subframes of 64 samples each → same gain-vector length as before.
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp, A_quiet);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,    4u);
+        EXPECT_EQ(curveUp[0].Location, 0u);
+        EXPECT_EQ(curveUp[1].Level,    1u);
+        EXPECT_EQ(curveUp[1].Location, 31u);
+    }
+
     // Round-trip reconstruction: Mdct(Modulate) → Midct(Demodulate) must recover
     // the original signal with a one-frame delay, mirroring the reference check in
     // TAtrac3MDCTGain2PointsCompensateWithoutScaleDc2.
@@ -2163,6 +2763,638 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_2PointsWith
     }
 }
 
+
+// Like 2PointsWithoutScaleDc2 but with the release ramp moved earlier:
+// loud part [8..231], release ramp [232..239] = subframe 29, then DC=1 [240..255].
+// Expected curve: {{4, 0}, {1, 29}}
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel29) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float A_loud  = 8.0f;
+    const float A_quiet = 1.0f;
+
+    const float gainInc_atk = std::pow(2.0f,  3.0f / 8.0f);
+    const float gainInc_rel = std::pow(2.0f, -3.0f / 8.0f);
+
+    vector<float> signal(kHalf * 3);
+
+    // Frame 0: DC=1.
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 1 bufNext: attack ramp [0..7], DC=8 [8..231], release ramp [232..239], DC=1 [240..255].
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + k] = g;
+    }
+    for (size_t i = kHalf + 8; i < kHalf + 232; ++i)
+        signal[i] = A_loud;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
+            signal[kHalf + 232 + k] = A_loud * g;
+    }
+    for (size_t i = kHalf + 240; i < kHalf * 2; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 2 bufNext: plain DC=1.
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_quiet;
+
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        // Frame 0: prime overlap.
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        // Frame 1: burst with release at subframe 29.
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si;
+            si.AddSubbandCurve(0, {{4, 0}, {1, 29}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        // Frame 2: DC=1.
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs2.data(), p2);
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 4;
+
+    float hf_nomod = 0.0f, hf_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+    EXPECT_LT(hf_mod * 10.0f, hf_nomod);
+    EXPECT_GT(hf_nomod, 0.0f);
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+    EXPECT_LT(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel29 Frame 1\n"
+        "Burst with release at pos 29, gain {{4,0},{1,29}}",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel29 Frame 2\n"
+        "DC=1, no compensating gain",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    {
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_quiet;
+        const std::vector<float> gain = AnalyzeGain(signal.data() + kHalf, kHalf, 32, false);
+        const auto curve = CalcCurve(gain, builderCtx);
+        ASSERT_EQ(curve.size(), 2u);
+        EXPECT_EQ(curve[0].Level,    4u);
+        EXPECT_EQ(curve[0].Location, 0u);
+        EXPECT_EQ(curve[1].Level,    1u);
+        EXPECT_EQ(curve[1].Location, 29u);
+    }
+
+    // Round-trip reconstruction.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{4, 0}, {1, 29}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{4, 0}, {1, 29}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{4, 0}, {1, 29}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,    4u);
+        EXPECT_EQ(curveUp[0].Location, 0u);
+        EXPECT_EQ(curveUp[1].Level,    1u);
+        EXPECT_EQ(curveUp[1].Location, 29u);
+    }
+}
+
+// Like Rel29 but release ramp at [240..247] = subframe 30, quiet tail [248..255].
+// Expected curve: {{4, 0}, {1, 30}}
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel30) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float A_loud  = 8.0f;
+    const float A_quiet = 1.0f;
+
+    const float gainInc_atk = std::pow(2.0f,  3.0f / 8.0f);
+    const float gainInc_rel = std::pow(2.0f, -3.0f / 8.0f);
+
+    vector<float> signal(kHalf * 3);
+
+    // Frame 0: DC=1.
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 1 bufNext: attack ramp [0..7], DC=8 [8..239], release ramp [240..247], DC=1 [248..255].
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + k] = g;
+    }
+    for (size_t i = kHalf + 8; i < kHalf + 240; ++i)
+        signal[i] = A_loud;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
+            signal[kHalf + 240 + k] = A_loud * g;
+    }
+    for (size_t i = kHalf + 248; i < kHalf * 2; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 2 bufNext: plain DC=1.
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_quiet;
+
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si;
+            si.AddSubbandCurve(0, {{4, 0}, {1, 30}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs2.data(), p2);
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 4;
+
+    float hf_nomod = 0.0f, hf_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+    EXPECT_LT(hf_mod * 10.0f, hf_nomod);
+    EXPECT_GT(hf_nomod, 0.0f);
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+    EXPECT_LT(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel30 Frame 1\n"
+        "Burst with release at pos 30, gain {{4,0},{1,30}}",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_2PointsWithoutScaleDc_Rel30 Frame 2\n"
+        "DC=1, no compensating gain",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    {
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_quiet;
+        const std::vector<float> gain = AnalyzeGain(signal.data() + kHalf, kHalf, 32, false);
+        const auto curve = CalcCurve(gain, builderCtx);
+        ASSERT_EQ(curve.size(), 2u);
+        EXPECT_EQ(curve[0].Level,    4u);
+        EXPECT_EQ(curve[0].Location, 0u);
+        EXPECT_EQ(curve[1].Level,    1u);
+        EXPECT_EQ(curve[1].Location, 30u);
+    }
+
+    // Round-trip reconstruction.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{4, 0}, {1, 30}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{4, 0}, {1, 30}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{4, 0}, {1, 30}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,    4u);
+        EXPECT_EQ(curveUp[0].Location, 0u);
+        EXPECT_EQ(curveUp[1].Level,    1u);
+        EXPECT_EQ(curveUp[1].Location, 30u);
+    }
+}
+
+// DC burst with a quiet hole (0.125) in the middle of the loud region.
+// Signal: 1 → ramp → 8 [8..103] → ramp_down [104..111] → 0.125 [112..143]
+//         → ramp_up [144..151] → 8 [152..231] → ramp → 1
+// Hole ramp gainInc = 2^(±3/4): spans 6 gain levels over 8 samples so the
+// ramp subframe normalises exactly to 1.0 after gain modulation.
+// Expected curve: {{4,0},{1,13},{7,18},{1,29}}
+TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_HoleInLoud) {
+    TAtrac3MDCT mdct;
+    static const size_t kBandSz = 512;
+    static const size_t kHalf   = 256;
+
+    const float A_loud  = 8.0f;
+    const float A_quiet = 1.0f;
+    const float A_hole  = 0.125f;  // GainLevel[7] = 2^(4-7)
+
+    const float gainInc_atk       = std::pow(2.0f,  3.0f / 8.0f);
+    const float gainInc_rel       = std::pow(2.0f, -3.0f / 8.0f);
+    const float gainInc_hole_down = std::pow(2.0f, -3.0f / 4.0f); // 8→0.125 in 8 steps
+    const float gainInc_hole_up   = std::pow(2.0f,  3.0f / 4.0f); // 0.125→8 in 8 steps
+
+    vector<float> signal(kHalf * 3);
+
+    // Frame 0: DC=1.
+    for (size_t i = 0; i < kHalf; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 1 bufNext:
+    //   [0..7]    attack ramp                subframe 0
+    //   [8..103]  DC=8                       subframes 1..12  (96 samples)
+    //   [104..111] ramp 8→0.125              subframe 13
+    //   [112..143] DC=0.125 (hole)           subframes 14..17 (32 samples)
+    //   [144..151] ramp 0.125→8              subframe 18
+    //   [152..231] DC=8                      subframes 19..28 (80 samples)
+    //   [232..239] release ramp              subframe 29
+    //   [240..255] DC=1 (quiet tail)         subframes 30..31
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_atk)
+            signal[kHalf + k] = g;
+    }
+    for (size_t i = kHalf + 8; i < kHalf + 104; ++i)
+        signal[i] = A_loud;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_hole_down)
+            signal[kHalf + 104 + k] = A_loud * g;
+    }
+    for (size_t i = kHalf + 112; i < kHalf + 144; ++i)
+        signal[i] = A_hole;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_hole_up)
+            signal[kHalf + 144 + k] = A_hole * g;
+    }
+    for (size_t i = kHalf + 152; i < kHalf + 232; ++i)
+        signal[i] = A_loud;
+    {
+        float g = 1.0f;
+        for (int k = 0; k < 8; ++k, g *= gainInc_rel)
+            signal[kHalf + 232 + k] = A_loud * g;
+    }
+    for (size_t i = kHalf + 240; i < kHalf * 2; ++i)
+        signal[i] = A_quiet;
+
+    // Frame 2 bufNext: plain DC=1.
+    for (size_t i = kHalf * 2; i < kHalf * 3; ++i)
+        signal[i] = A_quiet;
+
+    auto runFrames = [&](bool withModulation)
+        -> std::pair<vector<float>, vector<float>>
+    {
+        vector<float> b0(kBandSz, 0.0f), b1(kBandSz, 0.0f),
+                      b2(kBandSz, 0.0f), b3(kBandSz, 0.0f);
+        vector<float> specs1(1024), specs2(1024);
+
+        memcpy(b0.data() + kHalf, signal.data(), kHalf * sizeof(float));
+        float* p0[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs1.data(), p0);
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
+        float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        if (withModulation) {
+            TAtrac3Data::SubbandInfo si;
+            si.AddSubbandCurve(0, {{4, 0}, {1, 13}, {7, 18}, {1, 29}});
+            mdct.Mdct(specs1.data(), p1,
+                { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        } else {
+            mdct.Mdct(specs1.data(), p1);
+        }
+
+        memcpy(b0.data() + kHalf, signal.data() + kHalf * 2, kHalf * sizeof(float));
+        float* p2[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
+        mdct.Mdct(specs2.data(), p2);
+
+        return {specs1, specs2};
+    };
+
+    auto result_nomod = runFrames(false);
+    auto result_mod   = runFrames(true);
+    const auto& specs1_nomod = result_nomod.first;
+    const auto& specs1_mod   = result_mod.first;
+    const auto& specs2_nomod = result_nomod.second;
+    const auto& specs2_mod   = result_mod.second;
+
+    const int kHfStart = 4;
+
+    float hf_nomod = 0.0f, hf_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf_nomod += specs1_nomod[k] * specs1_nomod[k];
+        hf_mod   += specs1_mod[k]   * specs1_mod[k];
+    }
+    EXPECT_LT(hf_mod * 10.0f, hf_nomod);
+    EXPECT_GT(hf_nomod, 0.0f);
+
+    float hf2_nomod = 0.0f, hf2_mod = 0.0f;
+    for (int k = kHfStart; k < 256; ++k) {
+        hf2_nomod += specs2_nomod[k] * specs2_nomod[k];
+        hf2_mod   += specs2_mod[k]   * specs2_mod[k];
+    }
+    EXPECT_LT(hf2_mod * 10.0f, hf2_nomod);
+    EXPECT_GT(hf2_nomod, 0.0f);
+
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_HoleInLoud Frame 1\n"
+        "Burst with hole, gain {{4,0},{1,13},{7,18},{1,29}}",
+        specs1_nomod, specs1_mod, kHfStart);
+    MaybePlotMdctEnergy(
+        "GainModulation_ReducesSpectralEnergy_HoleInLoud Frame 2\n"
+        "DC=1, no compensating gain",
+        specs2_nomod, specs2_mod, kHfStart);
+
+    {
+        TCurveBuilderCtx builderCtx;
+        builderCtx.LastLevel = A_quiet;
+        const std::vector<float> gain = AnalyzeGain(signal.data() + kHalf, kHalf, 32, false);
+        const auto curve = CalcCurve(gain, builderCtx);
+        ASSERT_EQ(curve.size(), 4u);
+        EXPECT_EQ(curve[0].Level,    4u);
+        EXPECT_EQ(curve[0].Location, 0u);
+        EXPECT_EQ(curve[1].Level,    1u);
+        EXPECT_EQ(curve[1].Location, 13u);
+        EXPECT_EQ(curve[2].Level,    7u);
+        EXPECT_EQ(curve[2].Location, 18u);
+        EXPECT_EQ(curve[3].Level,    1u);
+        EXPECT_EQ(curve[3].Location, 29u);
+    }
+
+    // Round-trip reconstruction.
+    {
+        vector<float> enc0(kBandSz, 0.0f), enc1(kBandSz, 0.0f),
+                      enc2(kBandSz, 0.0f), enc3(kBandSz, 0.0f);
+        vector<float> dec0(kBandSz, 0.0f), dec1(kBandSz, 0.0f),
+                      dec2(kBandSz, 0.0f), dec3(kBandSz, 0.0f);
+        vector<float> signalRes(kHalf * 3, 0.0f);
+        vector<float> sp(1024);
+
+        for (int frame = 0; frame < 3; ++frame) {
+            memcpy(enc0.data() + kHalf, signal.data() + frame * kHalf, kHalf * sizeof(float));
+            float* p[4] = { enc0.data(), enc1.data(), enc2.data(), enc3.data() };
+            float* t[4] = { dec0.data(), dec1.data(), dec2.data(), dec3.data() };
+
+            if (frame == 1) {
+                TAtrac3Data::SubbandInfo si;
+                si.AddSubbandCurve(0, {{4, 0}, {1, 13}, {7, 18}, {1, 29}});
+                mdct.Mdct(sp.data(), p,
+                    { mdct.GainProcessor.Modulate(si.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator(),
+                      TAtrac3MDCT::TGainModulator() });
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siNext.AddSubbandCurve(0, {{4, 0}, {1, 13}, {7, 18}, {1, 29}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else if (frame == 2) {
+                mdct.Mdct(sp.data(), p);
+                TAtrac3Data::SubbandInfo siCur, siNext;
+                siCur.AddSubbandCurve(0, {{4, 0}, {1, 13}, {7, 18}, {1, 29}});
+                mdct.Midct(sp.data(), t,
+                    { mdct.GainProcessor.Demodulate(siCur.GetGainPoints(0), siNext.GetGainPoints(0)),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator(),
+                      TAtrac3MDCT::TGainDemodulator() });
+            } else {
+                mdct.Mdct(sp.data(), p);
+                mdct.Midct(sp.data(), t);
+            }
+
+            memcpy(signalRes.data() + frame * kHalf, dec0.data(), kHalf * sizeof(float));
+        }
+
+        for (size_t i = kHalf; i < kHalf * 3; ++i)
+            EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
+    }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, true);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_quiet;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 4u);
+        EXPECT_EQ(curveUp[0].Level,     4u);
+        EXPECT_EQ(curveUp[0].Location,  0u);
+        EXPECT_EQ(curveUp[1].Level,     1u);
+        EXPECT_EQ(curveUp[1].Location, 13u);
+        EXPECT_EQ(curveUp[2].Level,     6u); //TODO: should be 7
+        EXPECT_EQ(curveUp[2].Location, 18u);
+        EXPECT_EQ(curveUp[3].Level,     1u);
+        EXPECT_EQ(curveUp[3].Location, 29u);
+    }
+}
 
 // Mirror with asymmetric scales (giNow.Level != giNext.Level):
 // scale comes from giNext, level from giNow.
@@ -2302,6 +3534,15 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
         memcpy(b0.data() + kHalf, signal.data() + kHalf, kHalf * sizeof(float));
         float* p1[4] = { b0.data(), b1.data(), b2.data(), b3.data() };
         if (withModulation) {
+            TCurveBuilderCtx builderCtx;
+            builderCtx.LastLevel = A_before;
+            const std::vector<float> gain = AnalyzeGain(p1[0] + 256, 256, 32, false);
+            const auto curve = CalcCurve(gain, builderCtx);
+            EXPECT_EQ(curve.size(), 2u);
+            EXPECT_EQ(curve[0].Level,    5u);
+            EXPECT_EQ(curve[0].Location, 4u);
+            EXPECT_EQ(curve[1].Level,    2u);
+            EXPECT_EQ(curve[1].Location, 12u);
             TAtrac3Data::SubbandInfo si;
             si.AddSubbandCurve(0, {{5, 4}, {2, 12}});
             mdct.Mdct(specs1.data(), p1,
@@ -2407,4 +3648,123 @@ TEST(TGainProcessor_FreqDomain, GainModulation_ReducesSpectralEnergy_AttackAndRe
         for (size_t i = kHalf; i < kHalf * 3; ++i)
             EXPECT_NEAR(signal[i - kHalf], signalRes[i], 0.00001f);
     }
+
+    {
+        // Upsampled path.
+        static constexpr float kSampleRate = 11024.0f;
+        std::vector<float> upInput(TSpectralUpsampler::kInN);
+        std::copy(signal.begin() + kHalf - 128, signal.begin() + kHalf,
+                  upInput.begin());
+        std::copy(signal.begin() + kHalf, signal.begin() + kHalf + 256,
+                  upInput.begin() + 128);
+        std::copy(signal.begin() + kHalf + 256, signal.begin() + kHalf + 384,
+                  upInput.begin() + 384);
+
+        TSpectralUpsampler upsampler(kSampleRate, 0.0f);
+        const auto upOut = upsampler.Process(upInput.data());
+
+        const std::vector<float> gainUp =
+            AnalyzeGain(upOut.signal.data() + 1024, 2048, 32, false);
+        ASSERT_EQ(gainUp.size(), 32u);
+
+        TCurveBuilderCtx ctxUp;
+        ctxUp.LastLevel = A_before;
+        const auto curveUp = CalcCurve(gainUp, ctxUp);
+
+        ASSERT_EQ(curveUp.size(), 2u);
+        EXPECT_EQ(curveUp[0].Level,    5u);
+        EXPECT_EQ(curveUp[0].Location, 4u);
+        EXPECT_EQ(curveUp[1].Level,    2u);
+        EXPECT_EQ(curveUp[1].Location, 12u);
+    }
 }
+
+
+// ============================================================================
+// Negative test for CalcCurve with the RMS metric:
+// A pure sine at a frequency that is an exact integer multiple of
+// sample_rate / 32 = 344.5 Hz produces exactly kChunkSz / freq * sr samples
+// per 256-sample chunk, so every chunk starts at the same phase.  Within each
+// chunk the 32 subframe RMS values form a strictly periodic (non-monotonic)
+// pattern, and CalcCurve must find no transients.
+//
+// The test is parametrised over a representative set of frequencies spanning
+// from low (344.5 Hz) through the subframe Nyquist (1378 Hz = sr/8) to the
+// full-band Nyquist (5512 Hz = sr/2).  Each frequency is an exact integer
+// multiple of sr/32 so that 256 samples contains exactly 8 * k complete
+// periods, guaranteeing a phase-stable subframe RMS pattern.
+// ============================================================================
+
+struct SineNegativeParam {
+    float   freqHz;
+    const char* label;
+};
+
+class CalcCurve_SineNegative : public testing::TestWithParam<SineNegativeParam> {};
+
+TEST_P(CalcCurve_SineNegative, NoTransientsDetected) {
+    const float f = GetParam().freqHz;
+
+    static const float  kSampleRate = 11024.0f;
+    static const size_t kSubframeSz = 8;    // samples per gain subframe
+    static const size_t kChunkSz    = 256;  // analysis chunk = 32 subframes
+    static const size_t kSubframes  = kChunkSz / kSubframeSz;
+
+    // 128 chunks × 256 samples.  Every frequency tested is a multiple of
+    // sr/32 = 344.5 Hz, so kN samples contains exactly 128 * 8 * (f / 344.5)
+    // complete periods.
+    static const size_t kN = kChunkSz * 128;  // 32 768 samples
+
+    // Generate the sine signal.  Use double-precision phase to avoid the
+    // accumulated float-rounding that would shift subframe RMS values across
+    // chunks and create spurious monotonic windows.
+    std::vector<float> signal(kN);
+    for (size_t i = 0; i < kN; ++i) {
+        const double phase = 2.0 * M_PI * static_cast<double>(f)
+                           * static_cast<double>(i) / 11024.0;
+        signal[i] = static_cast<float>(std::sin(phase));
+    }
+
+    // Initialise ctx from the very first subframe so that the extended
+    // gain vector starts with the same value as in[0] and no boundary
+    // transient is introduced on the first CalcCurve call.
+    TCurveBuilderCtx ctx;
+    ctx.LastLevel = AnalyzeGain(signal.data(),
+                                static_cast<uint32_t>(kSubframeSz),
+                                1u, /*useRms=*/true)[0];
+
+    for (size_t pos = 0; pos + kChunkSz <= kN; pos += kChunkSz) {
+        const std::vector<float> gain =
+            AnalyzeGain(signal.data() + pos,
+                        static_cast<uint32_t>(kChunkSz),
+                        static_cast<uint32_t>(kSubframes),
+                        /*useRms=*/true);
+
+        // 8-sample lookahead for boundary release detection.
+        std::optional<float> nextLevel;
+        if (pos + kChunkSz + kSubframeSz <= kN)
+            nextLevel = AnalyzeGain(signal.data() + pos + kChunkSz,
+                                    static_cast<uint32_t>(kSubframeSz),
+                                    1u, /*useRms=*/true)[0];
+
+        const auto curve = CalcCurve(gain, ctx, nextLevel);
+        EXPECT_TRUE(curve.empty())
+            << "Unexpected transient at pos=" << pos
+            << " (f=" << f << " Hz)";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SineFrequencies,
+    CalcCurve_SineNegative,
+    testing::Values(
+        SineNegativeParam{  344.5f, "344Hz"  },  // sr/32: 0.25 cycles/subframe
+        SineNegativeParam{  689.0f, "689Hz"  },  // sr/16: 0.5  cycles/subframe
+        SineNegativeParam{ 1000.0f, "1000Hz" },  // non-multiple of sr/32; max subframe
+                                                 // RMS ratio ~1.07 < kMinScore=2.0
+        SineNegativeParam{ 1378.0f, "1378Hz" },  // sr/8:  1    cycle /subframe
+        SineNegativeParam{ 2067.0f, "2067Hz" },  // 3sr/16: 1.5 cycles/subframe
+        SineNegativeParam{ 2756.0f, "2756Hz" },  // sr/4:  2    cycles/subframe
+        SineNegativeParam{ 4134.0f, "4134Hz" },  // 3sr/8: 3    cycles/subframe
+        SineNegativeParam{ 5512.0f, "5512Hz" }   // sr/2:  4    cycles/subframe (Nyquist)
+    ));

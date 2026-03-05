@@ -80,6 +80,7 @@ set(SOURCE_ATRACDENC_IMPL
     aea.cpp
     env.cpp
     transient_detector.cpp
+    transient_spectral_upsampler.cpp
     atrac1denc.cpp
     atrac/at1/atrac1.cpp
     atrac/at1/atrac1_bitalloc.cpp

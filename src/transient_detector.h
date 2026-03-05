@@ -19,6 +19,7 @@
 #pragma once
 #include <math.h>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "config.h"
@@ -48,5 +49,17 @@ public:
 };
 
 std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms);
+
+struct TGainCurvePoint {
+    uint32_t Level;
+    uint32_t Location;
+};
+
+struct TCurveBuilderCtx {
+    float LastLevel;
+};
+
+std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
+                                       std::optional<float> nextLevel = {});
 
 }
