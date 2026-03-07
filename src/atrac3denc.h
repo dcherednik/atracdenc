@@ -102,6 +102,10 @@ public:
     };
 private:
     std::vector<std::vector<TTransientParam>> TransientParamsHistory;
+    bool LookAheadPending = true;
+    // [channel][band][prev_128 | current_256 | lookahead_256]
+    // &LookAheadBuf[ch][b][0] is the 512-sample input for TSpectralUpsampler
+    float LookAheadBuf[2][4][640] = {};
     static constexpr float LoudFactor = 0.006;
     float Loudness = LoudFactor;
 #ifdef ATRAC_UT_PUBLIC
@@ -109,7 +113,7 @@ public:
 #endif
     float LimitRel(float x);
     TTransientParam CalcTransientParam(const std::vector<float>& gain, float lastMax);
-    void CreateSubbandInfo(float* in[4], uint32_t channel,
+    void CreateSubbandInfo(const float* upInput[4], uint32_t channel,
                            TAtrac3Data::SubbandInfo* subbandInfo);
     void ResetTransientParamsHistory(int channel, int band);
     void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);

@@ -208,7 +208,7 @@ TAtrac3Encoder::TTransientParam TAtrac3Encoder::CalcTransientParam(const std::ve
     return {attack0Location, attack0Relation, attack1Location, attack1Relation, releaseLocation, releaseRelation};
 }
 
-void TAtrac3Encoder::CreateSubbandInfo(float* in[4],
+void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          uint32_t channel,
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
@@ -220,7 +220,7 @@ void TAtrac3Encoder::CreateSubbandInfo(float* in[4],
 
     for (int band = 0; band < 4; ++band) {
 
-        const float* srcBuff = in[band];
+        const float* srcBuff = upInput[band] + 128; // current frame: LookAheadBuf[ch][b][128..383]
 
         const float* const lastMax = &PrevPeak[channel][band];
 
@@ -306,16 +306,34 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
     return [this, bitStreamWriter, buf](float* data, const TPCMEngine::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
+        // QMF-filter into the appropriate slot of LookAheadBuf:
+        //   first call  → current slot  [128..383]
+        //   later calls → lookahead slot [384..639]
+        const int qmfOffset = LookAheadPending ? 128 : 384;
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
             float src[TAtrac3Data::NumSamples];
-
             for (size_t i = 0; i < TAtrac3Data::NumSamples; ++i) {
-                src[i] = data[i * meta.Channels  + channel] / 4.0;
+                src[i] = data[i * meta.Channels + channel] / 4.0;
             }
+            float* p[4] = {
+                &LookAheadBuf[channel][0][qmfOffset],
+                &LookAheadBuf[channel][1][qmfOffset],
+                &LookAheadBuf[channel][2][qmfOffset],
+                &LookAheadBuf[channel][3][qmfOffset]
+            };
+            AnalysisFilterBank[channel].Analysis(&src[0], p);
+        }
 
-            {
-                float* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
-                AnalysisFilterBank[channel].Analysis(&src[0], p);
+        if (LookAheadPending) {
+            LookAheadPending = false;
+            return TPCMEngine::EProcessResult::LOOK_AHEAD;
+        }
+
+        // Copy current slot [128..383] into PcmBuffer.GetSecond for MDCT
+        for (uint32_t channel = 0; channel < meta.Channels; channel++) {
+            for (int b = 0; b < 4; b++) {
+                memcpy(PcmBuffer.GetSecond(channel + b * 2),
+                       &LookAheadBuf[channel][b][128], 256 * sizeof(float));
             }
         }
 
@@ -329,14 +347,24 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
 
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
-                float* p[4] = {PcmBuffer.GetSecond(channel), PcmBuffer.GetSecond(channel+2), PcmBuffer.GetSecond(channel+4), PcmBuffer.GetSecond(channel+6)};
-                CreateSubbandInfo(p, channel, &sce->SubbandInfo); //4 detectors per band
+                // upInput[b] = &LookAheadBuf[channel][b][0]:
+                //   [0..127]   prev tail (last 128 of previous frame)
+                //   [128..383] current frame (pre-matrixing)
+                //   [384..511] first 128 of lookahead frame
+                // Ready to pass directly to TSpectralUpsampler::Process()
+                const float* up[4] = {
+                    LookAheadBuf[channel][0], LookAheadBuf[channel][1],
+                    LookAheadBuf[channel][2], LookAheadBuf[channel][3]
+                };
+                CreateSubbandInfo(up, channel, &sce->SubbandInfo);
             }
 
             float* maxOverlapLevels = PrevPeak[channel];
-
             {
-                float* p[4] = {PcmBuffer.GetFirst(channel), PcmBuffer.GetFirst(channel+2), PcmBuffer.GetFirst(channel+4), PcmBuffer.GetFirst(channel+6)};
+                float* p[4] = {
+                    PcmBuffer.GetFirst(channel),   PcmBuffer.GetFirst(channel + 2),
+                    PcmBuffer.GetFirst(channel + 4), PcmBuffer.GetFirst(channel + 6)
+                };
                 Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
@@ -371,6 +399,18 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
         }
 
         bitStreamWriter->WriteSoundUnit(SingleChannelElements, Loudness / LoudFactor);
+
+        // Advance look-ahead state: shift buffer left by 256 samples per band
+        //   old [256..383] (last 128 of current) → [0..127]  new prev tail
+        //   old [384..639] (lookahead)            → [128..383] new current
+        //   [384..639] will be filled by the next QMF call
+        for (uint32_t channel = 0; channel < meta.Channels; channel++) {
+            for (int b = 0; b < 4; b++) {
+                memmove(LookAheadBuf[channel][b],
+                        LookAheadBuf[channel][b] + 256, 384 * sizeof(float));
+            }
+        }
+
         return TPCMEngine::EProcessResult::PROCESSED;
     };
 }
