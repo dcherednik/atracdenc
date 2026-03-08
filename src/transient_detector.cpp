@@ -188,9 +188,22 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     // the wrong (loud) target.  nextLevel tells us where the signal is going.
     const float target         = nextLevel.has_value() ? *nextLevel : in.back();
     const float savedLastLevel = ctx.LastLevel;
-    ctx.LastLevel = target;
+    // Store in.back() as the next call's savedLastLevel instead of target (nextLevel).
+    // Both in.back() (last analysis subframe of this call) and gain[0] of the next
+    // call (first analysis subframe of the next frame) are measured in the analysis
+    // domain and represent adjacent time blocks.  Using nextLevel here would make
+    // savedLastLevel a lookahead-domain estimate of the same samples that gain[0]
+    // measures in the analysis domain — a different FFT context for the same 8
+    // samples, which can produce false boundary transients.
+    ctx.LastLevel = in.back();
 
     if (target < 1e-6f)
+        return curve;
+
+    // No valid prior-frame context: record the context for next frame but do not
+    // emit a curve.  A zero savedLastLevel would produce scaleLevel=15 (÷2048),
+    // causing extreme amplification in the gain modulator.
+    if (savedLastLevel < 1e-6f)
         return curve;
 
     // Step 1: find all transient positions via recursive divide-and-conquer.
@@ -211,7 +224,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
         ext.push_back(*nextLevel);
 
     std::vector<int> transients;
-    int budget = 8;  // ATRAC3 SubbandInfo::MaxGainPointsNum
+    int budget = 7;  // ATRAC3 bitstream: 3 bits for count → max 7 (< MaxGainPointsNum=8)
     FindTransients(ext, 0, static_cast<int>(ext.size()) - 1, budget, transients);
     for (int& t : transients)
         --t;

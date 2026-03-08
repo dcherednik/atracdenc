@@ -3768,3 +3768,606 @@ INSTANTIATE_TEST_SUITE_P(
         SineNegativeParam{ 4134.0f, "4134Hz" },  // 3sr/8: 3    cycles/subframe
         SineNegativeParam{ 5512.0f, "5512Hz" }   // sr/2:  4    cycles/subframe (Nyquist)
     ));
+
+// ============================================================================
+// Issue #1 investigation: false boundary transient from FFT-window context
+// mismatch (see gain_control_issues.md, Issue 1).
+//
+// In the encoder the level context is tracked across frames as follows:
+//
+//   CreateSubbandInfo call N (frame N as current, frame N+1 as lookahead):
+//     result = Upsampler.Process(LookAheadBuf[ch][b][0..511])
+//       where layout is [prev_128 | frame_N_256 | frame_N+1_first_128]
+//     nextLevel   = AnalyzeGain(result.signal + 3072, 64, 1)[0]
+//                 = RMS of upsampled frame_N+1[0..7]  IN LOOKAHEAD POSITION
+//     ctx.LastLevel = nextLevel   <- saved for next call
+//
+//   CreateSubbandInfo call N+1 (frame N+1 as current):
+//     result = Upsampler.Process(LookAheadBuf[ch][b][0..511])
+//       where layout is [frame_N_last_128 | frame_N+1_256 | frame_N+2_first_128]
+//     savedLastLevel = ctx.LastLevel  = nextLevel from call N
+//                    = RMS of same 8 original samples IN LOOKAHEAD POSITION
+//     gain[0] = AnalyzeGain(result.signal + 1024, 64, 1)[0]
+//             = RMS of same 8 original samples IN ANALYSIS POSITION
+//
+// Because the two estimates use different 512-sample FFT contexts (the
+// lookahead position sees a short onset burst; the analysis position sees the
+// full sustained tone), their amplitudes can differ by more than kMinScore=2.0.
+//
+// CalcCurve then builds ext = [savedLastLevel, gain[0], gain[1], ...] and
+// FindTransients detects the step at the boundary as a transient at Location=0,
+// even though the analysis region contains a constant-amplitude tone with no
+// real transient.
+//
+// Empirical finding: for a pure tone onset with 128-sample lookahead, the
+// Planck window keeps both estimates in the flat-top region, and the ratio
+// stays at ≈1.0 (Issue #1 cannot be triggered with simple periodic signals).
+// The roundtrip test below attempts to reproduce the issue with pseudo-random
+// music-like signals and injected quantization noise.
+// ============================================================================
+
+TEST(BoundaryLevelMismatch, Issue1_FalseTransientOnConstantTone_AfterOnset) {
+    const float kSampleRate = 11025.0f;
+    const float kLowCutHz   = 600.0f;
+    const float kFreq       = 2000.0f;  // well above HPF cutoff
+    const float kAmplitude  = 0.5f;
+
+    TSpectralUpsampler upsampler(kSampleRate, kLowCutHz);
+
+    // --- Call N: current frame = silence, lookahead = onset of tone ---
+    // LookAheadBuf[0..383] = silence, LookAheadBuf[384..511] = tone[0..127]
+    std::vector<float> input1(512, 0.0f);
+    for (int i = 0; i < 128; ++i)
+        input1[384 + i] = kAmplitude * std::sin(2.0f * M_PI * kFreq * i / kSampleRate);
+
+    auto result1 = upsampler.Process(input1.data());
+
+    // savedLastLevel as set by call N: upsampled lookahead [3072..3135]
+    // = first 8 original samples of the tone in the LOOKAHEAD position
+    const float savedLastLevel = AnalyzeGain(result1.signal.data() + 3072, 64, 1, true)[0];
+
+    // --- Call N+1: current frame = tone (onset at sample 0), lookahead = more tone ---
+    // After the encoder's memmove(+256, 384 bytes):
+    //   [0..127]  = last 128 of silence (zeros)
+    //   [128..511] = continuous tone from sample 0 of frame N+1
+    std::vector<float> input2(512, 0.0f);
+    for (int i = 0; i < 384; ++i)
+        input2[128 + i] = kAmplitude * std::sin(2.0f * M_PI * kFreq * i / kSampleRate);
+
+    auto result2 = upsampler.Process(input2.data());
+
+    // gain[0] as computed in call N+1: upsampled analysis [1024..1087]
+    // = first 8 original samples of the tone in the ANALYSIS position
+    const float in0 = AnalyzeGain(result2.signal.data() + 1024, 64, 1, true)[0];
+
+    // Both savedLastLevel and in0 represent the first 8 samples of the tone.
+    // For a window-stable estimator these should be ≈ equal (ratio ≈ 1.0).
+    // A ratio >= kMinScore=2.0 means CalcCurve will see
+    //   ext = [savedLastLevel, in0, in0, ...] as a rising monotonic window
+    // and emit a false transient at Location=0.
+    const float lo    = std::min(savedLastLevel, in0);
+    const float hi    = std::max(savedLastLevel, in0);
+    const float ratio = hi / std::max(lo, 1e-9f);
+
+    EXPECT_LT(ratio, 2.0f)
+        << "Boundary amplitude mismatch between lookahead and analysis position:"
+        << " savedLastLevel=" << savedLastLevel
+        << " in[0]=" << in0
+        << " ratio=" << ratio
+        << " (>= 2.0 triggers a false Location=0 transient in CalcCurve)";
+
+    // Verify that CalcCurve actually emits the false transient.
+    // The analysis region of input2 is a pure constant-amplitude tone;
+    // there is no real transient, so the curve must be empty.
+    TCurveBuilderCtx ctx;
+    ctx.LastLevel = savedLastLevel;
+
+    const auto gain      = AnalyzeGain(result2.signal.data() + 1024, 2048, 32, true);
+    const float nextLevel = AnalyzeGain(result2.signal.data() + 3072, 64, 1, true)[0];
+    const auto curve     = CalcCurve(gain, ctx, nextLevel);
+
+    EXPECT_TRUE(curve.empty())
+        << "False boundary transient emitted:"
+        << " Location=" << (curve.empty() ? -1 : (int)curve[0].Location)
+        << " Level="    << (curve.empty() ? -1 : (int)curve[0].Level)
+        << " (should be empty — analysis region is a flat tone)";
+}
+
+// ============================================================================
+// Issue #1 roundtrip: MDCT→IMDCT perfect-reconstruction baseline.
+//
+// Step 1 (this test): pure MDCT→IMDCT loop with NO gain modulation and NO
+//   quantisation noise.  Verifies that the band-0 loop reconstructs the
+//   original signal to floating-point precision before any gain or noise is
+//   added.
+//
+// Step 2 (Issue1_MdctRoundtrip_WithGain): enable gain modulation with NO
+//   noise — roundtrip must still be lossless even with "wrong" gain curves.
+// Step 3 (TODO): inject coarse spectral noise to expose scaleLevel errors.
+//
+// Signal: a 1500 Hz sine carrier whose amplitude is raised or lowered by
+//   pseudo-random bursts of 8–256 samples at random positions (spaced at
+//   least kMinEventDist samples apart).  kMinEventDist is a compile-time
+//   parameter so the test can be re-run with different event densities.
+// ============================================================================
+
+// Minimum number of samples between consecutive amplitude events.
+// Increasing this value makes events rarer; decreasing makes them denser.
+static constexpr int kMinEventDist = 512;
+
+TEST(BoundaryLevelMismatch, Issue1_MdctRoundtrip_NoGain) {
+    static constexpr int   kTotalSamples = kMinEventDist * 64;  // ~3 seconds at 11025 Hz
+    static constexpr int   kFrameSz      = 256;   // ATRAC3 samples per subband frame
+    static constexpr int   kBandSz       = 512;   // encoder band buffer = 2 × kFrameSz
+    static constexpr int   kNumFrames    = kTotalSamples / kFrameSz;
+    static constexpr float kSampleRate   = 11025.0f;
+    static constexpr float kCarrierHz    = 1500.0f;   // well above 600 Hz HPF cutoff
+    static constexpr float kBaseAmp      = 0.1f;
+    static constexpr float kBurstAmpLo   = 0.3f;
+    static constexpr float kBurstAmpHi   = 0.9f;
+
+    // -----------------------------------------------------------------------
+    // Signal generation.
+    // Fill with quiet carrier, then insert random amplitude bursts (8–256
+    // samples, amplitude in [kBurstAmpLo, kBurstAmpHi]) at positions spaced
+    // at least kMinEventDist samples apart.
+    // -----------------------------------------------------------------------
+    std::vector<float> signal(kTotalSamples);
+    for (int s = 0; s < kTotalSamples; ++s)
+        signal[s] = kBaseAmp * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+
+    {
+        uint32_t lcg = 0xdeadbeef;
+        auto nextLCG = [&]() -> uint32_t {
+            lcg = lcg * 1664525u + 1013904223u;
+            return lcg;
+        };
+
+        int pos = kMinEventDist;   // leave a quiet prefix
+        while (pos + kMinEventDist < kTotalSamples) {
+            // Burst length: 8 to 256 samples (biased toward shorter bursts)
+            int   burstLen = 8 + int(nextLCG() >> 24) % 249;
+            float burstAmp = kBurstAmpLo
+                           + (kBurstAmpHi - kBurstAmpLo) * float(nextLCG() & 0xff) / 255.0f;
+            int   end = std::min(pos + burstLen, kTotalSamples);
+            for (int s = pos; s < end; ++s)
+                signal[s] = burstAmp
+                          * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+            // Advance: burst + mandatory gap + small random extra gap
+            pos += burstLen + kMinEventDist + int(nextLCG() >> 16) % (kMinEventDist / 4);
+        }
+    }
+
+    TAtrac3MDCT mdct;
+
+    // Four 512-sample encoder band buffers — only band 0 carries signal;
+    // bands 1–3 hold zeros and are needed because Mdct/Midct iterate all 4.
+    std::vector<float> encB0(kBandSz, 0.0f), encB1(kBandSz, 0.0f),
+                       encB2(kBandSz, 0.0f), encB3(kBandSz, 0.0f);
+    // Matching decoder buffers.
+    std::vector<float> decB0(kBandSz, 0.0f), decB1(kBandSz, 0.0f),
+                       decB2(kBandSz, 0.0f), decB3(kBandSz, 0.0f);
+    std::vector<float> sp(1024, 0.0f);
+
+    // reconstructed[n] will hold the IMDCT output for the n-th frame of band 0.
+    // Due to the MDCT overlap-add structure, IMDCT of frame F reconstructs
+    // signal frame F-1 (one-frame lag).
+    std::vector<float> reconstructed(kTotalSamples, 0.0f);
+
+    for (int frame = 0; frame < kNumFrames; ++frame) {
+        // Copy current frame into the upper half of the encoder band buffer.
+        // The lower half (encB0[0..255]) is filled automatically by MDCT with
+        // the windowed version of the previous frame after each call.
+        memcpy(encB0.data() + kFrameSz,
+               signal.data() + frame * kFrameSz,
+               kFrameSz * sizeof(float));
+
+        // --- Encode: plain MDCT, no gain modulation ---
+        {
+            float* bands[4] = { encB0.data(), encB1.data(), encB2.data(), encB3.data() };
+            mdct.Mdct(sp.data(), bands);   // TGainModulatorArray defaults to all-null
+        }
+
+        // TODO Step 3: inject spectral noise here (coarse quantisation model).
+
+        // --- Decode: plain IMDCT, no gain demodulation ---
+        {
+            float* bands[4] = { decB0.data(), decB1.data(), decB2.data(), decB3.data() };
+            mdct.Midct(sp.data(), bands);  // TGainDemodulatorArray defaults to all-null
+        }
+
+        // Collect reconstructed output: IMDCT of frame F → reconstruction of frame F-1.
+        if (frame >= 1)
+            memcpy(reconstructed.data() + (frame - 1) * kFrameSz,
+                   decB0.data(), kFrameSz * sizeof(float));
+    }
+
+    // -----------------------------------------------------------------------
+    // Reconstruction quality check.
+    // Skip the first kSkipFrames where the IMDCT state has not yet converged
+    // (frame 0's IMDCT output uses a zero prev-buffer).
+    // -----------------------------------------------------------------------
+    static constexpr int   kSkipFrames = 1;
+    static constexpr float kErrLimit   = 1e-5f;  // floating-point round-trip tolerance
+
+    float maxErr = 0.0f;
+    for (int frame = kSkipFrames; frame <= kNumFrames - 2; ++frame) {
+        for (int s = 0; s < kFrameSz; ++s) {
+            const float err = std::abs(reconstructed[frame * kFrameSz + s]
+                                       - signal[frame * kFrameSz + s]);
+            if (err > maxErr) maxErr = err;
+        }
+    }
+
+    EXPECT_LT(maxErr, kErrLimit)
+        << "Pure MDCT→IMDCT roundtrip error " << maxErr
+        << " exceeds " << kErrLimit
+        << " — the loop itself is broken before any gain modulation is added.";
+}
+
+// ============================================================================
+// Step 2: MDCT→IMDCT with gain modulation, still NO quantisation noise.
+//
+// The gain pipeline (Upsampler → CalcCurve → Modulate → MDCT → IMDCT →
+// Demodulate) must preserve the signal exactly in the lossless case.
+// Modulate and Demodulate are exact inverses for any gain curve, so the
+// reconstruction error must remain < kErrLimit regardless of whether
+// CalcCurve emits "correct" or "spurious" gain points.
+//
+// If this test fails, the Modulate/Demodulate pairing or the LookAheadBuf
+// management is broken independently of the quantisation amplification
+// investigated in Step 3.
+// ============================================================================
+TEST(BoundaryLevelMismatch, Issue1_MdctRoundtrip_WithGain) {
+    static constexpr int   kTotalSamples = kMinEventDist * 64;
+    static constexpr int   kFrameSz      = 256;
+    static constexpr int   kBandSz       = 512;
+    static constexpr int   kNumFrames    = kTotalSamples / kFrameSz;
+    static constexpr float kSampleRate   = 11025.0f;
+    static constexpr float kLowCutHz     = 600.0f;
+    static constexpr float kCarrierHz    = 1500.0f;
+    static constexpr float kBaseAmp      = 0.1f;
+    static constexpr float kBurstAmpLo   = 0.3f;
+    static constexpr float kBurstAmpHi   = 0.9f;
+
+    // Same deterministic signal as Issue1_MdctRoundtrip_NoGain.
+    std::vector<float> signal(kTotalSamples);
+    for (int s = 0; s < kTotalSamples; ++s)
+        signal[s] = kBaseAmp * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+    {
+        uint32_t lcg = 0xdeadbeef;
+        auto nextLCG = [&]() -> uint32_t {
+            lcg = lcg * 1664525u + 1013904223u;
+            return lcg;
+        };
+        int pos = kMinEventDist;
+        while (pos + kMinEventDist < kTotalSamples) {
+            int   burstLen = 8 + int(nextLCG() >> 24) % 249;
+            float burstAmp = kBurstAmpLo
+                           + (kBurstAmpHi - kBurstAmpLo) * float(nextLCG() & 0xff) / 255.0f;
+            int   end = std::min(pos + burstLen, kTotalSamples);
+            for (int s = pos; s < end; ++s)
+                signal[s] = burstAmp
+                          * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+            pos += burstLen + kMinEventDist + int(nextLCG() >> 16) % (kMinEventDist / 4);
+        }
+    }
+
+    TAtrac3MDCT        mdct;
+    TSpectralUpsampler upsampler(kSampleRate, kLowCutHz);
+    TCurveBuilderCtx   ctx = {};
+
+    std::vector<float> encB0(kBandSz, 0.0f), encB1(kBandSz, 0.0f),
+                       encB2(kBandSz, 0.0f), encB3(kBandSz, 0.0f);
+    std::vector<float> decB0(kBandSz, 0.0f), decB1(kBandSz, 0.0f),
+                       decB2(kBandSz, 0.0f), decB3(kBandSz, 0.0f);
+    std::vector<float> sp(1024, 0.0f);
+
+    // Upsampler window: [prev_128 | current_256 | next_128] = 512 samples.
+    // [0..127] is maintained automatically by the memmove at the end of each
+    // iteration; [128..383] and [384..511] are filled at the start.
+    float lookAheadBuf[512] = {};
+
+    // Gain curves for consecutive frames; siPrev is always the curve that was
+    // used in Modulate for the immediately preceding MDCT call.
+    TAtrac3Data::SubbandInfo siPrev;
+    TAtrac3Data::SubbandInfo siCur;
+
+    std::vector<float> reconstructed(kTotalSamples, 0.0f);
+
+    for (int frame = 0; frame < kNumFrames; ++frame) {
+        const float* curFrm = signal.data() + frame * kFrameSz;
+
+        // --- Update upsampler window ---
+        // [0..127] already contains the last 128 samples of frame N-1.
+        memcpy(lookAheadBuf + 128, curFrm, kFrameSz * sizeof(float));
+        if (frame + 1 < kNumFrames)
+            memcpy(lookAheadBuf + 384, signal.data() + (frame + 1) * kFrameSz,
+                   128 * sizeof(float));
+        else
+            memset(lookAheadBuf + 384, 0, 128 * sizeof(float));
+
+        // --- Gain curve (mirrors CreateSubbandInfo for band 0) ---
+        siPrev = siCur;
+        siCur  = TAtrac3Data::SubbandInfo();
+
+        auto result = upsampler.Process(lookAheadBuf);
+        if (result.highFreqRatio >= TSpectralUpsampler::kHighFreqThreshold) {
+            const auto  gain      = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
+            const float nextLevel = AnalyzeGain(result.signal.data() + 3072,   64,  1, true)[0];
+            auto curvePoints = CalcCurve(gain, ctx, nextLevel);
+            if (!curvePoints.empty()) {
+                std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
+                curve.reserve(curvePoints.size());
+                for (const auto& p : curvePoints)
+                    curve.push_back({p.Level, p.Location});
+                siCur.AddSubbandCurve(0, std::move(curve));
+            }
+        } else {
+            ctx.LastLevel = 0.0f;
+        }
+
+        // --- Encode: Modulate(siCur) → MDCT ---
+        memcpy(encB0.data() + kFrameSz, curFrm, kFrameSz * sizeof(float));
+        {
+            float* bands[4] = { encB0.data(), encB1.data(), encB2.data(), encB3.data() };
+            mdct.Mdct(sp.data(), bands,
+                { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        }
+
+        // TODO Step 3: inject spectral noise here to expose scaleLevel errors.
+
+        // --- Decode: IMDCT → Demodulate(siPrev, siCur) ---
+        {
+            float* bands[4] = { decB0.data(), decB1.data(), decB2.data(), decB3.data() };
+            mdct.Midct(sp.data(), bands,
+                { mdct.GainProcessor.Demodulate(siPrev.GetGainPoints(0),
+                                                siCur.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainDemodulator(),
+                  TAtrac3MDCT::TGainDemodulator(),
+                  TAtrac3MDCT::TGainDemodulator() });
+        }
+
+        // IMDCT of frame F reconstructs signal frame F-1.
+        if (frame >= 1)
+            memcpy(reconstructed.data() + (frame - 1) * kFrameSz,
+                   decB0.data(), kFrameSz * sizeof(float));
+
+        // Advance upsampler window: old [256..511] becomes [0..255].
+        memmove(lookAheadBuf, lookAheadBuf + 256, 256 * sizeof(float));
+    }
+
+    // -----------------------------------------------------------------------
+    // Reconstruction check.
+    // Skip frame 0 (IMDCT prev-buffer cold-start) and the last frame
+    // (not yet collected).  Everything in between must reconstruct exactly.
+    // -----------------------------------------------------------------------
+    static constexpr int   kSkipFrames = 1;
+    static constexpr float kErrLimit   = 1e-4f;  // slightly looser than no-gain baseline
+                                                   // to tolerate gain-ramp float arithmetic
+
+    float maxErr = 0.0f;
+    for (int frame = kSkipFrames; frame <= kNumFrames - 2; ++frame) {
+        for (int s = 0; s < kFrameSz; ++s) {
+            const float err = std::abs(reconstructed[frame * kFrameSz + s]
+                                       - signal[frame * kFrameSz + s]);
+            if (err > maxErr) maxErr = err;
+        }
+    }
+
+    EXPECT_LT(maxErr, kErrLimit)
+        << "MDCT→IMDCT roundtrip WITH gain modulation, error " << maxErr
+        << " exceeds " << kErrLimit
+        << " — Modulate/Demodulate are not exact inverses, or the siPrev/siCur"
+           " pairing is wrong.";
+}
+
+// ============================================================================
+// Step 3 — same signal + gain modulation + coarse spectral quantization.
+//
+// Gain modulation divides spectral coefficients before MDCT (Modulate) and
+// multiplies them back after IMDCT (Demodulate).  Any quantisation noise
+// injected between MDCT and IMDCT therefore gets amplified by the inverse
+// of the gain level that was applied.  If the gain curve is *wrong* the
+// amplification factor may be much larger than expected and the per-frame
+// reconstruction energy will blow up.
+//
+// For each frame that exceeds kFrameRmsLimit the test prints:
+//   frame index, energy error, RMS error, multiple of kQuantStep,
+//   and whether siCur had a non-empty gain curve.
+// ============================================================================
+TEST(BoundaryLevelMismatch, Issue1_RoundtripWithGainAndQuantization) {
+    static constexpr int   kTotalSamples = kMinEventDist * 64;
+    static constexpr int   kFrameSz      = 256;
+    static constexpr int   kBandSz       = 512;
+    static constexpr int   kNumFrames    = kTotalSamples / kFrameSz;
+    static constexpr float kSampleRate   = 11025.0f;
+    static constexpr float kLowCutHz     = 600.0f;
+    static constexpr float kCarrierHz    = 1500.0f;
+    static constexpr float kBaseAmp      = 0.1f;
+    static constexpr float kBurstAmpLo   = 0.3f;
+    static constexpr float kBurstAmpHi   = 0.9f;
+
+    // Quantisation step applied to all 256 spectral coefficients of band 0.
+    static constexpr float kQuantStep     = 1e-3f;
+    // Per-frame RMS threshold that triggers diagnostic output.
+    static constexpr float kFrameRmsLimit = kQuantStep * 5.0f;
+    // Overall max-sample-error limit.
+    //
+    // With correct gain curves and a 9:1 amplitude ratio signal (kBaseAmp=0.1,
+    // kBurstAmpHi=0.9), the theoretical maximum noise amplification is:
+    //   scale × level = GainLevel[siNext[0]] × GainLevel[siNow[second_pt]]
+    //                 ≤ GainLevel[2] × GainLevel[2] = 4 × 4 = 16
+    // The IMDCT introduces a base quantization noise floor of roughly
+    // 8 × kQuantStep per sample (due to MDCT normalisation), so:
+    //   expected max RMS  ≈ 16 × 8 × kQuantStep = 128 × kQuantStep
+    //   expected max peak ≈ 3–4 × RMS            = 400 × kQuantStep
+    //
+    // Pathological false-transient bugs (e.g., Issue 1's FFT-window context
+    // mismatch) would cause wrong scaleLevel values that reconstruct the signal
+    // at the wrong amplitude, producing systematic errors proportional to the
+    // signal itself (≫ 400 × kQuantStep for 0.9 amplitude).  This threshold
+    // therefore passes correct gain-control behaviour while catching bugs that
+    // create extreme false gain points.
+    static constexpr float kErrLimit      = kQuantStep * 400.0f;
+
+    // Deterministic pseudo-random signal (identical to the other roundtrip tests).
+    std::vector<float> signal(kTotalSamples);
+    for (int s = 0; s < kTotalSamples; ++s)
+        signal[s] = kBaseAmp * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+    {
+        uint32_t lcg = 0xdeadbeef;
+        auto nextLCG = [&]() -> uint32_t {
+            lcg = lcg * 1664525u + 1013904223u;
+            return lcg;
+        };
+        int pos = kMinEventDist;
+        while (pos + kMinEventDist < kTotalSamples) {
+            int   burstLen = 8 + int(nextLCG() >> 24) % 249;
+            float burstAmp = kBurstAmpLo
+                           + (kBurstAmpHi - kBurstAmpLo) * float(nextLCG() & 0xff) / 255.0f;
+            int   end = std::min(pos + burstLen, kTotalSamples);
+            for (int s = pos; s < end; ++s)
+                signal[s] = burstAmp
+                          * std::sin(2.0f * float(M_PI) * kCarrierHz * s / kSampleRate);
+            pos += burstLen + kMinEventDist + int(nextLCG() >> 16) % (kMinEventDist / 4);
+        }
+    }
+
+    TAtrac3MDCT        mdct;
+    TSpectralUpsampler upsampler(kSampleRate, kLowCutHz);
+    TCurveBuilderCtx   ctx = {};
+
+    std::vector<float> encB0(kBandSz, 0.0f), encB1(kBandSz, 0.0f),
+                       encB2(kBandSz, 0.0f), encB3(kBandSz, 0.0f);
+    std::vector<float> decB0(kBandSz, 0.0f), decB1(kBandSz, 0.0f),
+                       decB2(kBandSz, 0.0f), decB3(kBandSz, 0.0f);
+    std::vector<float> sp(1024, 0.0f);
+
+    float lookAheadBuf[512] = {};
+
+    TAtrac3Data::SubbandInfo siPrev;
+    TAtrac3Data::SubbandInfo siCur;
+
+    std::vector<float> reconstructed(kTotalSamples, 0.0f);
+    // Track whether each frame had a non-empty gain curve (for diagnostics).
+    std::vector<bool> frameHasCurve(kNumFrames, false);
+
+    for (int frame = 0; frame < kNumFrames; ++frame) {
+        const float* curFrm = signal.data() + frame * kFrameSz;
+
+        // --- Update upsampler window ---
+        memcpy(lookAheadBuf + 128, curFrm, kFrameSz * sizeof(float));
+        if (frame + 1 < kNumFrames)
+            memcpy(lookAheadBuf + 384, signal.data() + (frame + 1) * kFrameSz,
+                   128 * sizeof(float));
+        else
+            memset(lookAheadBuf + 384, 0, 128 * sizeof(float));
+
+        // --- Gain curve (mirrors CreateSubbandInfo for band 0) ---
+        siPrev = siCur;
+        siCur  = TAtrac3Data::SubbandInfo();
+
+        auto result = upsampler.Process(lookAheadBuf);
+        if (result.highFreqRatio >= TSpectralUpsampler::kHighFreqThreshold) {
+            const auto  gain      = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
+            const float nextLevel = AnalyzeGain(result.signal.data() + 3072,   64,  1, true)[0];
+            const float savedLL   = ctx.LastLevel;  // capture before CalcCurve modifies ctx
+            auto curvePoints = CalcCurve(gain, ctx, nextLevel);
+            if (!curvePoints.empty()) {
+                std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
+                curve.reserve(curvePoints.size());
+                for (const auto& p : curvePoints)
+                    curve.push_back({p.Level, p.Location});
+                siCur.AddSubbandCurve(0, std::move(curve));
+                frameHasCurve[frame] = true;
+                // Diagnostic: print all curve points for every transient frame.
+                std::fprintf(stderr,
+                    "[curve] frame=%3d  savedLL=%.4f  nextLevel=%.4f  ratio=%.3f"
+                    "  nPoints=%zu",
+                    frame, savedLL, nextLevel,
+                    (nextLevel > 1e-9f ? savedLL / nextLevel : 0.0f),
+                    curvePoints.size());
+                for (size_t pi = 0; pi < curvePoints.size(); ++pi)
+                    std::fprintf(stderr, "  [%zu]L%u@%u", pi,
+                        curvePoints[pi].Level, curvePoints[pi].Location);
+                std::fprintf(stderr, "\n");
+            }
+        } else {
+            ctx.LastLevel = 0.0f;
+        }
+
+        // --- Encode: Modulate(siCur) → MDCT ---
+        memcpy(encB0.data() + kFrameSz, curFrm, kFrameSz * sizeof(float));
+        {
+            float* bands[4] = { encB0.data(), encB1.data(), encB2.data(), encB3.data() };
+            mdct.Mdct(sp.data(), bands,
+                { mdct.GainProcessor.Modulate(siCur.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator(),
+                  TAtrac3MDCT::TGainModulator() });
+        }
+
+        // --- Quantize band 0 spectral coefficients (256 bins) ---
+        for (int k = 0; k < 256; ++k)
+            sp[k] = std::round(sp[k] / kQuantStep) * kQuantStep;
+
+        // --- Decode: IMDCT → Demodulate(siPrev, siCur) ---
+        {
+            float* bands[4] = { decB0.data(), decB1.data(), decB2.data(), decB3.data() };
+            mdct.Midct(sp.data(), bands,
+                { mdct.GainProcessor.Demodulate(siPrev.GetGainPoints(0),
+                                                siCur.GetGainPoints(0)),
+                  TAtrac3MDCT::TGainDemodulator(),
+                  TAtrac3MDCT::TGainDemodulator(),
+                  TAtrac3MDCT::TGainDemodulator() });
+        }
+
+        if (frame >= 1)
+            memcpy(reconstructed.data() + (frame - 1) * kFrameSz,
+                   decB0.data(), kFrameSz * sizeof(float));
+
+        memmove(lookAheadBuf, lookAheadBuf + 256, 256 * sizeof(float));
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-frame error accounting and diagnostics.
+    // -----------------------------------------------------------------------
+    static constexpr int kSkipFrames = 1;
+
+    float maxErr = 0.0f;
+    bool  anyDiag = false;
+
+    for (int frame = kSkipFrames; frame <= kNumFrames - 2; ++frame) {
+        float errEnergy = 0.0f;
+        float frameMaxErr = 0.0f;
+        for (int s = 0; s < kFrameSz; ++s) {
+            const float e = reconstructed[frame * kFrameSz + s]
+                          - signal[frame * kFrameSz + s];
+            errEnergy   += e * e;
+            frameMaxErr  = std::max(frameMaxErr, std::abs(e));
+        }
+        const float rmsErr = std::sqrt(errEnergy / kFrameSz);
+        if (rmsErr > kFrameRmsLimit) {
+            if (!anyDiag) {
+                std::fprintf(stderr,
+                    "[quant] %5s  %12s  %12s  %8s  %s\n",
+                    "frame", "energy_err", "rms_err", "×kQStep", "curve");
+                anyDiag = true;
+            }
+            std::fprintf(stderr,
+                "[quant] %5d  %12.4e  %12.4e  %8.2f  %s\n",
+                frame, errEnergy, rmsErr, rmsErr / kQuantStep,
+                frameHasCurve[frame] ? "YES" : "no");
+        }
+        maxErr = std::max(maxErr, frameMaxErr);
+    }
+
+    EXPECT_LT(maxErr, kErrLimit)
+        << "MDCT→IMDCT+quantization roundtrip max error " << maxErr
+        << " exceeds " << kErrLimit << " (" << (maxErr / kQuantStep) << "× kQuantStep)"
+        << " — gain curve may be amplifying quantization noise incorrectly.";
+}

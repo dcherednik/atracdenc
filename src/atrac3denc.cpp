@@ -94,7 +94,7 @@ TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSetting
     , Params(std::move(encoderSettings))
     , LoudnessCurve(CreateLoudnessCurve(TAtrac3Data::NumSamples))
     , SingleChannelElements(Params.SourceChannels)
-    , TransientParamsHistory(Params.SourceChannels, std::vector<TTransientParam>(4))
+    , Upsampler(11025.0f, 600.0f)
 {}
 
 TAtrac3Encoder::~TAtrac3Encoder()
@@ -135,142 +135,33 @@ float TAtrac3Encoder::LimitRel(float x)
     return std::min(std::max(x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
 }
 
-void TAtrac3Encoder::ResetTransientParamsHistory(int channel, int band)
-{
-    TransientParamsHistory[channel][band] = {-1 , 1, -1, 1, -1, 1};
-}
-
-void TAtrac3Encoder::SetTransientParamsHistory(int channel, int band, const TTransientParam& params)
-{
-    TransientParamsHistory[channel][band] = params;
-}
-
-const TAtrac3Encoder::TTransientParam& TAtrac3Encoder::GetTransientParamsHistory(int channel, int band) const
-{
-    return TransientParamsHistory[channel][band];
-}
-
-TAtrac3Encoder::TTransientParam TAtrac3Encoder::CalcTransientParam(const std::vector<float>& gain, const float lastMax)
-{
-    int32_t attack0Location = -1; // position where gain is risen up, -1 - no attack
-    float attack0Relation = 1;
-
-    const float attackThreshold = 2;
-
-    {
-        // pre-echo searching
-        // relative to previous half frame
-        for (uint32_t i = 0; i < gain.size(); i++) {
-            const float tmp = gain[i] / lastMax;
-            if (tmp > attackThreshold) {
-                attack0Relation = tmp;
-                attack0Location = i;
-                break;
-            }
-         }
-    }
-
-    int32_t attack1Location = -1;
-    float attack1Relation = 1;
-    {
-        // pre-echo searching
-        // relative to previous subsamples block
-        float q = gain[0];
-        for (uint32_t i = 1; i < gain.size(); i++) {
-            const float tmp = gain[i] / q;
-            if (tmp > attackThreshold) {
-                attack1Relation = tmp;
-                attack1Location = i;
-            }
-            q = std::max(q, gain[i]);
-        }
-    }
-
-    int32_t releaseLocation = -1; // position where gain is fallen down, -1 - no release
-    float releaseRelation = 1;
-
-    const float releaseTreshold = 2;
-    {
-        // post-echo searching
-        // relative to current frame
-        float q = gain.back();
-        for (uint32_t i = gain.size() - 2; i > 0; --i) {
-            const float tmp = gain[i] / q;
-            if (tmp > releaseTreshold) {
-                releaseRelation = tmp;
-                releaseLocation = i;
-                break;
-            }
-            q = std::max(q, gain[i]);
-        }
-    }
-
-    return {attack0Location, attack0Relation, attack1Location, attack1Relation, releaseLocation, releaseRelation};
-}
-
 void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          uint32_t channel,
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
-
-    auto relToIdx = [](float rel) {
-        rel = 1.0/rel;
-        return (uint32_t)(RelationToIdx(rel));
-    };
-
     for (int band = 0; band < 4; ++band) {
+        auto result = Upsampler.Process(upInput[band]);
 
-        const float* srcBuff = upInput[band] + 128; // current frame: LookAheadBuf[ch][b][128..383]
+        if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
+            CurveCtx[channel][band].LastLevel = 0.0f;
+            continue;
+        }
 
-        const float* const lastMax = &PrevPeak[channel][band];
+        // Analysis region [1024..3072) = current frame upsampled (8x)
+        const auto gain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
+
+        // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
+        const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
+
+        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel);
+        if (curvePoints.empty()) continue;
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
-        const std::vector<float> gain = AnalyzeGain(srcBuff, 256, 32, false);
+        curve.reserve(curvePoints.size());
+        for (const auto& p : curvePoints)
+            curve.push_back({p.Level, p.Location});
 
-        auto transientParam = CalcTransientParam(gain, *lastMax);
-        bool hasTransient = false;
-
-        if (transientParam.Attack0Location == -1 && transientParam.Attack1Location == -1 && transientParam.ReleaseLocation == -1) {
-            // No transient
-            ResetTransientParamsHistory(channel, band);
-            continue;
-        }
-        if (transientParam.Attack0Location == -1 && transientParam.Attack1Location == -1) {
-            // Release only in current frame - PostEcho. Not implemented yet.
-            // Note: "Hole like" transient also possible (if value is grather in next frame),
-            // but we keep peak value of this frame, so in next frame we will use this peak value
-            // for searching attack.
-            // Handling "Hole like" transients also not implemented. But it should be masked
-            SetTransientParamsHistory(channel, band, transientParam);
-            continue;
-        }
-
-        auto transientParamHistory = GetTransientParamsHistory(channel, band);
-
-        if (transientParamHistory.Attack0Location == -1 && transientParamHistory.Attack1Location == -1 && transientParamHistory.ReleaseLocation == -1 &&
-            transientParam.Attack0Location != -1 /*&& transientParam.Attack1Location == -1*/ && transientParam.ReleaseLocation == -1) {
-            // No transient at previous frame, but transient (attack) at border of first and second half - simplest way, just scale the first half.
-
-            //std::cout << "CASE 1: " << transientParam.Attack0Location << " " << transientParam.Attack0Relation << std::endl;
-            auto idx = relToIdx(transientParam.Attack0Relation);
-            //std::cout << "PREV PEAK: " << *lastMax << " " << idx << std::endl;
-            curve.push_back({idx, (uint32_t)transientParam.Attack0Location});
-            hasTransient = true;
-        }
-
-        //std::cout << "transient params band: " << band <<  " atack0loc: " << transientParam.Attack0Location << " atack0rel: " << transientParam.Attack0Relation <<
-        //                            " atack1loc: " << transientParam.Attack1Location << " atack1rel: " << transientParam.Attack1Relation <<
-        //                            " releaseloc: " << transientParam.ReleaseLocation << " releaserel: "<< transientParam.ReleaseRelation << std::endl;
-
-        //for (int i = 0; i < 256; i++) {
-        //    std::cout << i << "   " << srcBuff[i] << "  |  " << srcBuff[i-256] << std::endl;
-        //}
- 
-
-        SetTransientParamsHistory(channel, band, transientParam);
-        if (hasTransient) {
-            subbandInfo->AddSubbandCurve(band, std::move(curve));
-        }
+        subbandInfo->AddSubbandCurve(band, std::move(curve));
     }
 }
 
