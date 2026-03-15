@@ -180,7 +180,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
     static constexpr float kLowOverlapRelax = 0.6f;      // allow softer min level when overlap is small
     static constexpr int kLevelBoostCap = 1;             // cap level boost to reduce bit starvation
     static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
-    static constexpr float kMinScorePerBand[4] = { 1.9f, 1.9f, 2.1f, 2.2f };
+    static constexpr float kMinScore = 1.9f;
 
     for (int band = 0; band < 4; ++band) {
         auto result = Upsampler.Process(upInput[band]);
@@ -212,7 +212,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // Dynamic min-score: linearly scale up from 1× at overlapRatio=1 to
         // 1.5× at overlapRatio=2 (capped).  Below 1 (attack frame) unchanged.
         const float overlapFactor = std::min(1.5f, std::max(1.0f, overlapRatio));
-        const float dynamicMinScore = kMinScorePerBand[band] * overlapFactor;
+        const float dynamicMinScore = kMinScore * overlapFactor;
 
         auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore);
 
@@ -378,7 +378,19 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         const int scaleCap = (overlapRatio < kLowOverlapRelax) ? kScaleBoostCap : kLevelBoostCap;
         scaleBoost = std::min(scaleBoost, scaleCap);
-        gainBoostPerBand[band] = std::min(levelBoost + scaleBoost, kLevelBoostCap);
+        const int totalBoost = std::min(levelBoost + scaleBoost, kLevelBoostCap);
+
+        // Bands 2-3 are above ~11 kHz where pre-echo is largely inaudible.
+        // Skip gain modulation there entirely; if a transient was detected,
+        // redirect the bit boost to band 0 so audible-range reconstruction
+        // gets the extra bits instead of the inaudible high-frequency bands.
+        if (band >= 2) {
+            gainBoostPerBand[band] = 0;
+            gainBoostPerBand[0] = std::min(gainBoostPerBand[0] + totalBoost, kLevelBoostCap + 1);
+            continue;
+        }
+
+        gainBoostPerBand[band] = totalBoost;
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
         curve.reserve(curvePoints.size());
