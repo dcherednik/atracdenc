@@ -94,7 +94,7 @@ TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSetting
     , Params(std::move(encoderSettings))
     , LoudnessCurve(CreateLoudnessCurve(TAtrac3Data::NumSamples))
     , SingleChannelElements(Params.SourceChannels)
-    , Upsampler(11025.0f, 600.0f)
+    , Upsampler(11025.0f, 800.0f)
 {}
 
 TAtrac3Encoder::~TAtrac3Encoder()
@@ -135,10 +135,53 @@ float TAtrac3Encoder::LimitRel(float x)
     return std::min(std::max(x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
 }
 
+// Simulate the decoder's gain modulator on buf[0..255] using pts, then return
+// the windowed (2*DecodeWindow) RMS of the result.  Used to compute point0.
+static float CalcWindowedRmsAfterCurve(const float* buf,
+                                       const std::vector<TGainCurvePoint>& pts) {
+    if (pts.empty())
+        return 0.0f;
+    uint32_t pos = 0;
+    float rms = 0.0f;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const uint32_t lastPos = pts[i].Location << TAtrac3Data::LocScale;
+        float level = TAtrac3Data::GainLevel[pts[i].Level];
+        const int incPos = ((i + 1) < pts.size() ? pts[i + 1].Level : TAtrac3Data::ExponentOffset)
+                         - pts[i].Level + TAtrac3Data::GainInterpolationPosShift;
+        const float gainInc = TAtrac3Data::GainInterpolation[incPos];
+        for (; pos < lastPos && pos < 256; ++pos) {
+            const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+            const float n = (buf[pos] / level) * w;
+            rms += n * n;
+        }
+        for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
+            const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+            const float n = (buf[pos] / level) * w;
+            rms += n * n;
+            level *= gainInc;
+        }
+    }
+    for (; pos < 256; ++pos) {
+        const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+        const float n = buf[pos] * w;
+        rms += n * n;
+    }
+    return std::sqrt(rms / 256.0f);
+}
+
 void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          uint32_t channel,
-                                         TAtrac3Data::SubbandInfo* subbandInfo)
+                                         TAtrac3Data::SubbandInfo* subbandInfo,
+                                         int gainBoostPerBand[TAtrac3Data::NumQMF])
 {
+    static constexpr float kMinAggressiveRatio = 10.0f;  // allow Level <=2 only for >= 10x transients
+    static constexpr float kMaxOverlapRatio = 1.2f;      // reject if prev overlap > 1.2x current energy
+    static constexpr uint32_t kSoftMinLevel = 3;         // default soften extreme levels to 2x
+    static constexpr float kLowOverlapRelax = 0.6f;      // allow softer min level when overlap is small
+    static constexpr int kLevelBoostCap = 1;             // cap level boost to reduce bit starvation
+    static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
+    static constexpr float kMinScorePerBand[4] = { 1.9f, 1.9f, 2.1f, 2.2f };
+
     for (int band = 0; band < 4; ++band) {
         auto result = Upsampler.Process(upInput[band]);
 
@@ -153,8 +196,189 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
         const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
 
-        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel);
-        if (curvePoints.empty()) continue;
+        const float* bufCur  = PcmBuffer.GetFirst(channel + band * 2);
+        const float* bufNext = PcmBuffer.GetSecond(channel + band * 2);
+
+        // Compute overlapRatio early so we can scale minScore accordingly.
+        // High overlapRatio (prev frame >> current) means gain curves are
+        // more likely to misfire; raise the threshold to suppress them.
+        float overlapE = 0.0f, curE = 0.0f;
+        for (int i = 0; i < 256; i++) {
+            overlapE += bufCur[i] * bufCur[i];
+            curE     += bufNext[i] * bufNext[i];
+        }
+        const float overlapRatio = overlapE / (curE + 1e-9f);
+
+        // Dynamic min-score: linearly scale up from 1× at overlapRatio=1 to
+        // 1.5× at overlapRatio=2 (capped).  Below 1 (attack frame) unchanged.
+        const float overlapFactor = std::min(1.5f, std::max(1.0f, overlapRatio));
+        const float dynamicMinScore = kMinScorePerBand[band] * overlapFactor;
+
+        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore);
+
+        if (curvePoints.empty()) {
+            gainBoostPerBand[band] = 0;
+            continue;
+        }
+
+        // Explicit point 0: choose scale so windowed-RMS of bufCur matches bufNext
+        // as modulated by the existing curve (decoder domain: 2*DecodeWindow).
+        {
+            float rmsCur = 0.0f;
+            for (int i = 0; i < 256; ++i) {
+                const float w = 2.0f * TAtrac3Data::DecodeWindow[i];
+                const float c = bufCur[i] * w;
+                rmsCur += c * c;
+            }
+            rmsCur = std::sqrt(rmsCur / 256.0f);
+
+            const float rmsNextMod = CalcWindowedRmsAfterCurve(bufNext, curvePoints);
+            if (rmsCur > 1e-6f && rmsNextMod > 1e-6f) {
+                const uint16_t point0Level = RelationToIdx(rmsCur / rmsNextMod);
+                auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
+                                       [](const TGainCurvePoint& p) { return p.Location == 0; });
+                if (it != curvePoints.end()) {
+                    it->Level = point0Level;
+                } else {
+                    curvePoints.insert(curvePoints.begin(), {point0Level, 0});
+                }
+            }
+        }
+        // Delay the first non-zero point to the overlap-to-current crossover (conservative).
+        {
+            float rmsCurSub[32] = {};
+            float rmsNextSub[32] = {};
+            for (int s = 0; s < 32; ++s) {
+                float accCur = 0.0f;
+                float accNext = 0.0f;
+                const int base = s * 8;
+                for (int i = 0; i < 8; ++i) {
+                    const int idx = base + i;
+                    const float w = 2.0f * TAtrac3Data::DecodeWindow[idx];
+                    const float c = bufCur[idx] * w;
+                    const float n = bufNext[idx] * w;
+                    accCur += c * c;
+                    accNext += n * n;
+                }
+                rmsCurSub[s] = std::sqrt(accCur / 8.0f);
+                rmsNextSub[s] = std::sqrt(accNext / 8.0f);
+            }
+
+            uint32_t crossover = 32;
+            for (uint32_t s = 0; s < 32; ++s) {
+                if (rmsNextSub[s] >= rmsCurSub[s]) {
+                    crossover = s;
+                    break;
+                }
+            }
+
+            const size_t point1Idx = (!curvePoints.empty() && curvePoints[0].Location == 0) ? 1 : 0;
+            if (crossover < 32 && crossover >= 2 && point1Idx < curvePoints.size()) {
+                const uint32_t curLoc = curvePoints[point1Idx].Location;
+                if (crossover > curLoc) {
+                    uint32_t target = std::min<uint32_t>(crossover, curLoc + 6);
+                    uint32_t nextLoc = (point1Idx + 1 < curvePoints.size())
+                                     ? curvePoints[point1Idx + 1].Location : 32;
+                    if (target >= nextLoc && nextLoc > 0)
+                        target = nextLoc - 1;
+                    if (target > curLoc)
+                        curvePoints[point1Idx].Location = target;
+                }
+            }
+        }
+
+        float maxGain = 0.0f;
+        for (float g : gain) maxGain = std::max(maxGain, g);
+        const float frameEndLevel = gain.back();
+        const float ratio = maxGain / (frameEndLevel + 1e-9f);
+
+        // Delay early attack points when overlap dominates to reduce pre-echo.
+        if (!curvePoints.empty() && curvePoints[0].Location > 0) {
+            const uint32_t loc = curvePoints[0].Location;
+            const bool rising = (loc > 0 && loc + 1 < gain.size())
+                ? (gain[loc - 1] < gain[loc] && gain[loc] <= gain[loc + 1])
+                : false;
+            if (rising && overlapRatio > 0.9f) {
+                const uint32_t nextLoc = (curvePoints.size() > 1) ? curvePoints[1].Location : 32;
+                uint32_t newLoc = std::min<uint32_t>(loc + 2, 31);
+                if (newLoc >= nextLoc && nextLoc > 0)
+                    newLoc = nextLoc - 1;
+                curvePoints[0].Location = newLoc;
+            }
+        }
+        // Soft-cap first point level under overlap dominance to reduce pre-echo.
+        if (!curvePoints.empty() && overlapRatio > 0.9f && curvePoints[0].Level < 4)
+            curvePoints[0].Level = 4;
+
+        // Level boost: compensate for Demodulate's `level` factor on cur[].
+        // level = GainLevel[min point Level], extra bits = 4 - minLevel.
+        int levelBoost = 0;
+        {
+            uint32_t minLevel = 15;
+            bool anyActive = false;
+            for (const auto& p : curvePoints) {
+                minLevel = std::min(minLevel, p.Level);
+                if (p.Level < 4) anyActive = true;
+            }
+            if (!anyActive) {
+                gainBoostPerBand[band] = 0;
+                continue;
+            }
+            if (minLevel <= 2) {
+                if (ratio < kMinAggressiveRatio || overlapRatio > kMaxOverlapRatio) {
+                    gainBoostPerBand[band] = 0;
+                    continue;
+                }
+                const uint32_t softMin = (overlapRatio < kLowOverlapRelax) ? 2u : kSoftMinLevel;
+                for (auto& p : curvePoints) {
+                    if (p.Level < softMin)
+                        p.Level = softMin;
+                }
+            }
+
+            // Scale constraint: curve[0].Level sets decoder scale for previous frame.
+            if (!curvePoints.empty() && curvePoints[0].Level < 3)
+                curvePoints[0].Level = 3;
+
+            // Re-scan after constraints may have raised some levels.
+            minLevel = 4;
+            for (const auto& p : curvePoints)
+                minLevel = std::min(minLevel, p.Level);
+            if (minLevel < 4)
+                levelBoost = static_cast<int>(4 - minLevel);
+        }
+        levelBoost = std::min(levelBoost, kLevelBoostCap);
+
+        // Scale boost: compensate for Demodulate's `scale = GainLevel[giNext[0].Level]`.
+        // When decoding frame N, scale = GainLevel[frame N+1's first gain point Level].
+        // Frame N+1's CalcCurve: scaleLevel = RelationToIdx(gain.back()_N / nextLevel_{N+2}).
+        // We have the full frame N+1 in the lookahead [3072..5119].  Use min(lookaheadGain)
+        // as a conservative proxy for nextLevel_{N+2} (≈ quietest level reachable in N+1,
+        // a lower bound on frame N+2's start level).
+        int scaleBoost = 0;
+        if (frameEndLevel > 1e-6f) {
+            static constexpr size_t kLookaheadOffset = 3072;
+            const size_t outSz = result.signal.size();
+            if (outSz > kLookaheadOffset + 64) {
+                const uint32_t lookaheadPoints =
+                    static_cast<uint32_t>(std::min<size_t>(1024, outSz - kLookaheadOffset) / 64);
+                if (lookaheadPoints > 0) {
+                    const auto lookaheadGain = AnalyzeGain(result.signal.data() + kLookaheadOffset,
+                                                           lookaheadPoints * 64,
+                                                           lookaheadPoints, true);
+                    const float lookaheadMin = *std::min_element(lookaheadGain.begin(), lookaheadGain.end());
+                    if (lookaheadMin > 1e-6f) {
+                        const uint32_t estimatedNextScaleLevel = RelationToIdx(frameEndLevel / lookaheadMin);
+                        if (estimatedNextScaleLevel < 4u)
+                            scaleBoost = static_cast<int>(4u - estimatedNextScaleLevel);
+                    }
+                }
+            }
+        }
+
+        const int scaleCap = (overlapRatio < kLowOverlapRelax) ? kScaleBoostCap : kLevelBoostCap;
+        scaleBoost = std::min(scaleBoost, scaleCap);
+        gainBoostPerBand[band] = std::min(levelBoost + scaleBoost, kLevelBoostCap);
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
         curve.reserve(curvePoints.size());
@@ -247,7 +471,9 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                     LookAheadBuf[channel][0], LookAheadBuf[channel][1],
                     LookAheadBuf[channel][2], LookAheadBuf[channel][3]
                 };
-                CreateSubbandInfo(up, channel, &sce->SubbandInfo);
+                std::fill(sce->GainBoostPerBand,
+                          sce->GainBoostPerBand + TAtrac3Data::NumQMF, 0);
+                CreateSubbandInfo(up, channel, &sce->SubbandInfo, sce->GainBoostPerBand);
             }
 
             float* maxOverlapLevels = PrevPeak[channel];

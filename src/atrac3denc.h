@@ -107,7 +107,8 @@ public:
 #endif
     float LimitRel(float x);
     void CreateSubbandInfo(const float* upInput[4], uint32_t channel,
-                           TAtrac3Data::SubbandInfo* subbandInfo);
+                           TAtrac3Data::SubbandInfo* subbandInfo,
+                           int gainBoostPerBand[TAtrac3Data::NumQMF]);
     void Matrixing();
 
 public:

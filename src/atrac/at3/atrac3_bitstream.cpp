@@ -216,6 +216,11 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
 
     float spread = AnalizeScaleFactorSpread(scaledBlocks);
 
+    // Per-band bit-allocation boost pre-computed by CreateSubbandInfo.
+    // Combines level boost (current frame's gain curve) and scale boost
+    // (estimated next frame's first gain point).
+    const int* gainBoostPerBand = sce.GainBoostPerBand;
+
     uint16_t numBfu = BfuIdxConst ? BfuIdxConst : 32;
 
     // Limit number of BFU if target bitrate is not enough
@@ -237,7 +242,7 @@ std::pair<uint8_t, vector<uint32_t>> TAtrac3BitStreamWriter::CreateAllocation(co
         double minShift = -8;
         for (;;) {
             double shift = (maxShift + minShift) / 2;
-            vector<uint32_t> tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift, laudness);
+            vector<uint32_t> tmpAlloc = CalcBitsAllocation(scaledBlocks, numBfu, spread, shift, laudness, gainBoostPerBand);
             energyErr.clear();
             energyErr.resize(numBfu);
             std::pair<uint8_t, uint32_t> consumption;
@@ -503,11 +508,19 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
                                                             const uint32_t bfuNum,
                                                             const float spread,
                                                             const float shift,
-                                                            const float loudness)
+                                                            const float loudness,
+                                                            const int gainBoostPerBand[TAtrac3Data::NumQMF])
 {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         float ath = ATH[i] * loudness;
+
+        // Determine which QMF band this BFU belongs to for gain boost lookup.
+        uint32_t bfuBand = 0;
+        for (uint32_t b = 1; b < TAtrac3Data::NumQMF; ++b) {
+            if (i >= TAtrac3Data::BlocksPerBand[b])
+                bfuBand = b;
+        }
 
         if (scaledBlocks[i].Energy < ath) {
             bitsPerEachBlock[i] = 0;
@@ -525,7 +538,8 @@ vector<uint32_t> TAtrac3BitStreamWriter::CalcBitsAllocation(const std::vector<TS
             } else if (i <= 28) {
                 x = 4.2;
             }
-            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex / x) + (1.0 - spread) * fix - shift;
+            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex / x) + (1.0 - spread) * fix - shift
+                      + gainBoostPerBand[bfuBand];
             if (tmp > 7) {
                 bitsPerEachBlock[i] = 7;
             } else if (tmp < 0) {

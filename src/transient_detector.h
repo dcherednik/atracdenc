@@ -60,6 +60,14 @@ struct TCurveBuilderCtx {
 };
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
-                                       std::optional<float> nextLevel = {});
+                                       std::optional<float> nextLevel = {},
+                                       float minScore = 2.0f);
+
+// Detect transient locations (0..in.size()-1) using the same logic as CalcCurve.
+// savedLastLevel/nextLevel provide boundary context. maxPoints caps the count.
+std::vector<int> DetectTransients(const std::vector<float>& in, float savedLastLevel,
+                                  std::optional<float> nextLevel = {},
+                                  float minScore = 2.0f,
+                                  int maxPoints = 6);
 
 }
