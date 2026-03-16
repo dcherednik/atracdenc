@@ -17,6 +17,7 @@
  */
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <stdexcept>
 
@@ -112,6 +113,7 @@ enum EOptions
     O_NOTONAL = 5,
     O_NOGAINCONTROL = 6,
     O_ADVANCED_OPT = 7,
+    O_YAML_LOG = 8,
 };
 
 static void CheckInputFormat(const TWav* p)
@@ -325,6 +327,7 @@ int main_(int argc, char* const* argv)
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
         { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
         { "advanced", required_argument, NULL, O_ADVANCED_OPT},
+        { "yaml-log", required_argument, NULL, O_YAML_LOG},
         { NULL, 0, NULL, 0}
     };
 
@@ -336,6 +339,7 @@ int main_(int argc, char* const* argv)
     bool noStdOut = false;
     bool noGainControl = false;
     bool noTonalComponents = false;
+    string yamlLogFile;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
     uint32_t bitrate = 0; //0 - use default for codec
@@ -409,6 +413,9 @@ int main_(int argc, char* const* argv)
             case O_ADVANCED_OPT:
                 advancedOpt = optarg;
                 break;
+            case O_YAML_LOG:
+                yamlLogFile = optarg;
+                break;
             default:
                 printUsage(myName);
                 return 1;
@@ -465,8 +472,19 @@ int main_(int argc, char* const* argv)
             {
                 using NAtrac3::TAtrac3Data;
                 wavIO = OpenWavFile(inFile);
+                std::ostream* yamlOut = nullptr;
+                static std::ofstream yamlLogStream;
+                if (!yamlLogFile.empty()) {
+                    yamlLogStream.open(yamlLogFile);
+                    if (!yamlLogStream) {
+                        cerr << "Cannot open yaml-log file: " << yamlLogFile << endl;
+                        return 1;
+                    }
+                    yamlOut = &yamlLogStream;
+                }
                 NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl,
-                                                                noTonalComponents, wavIO->GetChannelNum(), bfuIdxConst);
+                                                                noTonalComponents, wavIO->GetChannelNum(), bfuIdxConst,
+                                                                yamlOut);
                 PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac3Data::NumSamples;;
