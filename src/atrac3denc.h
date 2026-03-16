@@ -31,6 +31,8 @@
 #include "transient_detector.h"
 #include "transient_spectral_upsampler.h"
 
+#include "yaml_log.h"
+
 #include <algorithm>
 #include <functional>
 #include <array>
@@ -102,6 +104,8 @@ private:
     TSpectralUpsampler Upsampler;
     static constexpr float LoudFactor = 0.006;
     float Loudness = LoudFactor;
+    uint64_t FrameNum = 0;       // incremented each processed frame; used in YAML log
+    std::ostream* YamlLog = nullptr;  // non-null when --yaml-log is active
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif

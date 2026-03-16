@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <algorithm>
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 namespace NAtracDEnc {
 
@@ -95,7 +96,9 @@ TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSetting
     , LoudnessCurve(CreateLoudnessCurve(TAtrac3Data::NumSamples))
     , SingleChannelElements(Params.SourceChannels)
     , Upsampler(11025.0f, 800.0f)
-{}
+{
+    YamlLog = Params.YamlLog;
+}
 
 TAtrac3Encoder::~TAtrac3Encoder()
 {}
@@ -182,10 +185,26 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
     static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
     static constexpr float kMinScore = 1.9f;
 
+    // YAML: channel header (one channel per CreateSubbandInfo call)
+    if (YamlLog) {
+        *YamlLog << "  - channel: " << channel << "\n"
+                 << "    bands:\n";
+    }
+
     for (int band = 0; band < 4; ++band) {
+        // YAML: band header emitted immediately so every band has an entry
+        if (YamlLog) {
+            *YamlLog << "      - band: " << band << "\n";
+        }
+
         auto result = Upsampler.Process(upInput[band]);
 
         if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
+            if (YamlLog) {
+                *YamlLog << std::fixed << std::setprecision(4)
+                         << "        skip: low_hfr  # high_freq_ratio "
+                         << result.highFreqRatio << " < threshold\n";
+            }
             CurveCtx[channel][band].LastLevel = 0.0f;
             continue;
         }
@@ -198,6 +217,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         const float* bufCur  = PcmBuffer.GetFirst(channel + band * 2);
         const float* bufNext = PcmBuffer.GetSecond(channel + band * 2);
+
+        if (YamlLog) {
+            *YamlLog << "        pcm_qmf:  # 256 raw QMF samples, non-modulated, non-windowed\n"
+                     << "          ";
+            YamlWriteFloatSeq(*YamlLog, bufNext, 256, 6);
+            *YamlLog << "\n";
+        }
 
         // Compute overlapRatio early so we can scale minScore accordingly.
         // High overlapRatio (prev frame >> current) means gain curves are
@@ -214,11 +240,34 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         const float overlapFactor = std::min(1.5f, std::max(1.0f, overlapRatio));
         const float dynamicMinScore = kMinScore * overlapFactor;
 
+        if (YamlLog) {
+            *YamlLog << std::fixed << std::setprecision(4)
+                     << "        high_freq_ratio: " << result.highFreqRatio << "\n"
+                     << "        overlap_ratio: " << overlapRatio
+                     << "  # prev_E/cur_E; >1 means prev frame louder\n"
+                     << "        dynamic_min_score: " << dynamicMinScore << "\n"
+                     << "        next_level: " << nextLevel << "\n"
+                     << "        gain: ";
+            YamlWriteFloatSeq(*YamlLog, gain, 4);
+            *YamlLog << "  # 32 subframe RMS values\n";
+        }
+
         auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore);
 
         if (curvePoints.empty()) {
+            if (YamlLog) {
+                *YamlLog << "        skip: no_curve\n";
+            }
             gainBoostPerBand[band] = 0;
             continue;
+        }
+
+        if (YamlLog) {
+            *YamlLog << "        curve_raw:\n";
+            for (const auto& p : curvePoints) {
+                *YamlLog << "          - {level: " << p.Level
+                         << ", loc: " << p.Location << "}\n";
+            }
         }
 
         // Explicit point 0: choose scale so windowed-RMS of bufCur matches bufNext
@@ -235,6 +284,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             const float rmsNextMod = CalcWindowedRmsAfterCurve(bufNext, curvePoints);
             if (rmsCur > 1e-6f && rmsNextMod > 1e-6f) {
                 const uint16_t point0Level = RelationToIdx(rmsCur / rmsNextMod);
+                if (YamlLog) {
+                    *YamlLog << std::fixed << std::setprecision(6)
+                             << "        rms_cur: " << rmsCur << "\n"
+                             << "        rms_next_mod: " << rmsNextMod << "\n"
+                             << "        point0_level: " << point0Level
+                             << "  # RelationToIdx(rms_cur/rms_next_mod)\n";
+                }
                 auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
                                        [](const TGainCurvePoint& p) { return p.Location == 0; });
                 if (it != curvePoints.end()) {
@@ -270,6 +326,11 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                     crossover = s;
                     break;
                 }
+            }
+
+            if (YamlLog) {
+                *YamlLog << "        crossover: " << crossover
+                         << "  # first subframe where next_E >= cur_E (32=none)\n";
             }
 
             const size_t point1Idx = (!curvePoints.empty() && curvePoints[0].Location == 0) ? 1 : 0;
@@ -321,11 +382,19 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 if (p.Level < 4) anyActive = true;
             }
             if (!anyActive) {
+                if (YamlLog) {
+                    *YamlLog << "        skip: no_active_points\n";
+                }
                 gainBoostPerBand[band] = 0;
                 continue;
             }
             if (minLevel <= 2) {
                 if (ratio < kMinAggressiveRatio || overlapRatio > kMaxOverlapRatio) {
+                    if (YamlLog) {
+                        *YamlLog << std::fixed << std::setprecision(4)
+                                 << "        skip: aggressive_suppressed"
+                                 << "  # ratio=" << ratio << " overlap=" << overlapRatio << "\n";
+                    }
                     gainBoostPerBand[band] = 0;
                     continue;
                 }
@@ -380,14 +449,38 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         scaleBoost = std::min(scaleBoost, scaleCap);
         const int totalBoost = std::min(levelBoost + scaleBoost, kLevelBoostCap);
 
+        if (YamlLog) {
+            *YamlLog << "        curve_final:\n";
+            for (const auto& p : curvePoints) {
+                *YamlLog << "          - {level: " << p.Level
+                         << ", loc: " << p.Location << "}\n";
+            }
+            *YamlLog << std::fixed << std::setprecision(4)
+                     << "        max_gain: " << maxGain << "\n"
+                     << "        ratio: " << ratio
+                     << "  # max_gain/frame_end_level, transient strength\n"
+                     << "        level_boost: " << levelBoost << "\n"
+                     << "        scale_boost: " << scaleBoost << "\n"
+                     << "        total_boost: " << totalBoost << "\n";
+        }
+
         // Bands 2-3 are above ~11 kHz where pre-echo is largely inaudible.
         // Skip gain modulation there entirely; if a transient was detected,
         // redirect the bit boost to band 0 so audible-range reconstruction
         // gets the extra bits instead of the inaudible high-frequency bands.
         if (band >= 2) {
+            if (YamlLog) {
+                *YamlLog << "        skip: band_ge_2"
+                         << "  # inaudible HF; boost redirected to band 0\n"
+                         << "        redirected_boost: " << totalBoost << "\n";
+            }
             gainBoostPerBand[band] = 0;
             gainBoostPerBand[0] = std::min(gainBoostPerBand[0] + totalBoost, kLevelBoostCap + 1);
             continue;
+        }
+
+        if (YamlLog) {
+            *YamlLog << "        gain_boost: " << totalBoost << "\n";
         }
 
         gainBoostPerBand[band] = totalBoost;
@@ -468,6 +561,15 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             Matrixing();
         }
 
+        // YAML frame header: one document per frame, channels nest below.
+        if (YamlLog) {
+            const float timeSec = static_cast<float>(FrameNum) * TAtrac3Data::NumSamples / 44100.0f;
+            *YamlLog << "---\nframe: " << FrameNum << "\n"
+                     << std::fixed << std::setprecision(3)
+                     << "time: " << timeSec << "  # seconds\n"
+                     << "channels:\n";
+        }
+
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
             auto& specs = (*buf)[channel].Specs;
             TSce* sce = &SingleChannelElements[channel];
@@ -540,6 +642,7 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             }
         }
 
+        ++FrameNum;
         return TPCMEngine::EProcessResult::PROCESSED;
     };
 }
