@@ -184,18 +184,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
     static constexpr int kLevelBoostCap = 1;             // cap level boost to reduce bit starvation
     static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
     static constexpr float kMinScore = 1.9f;
-    // HFR reference: when highFreqRatio < kHfrRef, scale minScore up proportionally.
-    // The spectral upsampler's output is unreliable at low HFR, so the 32-subframe
-    // gain[] array used for transient detection is noisy.  Scaling minScore suppresses
-    // spurious multi-point curves while still allowing genuinely strong transients through.
-    static constexpr float kHfrRef = 0.50f;
-    // Below kMinReliableHfr the upsampler output is so poor that even a scaled minScore
-    // may not suppress all spurious curves.  Skip gain processing entirely for that band.
-    // This is a stricter gate than kHighFreqThreshold (0.05) but softer than kHfrRef.
-    static constexpr float kMinReliableHfr = 0.12f;
-    // Skip gain curves if the signal is near-silence: tiny absolute spikes produce
-    // extreme relative ratios that trigger curves where none are perceptually useful.
-    static constexpr float kMinGainLevel = 3e-4f;
 
     // YAML: channel header (one channel per CreateSubbandInfo call)
     if (YamlLog) {
@@ -221,31 +209,8 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             continue;
         }
 
-        if (result.highFreqRatio < kMinReliableHfr) {
-            if (YamlLog) {
-                *YamlLog << std::fixed << std::setprecision(4)
-                         << "        skip: low_hfr_unreliable  # high_freq_ratio "
-                         << result.highFreqRatio << " < kMinReliableHfr\n";
-            }
-            CurveCtx[channel][band].LastLevel = 0.0f;
-            continue;
-        }
-
         // Analysis region [1024..3072) = current frame upsampled (8x)
         const auto gain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
-
-        // Near-silence gate: if the loudest subframe is below kMinGainLevel, gain curves
-        // would encode tiny absolute spikes as extreme relative transients.  Skip.
-        const float maxGainLevel = *std::max_element(gain.begin(), gain.end());
-        if (maxGainLevel < kMinGainLevel) {
-            if (YamlLog) {
-                *YamlLog << std::fixed << std::setprecision(6)
-                         << "        skip: near_silence  # max_gain "
-                         << maxGainLevel << " < kMinGainLevel\n";
-            }
-            CurveCtx[channel][band].LastLevel = 0.0f;
-            continue;
-        }
 
         // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
         const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
@@ -273,34 +238,15 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // Dynamic min-score: linearly scale up from 1× at overlapRatio=1 to
         // 1.5× at overlapRatio=2 (capped).  Below 1 (attack frame) unchanged.
         const float overlapFactor = std::min(1.5f, std::max(1.0f, overlapRatio));
-        // HFR factor: when highFreqRatio < kHfrRef, scale minScore up so that
-        // only genuinely strong transients produce gain curves.  At hfr=0.1 with
-        // kHfrRef=0.5 the factor is 5× (capped at 3×); at hfr>=0.5 it is 1× (no change).
-        // Capped at 3× so a real large transient (ratio >> kMinScore*3) still passes.
-        const float hfrFactor = (result.highFreqRatio > 0.0f)
-            ? std::min(3.0f, std::max(1.0f, kHfrRef / result.highFreqRatio))
-            : 3.0f;
-        const float dynamicMinScore = kMinScore * overlapFactor * hfrFactor;
-
-        // savedLastLevel is CalcCurve's context from the previous frame.
-        // Logging it here (before CalcCurve updates it) helps diagnose false
-        // transients at the frame boundary caused by level mismatches.
-        const float savedLastLevel = CurveCtx[channel][band].LastLevel;
+        const float dynamicMinScore = kMinScore * overlapFactor;
 
         if (YamlLog) {
             *YamlLog << std::fixed << std::setprecision(4)
                      << "        high_freq_ratio: " << result.highFreqRatio << "\n"
-                     << "        hfr_factor: " << hfrFactor
-                     << "  # min_score scale from HFR (1x at hfr>=0.50)\n"
                      << "        overlap_ratio: " << overlapRatio
                      << "  # prev_E/cur_E; >1 means prev frame louder\n"
-                     << "        dynamic_min_score: " << dynamicMinScore
-                     << "  # kMinScore * overlap_factor * hfr_factor\n"
-                     << "        saved_last_level: " << savedLastLevel
-                     << "  # ctx.LastLevel from previous frame\n"
+                     << "        dynamic_min_score: " << dynamicMinScore << "\n"
                      << "        next_level: " << nextLevel << "\n"
-                     << "        target: " << nextLevel
-                     << "  # normalization target used by CalcCurve\n"
                      << "        gain: ";
             YamlWriteFloatSeq(*YamlLog, gain, 4);
             *YamlLog << "  # 32 subframe RMS values\n";
