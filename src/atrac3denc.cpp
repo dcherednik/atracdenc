@@ -284,6 +284,14 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             }
         }
 
+        // Whether any curve point attenuates (level < 4). Amplifying-only curves
+        // need different treatment in some heuristics below.
+        const bool anyAttenuating = [&]() {
+            for (const auto& p : curvePoints)
+                if (p.Level < 4) return true;
+            return false;
+        }();
+
         // Explicit point 0: choose scale so windowed-RMS of bufCur matches bufNext
         // as modulated by the existing curve (decoder domain: 2*DecodeWindow).
         {
@@ -385,53 +393,29 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         if (!curvePoints.empty() && hpfOverlapRatio > 0.9f && curvePoints[0].Level < 4)
             curvePoints[0].Level = 4;
 
+        // Amplifying-only curves require reliable HPF analysis.  When HFR is low
+        // the HPF gain[] does not represent full-band energy: a tiny HPF transient
+        // can produce level 9 (×32 amplification) on a loud full-band signal,
+        // catastrophically over-inflating MDCT coefficients.
+        if (!anyAttenuating) {
+            static constexpr float kMinHfrForAmplify = 0.3f;
+            if (result.highFreqRatio < kMinHfrForAmplify) {
+                if (YamlLog)
+                    *YamlLog << "        skip: amplify_low_hfr\n";
+                gainBoostPerBand[band] = 0;
+                continue;
+            }
+        }
+
         // Level boost: compensate for Demodulate's `level` factor on cur[].
         // level = GainLevel[min point Level], extra bits = 4 - minLevel.
         int levelBoost = 0;
         {
             uint32_t minLevel = 15;
-            bool anyActive = false;
-            for (const auto& p : curvePoints) {
+            for (const auto& p : curvePoints)
                 minLevel = std::min(minLevel, p.Level);
-                if (p.Level < 4) anyActive = true;
-            }
-            if (!anyActive) {
-                // If p0 is in the quiet-to-loud direction, emit a p0-only curve to
-                // normalize the cross-frame boundary.  We recompute the ratio against
-                // plain rmsNext (not rmsNextMod) because we're discarding all other
-                // curve points — using rmsNextMod would over-correct when those points
-                // had Level>4 (inflating rmsNextMod and inflating p0Level).
-                {
-                    float rmsCurB = 0.0f, rmsNextB = 0.0f;
-                    for (int i = 0; i < 256; ++i) {
-                        const float w = 2.0f * TAtrac3Data::DecodeWindow[i];
-                        const float c = bufCur[i] * w, n = bufNext[i] * w;
-                        rmsCurB += c * c;
-                        rmsNextB += n * n;
-                    }
-                    rmsCurB  = std::sqrt(rmsCurB  / 256.0f);
-                    rmsNextB = std::sqrt(rmsNextB / 256.0f);
-                    static constexpr uint16_t kMaxP0AmplifyLevel = 7u;
-                    if (rmsCurB > 1e-6f && rmsNextB > 1e-6f) {
-                        const uint16_t p0Level = RelationToIdx(rmsCurB / rmsNextB);
-                        if (p0Level > 4u) {
-                            const uint16_t p0Clamped = std::min(p0Level, kMaxP0AmplifyLevel);
-                            if (YamlLog) {
-                                *YamlLog << "        p0_only: " << p0Clamped
-                                         << "  # quiet-to-loud (no_active_points path)\n";
-                            }
-                            subbandInfo->AddSubbandCurve(band, {{p0Clamped, 0u}});
-                            gainBoostPerBand[band] = 0;
-                            continue;
-                        }
-                    }
-                }
-                if (YamlLog) {
-                    *YamlLog << "        skip: no_active_points\n";
-                }
-                gainBoostPerBand[band] = 0;
-                continue;
-            }
+            if (YamlLog && !anyAttenuating)
+                *YamlLog << "        rising_transient: amplifying curve emitted\n";
             if (minLevel <= 2) {
                 if (ratio < kMinAggressiveRatio || hpfOverlapRatio > kMaxOverlapRatio) {
                     if (YamlLog) {
