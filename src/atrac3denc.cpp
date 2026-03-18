@@ -397,14 +397,16 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                     }
                     rmsCurB  = std::sqrt(rmsCurB  / 256.0f);
                     rmsNextB = std::sqrt(rmsNextB / 256.0f);
+                    static constexpr uint16_t kMaxP0AmplifyLevel = 7u;
                     if (rmsCurB > 1e-6f && rmsNextB > 1e-6f) {
                         const uint16_t p0Level = RelationToIdx(rmsCurB / rmsNextB);
-                        if (p0Level > 4u && p0Level <= 7u) {
+                        if (p0Level > 4u) {
+                            const uint16_t p0Clamped = std::min(p0Level, kMaxP0AmplifyLevel);
                             if (YamlLog) {
-                                *YamlLog << "        p0_only: " << p0Level
+                                *YamlLog << "        p0_only: " << p0Clamped
                                          << "  # quiet-to-loud (no_active_points path)\n";
                             }
-                            subbandInfo->AddSubbandCurve(band, {{p0Level, 0u}});
+                            subbandInfo->AddSubbandCurve(band, {{p0Clamped, 0u}});
                             gainBoostPerBand[band] = 0;
                             continue;
                         }
