@@ -382,6 +382,34 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 if (p.Level < 4) anyActive = true;
             }
             if (!anyActive) {
+                // If p0 is in the quiet-to-loud direction, emit a p0-only curve to
+                // normalize the cross-frame boundary.  We recompute the ratio against
+                // plain rmsNext (not rmsNextMod) because we're discarding all other
+                // curve points — using rmsNextMod would over-correct when those points
+                // had Level>4 (inflating rmsNextMod and inflating p0Level).
+                {
+                    float rmsCurB = 0.0f, rmsNextB = 0.0f;
+                    for (int i = 0; i < 256; ++i) {
+                        const float w = 2.0f * TAtrac3Data::DecodeWindow[i];
+                        const float c = bufCur[i] * w, n = bufNext[i] * w;
+                        rmsCurB += c * c;
+                        rmsNextB += n * n;
+                    }
+                    rmsCurB  = std::sqrt(rmsCurB  / 256.0f);
+                    rmsNextB = std::sqrt(rmsNextB / 256.0f);
+                    if (rmsCurB > 1e-6f && rmsNextB > 1e-6f) {
+                        const uint16_t p0Level = RelationToIdx(rmsCurB / rmsNextB);
+                        if (p0Level > 4u && p0Level <= 7u) {
+                            if (YamlLog) {
+                                *YamlLog << "        p0_only: " << p0Level
+                                         << "  # quiet-to-loud (no_active_points path)\n";
+                            }
+                            subbandInfo->AddSubbandCurve(band, {{p0Level, 0u}});
+                            gainBoostPerBand[band] = 0;
+                            continue;
+                        }
+                    }
+                }
                 if (YamlLog) {
                     *YamlLog << "        skip: no_active_points\n";
                 }
