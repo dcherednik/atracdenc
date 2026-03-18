@@ -215,6 +215,18 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
         const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
 
+        // HPF-domain overlap ratio: mean HPF RMS of previous frame vs current frame.
+        // This is domain-matched with gain[] (both HPF-upsampled), unlike full-band
+        // overlapRatio which is inflated by bass energy that has nothing to do with
+        // whether an HPF-domain transient should be protected.
+        float curHpfEnergy = 0.0f;
+        for (float v : gain) curHpfEnergy += v;
+        curHpfEnergy /= static_cast<float>(gain.size());
+        const float prevHpfEnergy = CurveCtx[channel][band].LastHpfEnergy;
+        CurveCtx[channel][band].LastHpfEnergy = curHpfEnergy;
+        const float hpfOverlapRatio = (curHpfEnergy > 1e-9f && prevHpfEnergy > 1e-9f)
+            ? (prevHpfEnergy / curHpfEnergy) : 1.0f;
+
         const float* bufCur  = PcmBuffer.GetFirst(channel + band * 2);
         const float* bufNext = PcmBuffer.GetSecond(channel + band * 2);
 
@@ -235,16 +247,18 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         }
         const float overlapRatio = overlapE / (curE + 1e-9f);
 
-        // Dynamic min-score: linearly scale up from 1× at overlapRatio=1 to
-        // 1.5× at overlapRatio=2 (capped).  Below 1 (attack frame) unchanged.
-        const float overlapFactor = std::min(1.5f, std::max(1.0f, overlapRatio));
+        // Dynamic min-score: raise threshold when prev HPF frame was louder.
+        // Uses HPF-domain ratio so bass-heavy prev frames don't suppress real HPF transients.
+        const float overlapFactor = std::min(1.5f, std::max(1.0f, hpfOverlapRatio));
         const float dynamicMinScore = kMinScore * overlapFactor;
 
         if (YamlLog) {
             *YamlLog << std::fixed << std::setprecision(4)
                      << "        high_freq_ratio: " << result.highFreqRatio << "\n"
                      << "        overlap_ratio: " << overlapRatio
-                     << "  # prev_E/cur_E; >1 means prev frame louder\n"
+                     << "  # prev_E/cur_E full-band; >1 means prev frame louder\n"
+                     << "        hpf_overlap_ratio: " << hpfOverlapRatio
+                     << "  # prev_HPF/cur_HPF; used for transient suppression decisions\n"
                      << "        dynamic_min_score: " << dynamicMinScore << "\n"
                      << "        next_level: " << nextLevel << "\n"
                      << "        gain: ";
@@ -359,7 +373,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             const bool rising = (loc > 0 && loc + 1 < gain.size())
                 ? (gain[loc - 1] < gain[loc] && gain[loc] <= gain[loc + 1])
                 : false;
-            if (rising && overlapRatio > 0.9f) {
+            if (rising && hpfOverlapRatio > 0.9f) {
                 const uint32_t nextLoc = (curvePoints.size() > 1) ? curvePoints[1].Location : 32;
                 uint32_t newLoc = std::min<uint32_t>(loc + 2, 31);
                 if (newLoc >= nextLoc && nextLoc > 0)
@@ -368,7 +382,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             }
         }
         // Soft-cap first point level under overlap dominance to reduce pre-echo.
-        if (!curvePoints.empty() && overlapRatio > 0.9f && curvePoints[0].Level < 4)
+        if (!curvePoints.empty() && hpfOverlapRatio > 0.9f && curvePoints[0].Level < 4)
             curvePoints[0].Level = 4;
 
         // Level boost: compensate for Demodulate's `level` factor on cur[].
@@ -419,7 +433,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 continue;
             }
             if (minLevel <= 2) {
-                if (ratio < kMinAggressiveRatio || overlapRatio > kMaxOverlapRatio) {
+                if (ratio < kMinAggressiveRatio || hpfOverlapRatio > kMaxOverlapRatio) {
                     if (YamlLog) {
                         *YamlLog << std::fixed << std::setprecision(4)
                                  << "        skip: aggressive_suppressed"
