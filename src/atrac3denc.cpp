@@ -442,8 +442,14 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
                                        [](const TGainCurvePoint& p) { return p.Location == 0; });
                 if (it != curvePoints.end()) {
+                    // Always update an existing loc=0 point.
                     it->Level = point0Level;
-                } else {
+                } else if (point0Level != 4 || !curvePoints.empty()) {
+                    // Only insert a new loc=0 point if:
+                    // - level is non-neutral (real cross-frame energy step needing correction), OR
+                    // - other points exist and need a neutral gc_scale anchor; without this,
+                    //   the decoder reads gc_scale from the first non-zero-loc point (e.g. L2@10
+                    //   → gc_scale=4× on the previous frame's OLA overlap, which is wrong).
                     curvePoints.insert(curvePoints.begin(), {point0Level, 0});
                 }
             }
