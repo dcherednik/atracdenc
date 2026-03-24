@@ -138,12 +138,13 @@ float TAtrac3Encoder::LimitRel(float x)
     return std::min(std::max(x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
 }
 
-// Simulate the decoder's gain modulator on buf[0..255] using pts, then return
-// the windowed (2*DecodeWindow) RMS of the result.  Used to compute point0.
+// Apply the gain curve to raw bufNext and return its MDCT-input-domain RMS.
+// bufNext is raw (not pre-windowed); at MDCT time it will be multiplied by
+// EncodeWindow[255-pos] (second half of the overlap window).  We apply that
+// same weight here so the result is comparable to rmsCur (which already has
+// EncodeWindow[i] baked in from the previous frame's MDCT prep).
 static float CalcWindowedRmsAfterCurve(const float* buf,
                                        const std::vector<TGainCurvePoint>& pts) {
-    if (pts.empty())
-        return 0.0f;
     uint32_t pos = 0;
     float rms = 0.0f;
     for (size_t i = 0; i < pts.size(); ++i) {
@@ -153,19 +154,19 @@ static float CalcWindowedRmsAfterCurve(const float* buf,
                          - pts[i].Level + TAtrac3Data::GainInterpolationPosShift;
         const float gainInc = TAtrac3Data::GainInterpolation[incPos];
         for (; pos < lastPos && pos < 256; ++pos) {
-            const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+            const float w = TAtrac3Data::EncodeWindow[255 - pos];
             const float n = (buf[pos] / level) * w;
             rms += n * n;
         }
         for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
-            const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+            const float w = TAtrac3Data::EncodeWindow[255 - pos];
             const float n = (buf[pos] / level) * w;
             rms += n * n;
             level *= gainInc;
         }
     }
     for (; pos < 256; ++pos) {
-        const float w = 2.0f * TAtrac3Data::DecodeWindow[pos];
+        const float w = TAtrac3Data::EncodeWindow[255 - pos];
         const float n = buf[pos] * w;
         rms += n * n;
     }
@@ -292,84 +293,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             return false;
         }();
 
-        // Explicit point 0: choose scale so windowed-RMS of bufCur matches bufNext
-        // as modulated by the existing curve (decoder domain: 2*DecodeWindow).
-        {
-            float rmsCur = 0.0f;
-            for (int i = 0; i < 256; ++i) {
-                const float w = 2.0f * TAtrac3Data::DecodeWindow[i];
-                const float c = bufCur[i] * w;
-                rmsCur += c * c;
-            }
-            rmsCur = std::sqrt(rmsCur / 256.0f);
-
-            const float rmsNextMod = CalcWindowedRmsAfterCurve(bufNext, curvePoints);
-            if (rmsCur > 1e-6f && rmsNextMod > 1e-6f) {
-                const uint16_t point0Level = RelationToIdx(rmsCur / rmsNextMod);
-                if (YamlLog) {
-                    *YamlLog << std::fixed << std::setprecision(6)
-                             << "        rms_cur: " << rmsCur << "\n"
-                             << "        rms_next_mod: " << rmsNextMod << "\n"
-                             << "        point0_level: " << point0Level
-                             << "  # RelationToIdx(rms_cur/rms_next_mod)\n";
-                }
-                auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
-                                       [](const TGainCurvePoint& p) { return p.Location == 0; });
-                if (it != curvePoints.end()) {
-                    it->Level = point0Level;
-                } else {
-                    curvePoints.insert(curvePoints.begin(), {point0Level, 0});
-                }
-            }
-        }
-        // Delay the first non-zero point to the overlap-to-current crossover (conservative).
-        {
-            float rmsCurSub[32] = {};
-            float rmsNextSub[32] = {};
-            for (int s = 0; s < 32; ++s) {
-                float accCur = 0.0f;
-                float accNext = 0.0f;
-                const int base = s * 8;
-                for (int i = 0; i < 8; ++i) {
-                    const int idx = base + i;
-                    const float w = 2.0f * TAtrac3Data::DecodeWindow[idx];
-                    const float c = bufCur[idx] * w;
-                    const float n = bufNext[idx] * w;
-                    accCur += c * c;
-                    accNext += n * n;
-                }
-                rmsCurSub[s] = std::sqrt(accCur / 8.0f);
-                rmsNextSub[s] = std::sqrt(accNext / 8.0f);
-            }
-
-            uint32_t crossover = 32;
-            for (uint32_t s = 0; s < 32; ++s) {
-                if (rmsNextSub[s] >= rmsCurSub[s]) {
-                    crossover = s;
-                    break;
-                }
-            }
-
-            if (YamlLog) {
-                *YamlLog << "        crossover: " << crossover
-                         << "  # first subframe where next_E >= cur_E (32=none)\n";
-            }
-
-            const size_t point1Idx = (!curvePoints.empty() && curvePoints[0].Location == 0) ? 1 : 0;
-            if (crossover < 32 && crossover >= 2 && point1Idx < curvePoints.size()) {
-                const uint32_t curLoc = curvePoints[point1Idx].Location;
-                if (crossover > curLoc) {
-                    uint32_t target = std::min<uint32_t>(crossover, curLoc + 6);
-                    uint32_t nextLoc = (point1Idx + 1 < curvePoints.size())
-                                     ? curvePoints[point1Idx + 1].Location : 32;
-                    if (target >= nextLoc && nextLoc > 0)
-                        target = nextLoc - 1;
-                    if (target > curLoc)
-                        curvePoints[point1Idx].Location = target;
-                }
-            }
-        }
-
         float maxGain = 0.0f;
         for (float g : gain) maxGain = std::max(maxGain, g);
         const float frameEndLevel = gain.back();
@@ -397,14 +320,12 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // the HPF gain[] does not represent full-band energy: a tiny HPF transient
         // can produce level 9 (×32 amplification) on a loud full-band signal,
         // catastrophically over-inflating MDCT coefficients.
-        if (!anyAttenuating) {
-            static constexpr float kMinHfrForAmplify = 0.3f;
-            if (result.highFreqRatio < kMinHfrForAmplify) {
-                if (YamlLog)
-                    *YamlLog << "        skip: amplify_low_hfr\n";
-                gainBoostPerBand[band] = 0;
-                continue;
-            }
+        static constexpr float kMinHfrForAmplify = 0.3f;
+        if (result.highFreqRatio < kMinHfrForAmplify) {
+            if (YamlLog)
+                *YamlLog << "        skip: amplify_low_hfr\n";
+            gainBoostPerBand[band] = 0;
+            curvePoints.clear();
         }
 
         // Level boost: compensate for Demodulate's `level` factor on cur[].
@@ -424,12 +345,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                  << "  # ratio=" << ratio << " overlap=" << overlapRatio << "\n";
                     }
                     gainBoostPerBand[band] = 0;
-                    continue;
-                }
-                const uint32_t softMin = (overlapRatio < kLowOverlapRelax) ? 2u : kSoftMinLevel;
-                for (auto& p : curvePoints) {
-                    if (p.Level < softMin)
-                        p.Level = softMin;
+                    curvePoints.clear();
+                } else {
+                    const uint32_t softMin = (overlapRatio < kLowOverlapRelax) ? 2u : kSoftMinLevel;
+                    for (auto& p : curvePoints) {
+                        if (p.Level < softMin)
+                            p.Level = softMin;
+                    }
                 }
             }
 
@@ -453,7 +375,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // as a conservative proxy for nextLevel_{N+2} (≈ quietest level reachable in N+1,
         // a lower bound on frame N+2's start level).
         int scaleBoost = 0;
-        if (frameEndLevel > 1e-6f) {
+        {
             static constexpr size_t kLookaheadOffset = 3072;
             const size_t outSz = result.signal.size();
             if (outSz > kLookaheadOffset + 64) {
@@ -504,14 +426,46 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             }
             gainBoostPerBand[band] = 0;
             gainBoostPerBand[0] = std::min(gainBoostPerBand[0] + totalBoost, kLevelBoostCap + 1);
-            continue;
+            curvePoints.clear();
         }
 
-        if (YamlLog) {
-            *YamlLog << "        gain_boost: " << totalBoost << "\n";
+        if (band < 2) {
+            if (YamlLog)
+                *YamlLog << "        gain_boost: " << totalBoost << "\n";
+            gainBoostPerBand[band] = totalBoost;
         }
 
-        gainBoostPerBand[band] = totalBoost;
+
+        // Explicit point 0: match MDCT-input-domain RMS of bufCur to bufNext after
+        // curve modulation.  bufCur already has EncodeWindow[i] baked in from the
+        // previous frame's MDCT prep (srcBuff[i] = EW[i]*bufNext[i]), so no extra
+        // window is needed here.  bufNext is raw; CalcWindowedRmsAfterCurve applies
+        // EncodeWindow[255-pos] so both sides are in the same domain.
+        {
+            float rmsCur = 0.0f;
+            for (int i = 0; i < 256; ++i)
+                rmsCur += bufCur[i] * bufCur[i];
+            rmsCur = std::sqrt(rmsCur / 256.0f);
+
+            const float rmsNextMod = CalcWindowedRmsAfterCurve(bufNext, curvePoints);
+            if (rmsCur > 1e-6f && rmsNextMod > 1e-6f) {
+                const uint16_t point0Level = RelationToIdx(rmsCur / rmsNextMod);
+                if (YamlLog) {
+                    *YamlLog << std::fixed << std::setprecision(6)
+                             << "        rms_cur: " << rmsCur << "\n"
+                             << "        rms_next_mod: " << rmsNextMod << "\n"
+                             << "        point0_level: " << point0Level
+                             << "  # RelationToIdx(rms_cur/rms_next_mod)\n";
+                }
+                auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
+                                       [](const TGainCurvePoint& p) { return p.Location == 0; });
+                if (it != curvePoints.end()) {
+                    it->Level = point0Level;
+                } else {
+                    curvePoints.insert(curvePoints.begin(), {point0Level, 0});
+                }
+            }
+        }
 
         std::vector<TAtrac3Data::SubbandInfo::TGainPoint> curve;
         curve.reserve(curvePoints.size());
