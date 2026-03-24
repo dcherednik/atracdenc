@@ -298,6 +298,20 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         const float frameEndLevel = gain.back();
         const float ratio = maxGain / (frameEndLevel + 1e-9f);
 
+        // Minimum signal gate: suppress curves on near-silent frames.
+        // Firing on noise-floor content wastes bitrate and can produce extreme
+        // Level values against a tiny target.
+        // Use curvePoints.clear() (not continue) so point0 still runs for any
+        // genuine cross-frame energy step at the OLA boundary.
+        static constexpr float kMinSignalThreshold = 1e-4f;
+        if (maxGain < kMinSignalThreshold) {
+            if (YamlLog)
+                *YamlLog << std::fixed << std::setprecision(6)
+                         << "        skip: below_min_signal  # maxGain " << maxGain << "\n";
+            gainBoostPerBand[band] = 0;
+            curvePoints.clear();
+        }
+
         // Amplifying-only curves require reliable HPF analysis.  When HFR is low
         // the HPF gain[] does not represent full-band energy: a tiny HPF transient
         // can produce level 9 (×32 amplification) on a loud full-band signal,
