@@ -298,24 +298,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         const float frameEndLevel = gain.back();
         const float ratio = maxGain / (frameEndLevel + 1e-9f);
 
-        // Delay early attack points when overlap dominates to reduce pre-echo.
-        if (!curvePoints.empty() && curvePoints[0].Location > 0) {
-            const uint32_t loc = curvePoints[0].Location;
-            const bool rising = (loc > 0 && loc + 1 < gain.size())
-                ? (gain[loc - 1] < gain[loc] && gain[loc] <= gain[loc + 1])
-                : false;
-            if (rising && hpfOverlapRatio > 0.9f) {
-                const uint32_t nextLoc = (curvePoints.size() > 1) ? curvePoints[1].Location : 32;
-                uint32_t newLoc = std::min<uint32_t>(loc + 2, 31);
-                if (newLoc >= nextLoc && nextLoc > 0)
-                    newLoc = nextLoc - 1;
-                curvePoints[0].Location = newLoc;
-            }
-        }
-        // Soft-cap first point level under overlap dominance to reduce pre-echo.
-        if (!curvePoints.empty() && hpfOverlapRatio > 0.9f && curvePoints[0].Level < 4)
-            curvePoints[0].Level = 4;
-
         // Amplifying-only curves require reliable HPF analysis.  When HFR is low
         // the HPF gain[] does not represent full-band energy: a tiny HPF transient
         // can produce level 9 (×32 amplification) on a loud full-band signal,
