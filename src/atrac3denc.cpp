@@ -264,7 +264,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "  # 32 subframe RMS values\n";
         }
 
-        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore);
+        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore, YamlLog);
 
         if (curvePoints.empty()) {
             if (YamlLog) {
