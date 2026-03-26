@@ -19,6 +19,7 @@
 #pragma once
 #include <math.h>
 #include <cstdint>
+#include <iosfwd>
 #include <optional>
 #include <vector>
 
@@ -58,11 +59,13 @@ struct TGainCurvePoint {
 struct TCurveBuilderCtx {
     float LastLevel = 0.0f;
     float LastHpfEnergy = 0.0f;  // mean HPF RMS of previous frame's gain[] subframes
+    // Filled by CalcCurve for YAML logging in the caller
 };
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel = {},
-                                       float minScore = 2.0f);
+                                       float minScore = 2.0f,
+                                       std::ostream* yamlLog = nullptr);
 
 // Detect transient locations (0..in.size()-1) using the same logic as CalcCurve.
 // savedLastLevel/nextLevel provide boundary context. maxPoints caps the count.

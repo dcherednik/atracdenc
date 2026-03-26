@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cassert>
+#include <iomanip>
+#include <ostream>
 namespace NAtracDEnc {
 
 using std::vector;
@@ -209,7 +211,8 @@ static float RegionRMS(const std::vector<float>& in, int start, int end) {
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel,
-                                       float minScore) {
+                                       float minScore,
+                                       std::ostream* yamlLog) {
     std::vector<TGainCurvePoint> curve;
 
     if (in.empty())
@@ -235,6 +238,14 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     const float target = usePlateau
         ? plateau.Level
         : (nextLevel.has_value() ? *nextLevel : in.back());
+    if (yamlLog) {
+        *yamlLog << std::fixed << std::setprecision(6)
+                 << "        plateau_level: " << plateau.Level << "\n"
+                 << "        plateau_max_raw: " << plateau.MaxRaw << "\n"
+                 << "        plateau_release: " << (plateau.ReleaseAtEnd ? "true" : "false") << "\n"
+                 << "        target: " << target
+                 << "  # source: " << (usePlateau ? "plateau" : "last_subframe") << "\n";
+    }
     const float savedLastLevel = ctx.LastLevel;
 
     // Store in.back() as the next call's savedLastLevel instead of target (nextLevel).
