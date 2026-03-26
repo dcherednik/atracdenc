@@ -178,9 +178,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          TAtrac3Data::SubbandInfo* subbandInfo,
                                          int gainBoostPerBand[TAtrac3Data::NumQMF])
 {
-    static constexpr float kMinAggressiveRatio = 10.0f;  // allow Level <=2 only for >= 10x transients
-    static constexpr float kMaxOverlapRatio = 1.2f;      // reject if prev overlap > 1.2x current energy
-    static constexpr uint32_t kSoftMinLevel = 3;         // default soften extreme levels to 2x
     static constexpr float kLowOverlapRelax = 0.6f;      // allow softer min level when overlap is small
     static constexpr int kLevelBoostCap = 1;             // cap level boost to reduce bit starvation
     static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
@@ -285,14 +282,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             }
         }
 
-        // Whether any curve point attenuates (level < 4). Amplifying-only curves
-        // need different treatment in some heuristics below.
-        const bool anyAttenuating = [&]() {
-            for (const auto& p : curvePoints)
-                if (p.Level < 4) return true;
-            return false;
-        }();
-
         float maxGain = 0.0f;
         for (float g : gain) maxGain = std::max(maxGain, g);
         const float frameEndLevel = gain.back();
@@ -324,45 +313,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             curvePoints.clear();
         }
 
-        // Level boost: compensate for Demodulate's `level` factor on cur[].
-        // level = GainLevel[min point Level], extra bits = 4 - minLevel.
         int levelBoost = 0;
-        {
-            uint32_t minLevel = 15;
-            for (const auto& p : curvePoints)
-                minLevel = std::min(minLevel, p.Level);
-            if (YamlLog && !anyAttenuating)
-                *YamlLog << "        rising_transient: amplifying curve emitted\n";
-            if (minLevel <= 2) {
-                if (ratio < kMinAggressiveRatio || hpfOverlapRatio > kMaxOverlapRatio) {
-                    if (YamlLog) {
-                        *YamlLog << std::fixed << std::setprecision(4)
-                                 << "        skip: aggressive_suppressed"
-                                 << "  # ratio=" << ratio << " overlap=" << overlapRatio << "\n";
-                    }
-                    gainBoostPerBand[band] = 0;
-                    curvePoints.clear();
-                } else {
-                    const uint32_t softMin = (overlapRatio < kLowOverlapRelax) ? 2u : kSoftMinLevel;
-                    for (auto& p : curvePoints) {
-                        if (p.Level < softMin)
-                            p.Level = softMin;
-                    }
-                }
-            }
-
-            // Scale constraint: curve[0].Level sets decoder scale for previous frame.
-            if (!curvePoints.empty() && curvePoints[0].Level < 3)
-                curvePoints[0].Level = 3;
-
-            // Re-scan after constraints may have raised some levels.
-            minLevel = 4;
-            for (const auto& p : curvePoints)
-                minLevel = std::min(minLevel, p.Level);
-            if (minLevel < 4)
-                levelBoost = static_cast<int>(4 - minLevel);
-        }
-        levelBoost = std::min(levelBoost, kLevelBoostCap);
 
         // Scale boost: compensate for Demodulate's `scale = GainLevel[giNext[0].Level]`.
         // When decoding frame N, scale = GainLevel[frame N+1's first gain point Level].
