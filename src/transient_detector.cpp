@@ -112,6 +112,89 @@ static uint16_t RelationToIdx(float x) {
     }
 }
 
+// Find the maximum sustained amplitude level that persists for at least
+// minContiguous consecutive subframes.  A 3-point median filter is applied
+// first to reject isolated spikes.  Also detects whether the frame ends in
+// a release (signal drops well below the plateau and does not recover).
+struct TPlateauResult {
+    float Level;        // 0 if no plateau found
+    float MaxRaw;       // max of raw in[] (unfiltered)
+    bool  ReleaseAtEnd; // true if signal decays after plateau by frame end
+};
+
+static TPlateauResult FindPlateau(const std::vector<float>& in, int minContiguous) {
+    const int n = static_cast<int>(in.size());
+    float maxRaw = 0.0f;
+    for (int i = 0; i < n; ++i) maxRaw = std::max(maxRaw, in[i]);
+    if (n < minContiguous)
+        return {0.0f, maxRaw, false};
+
+    // 3-point median filter: suppresses single-sample spikes
+    std::vector<float> filtered(n);
+    for (int i = 0; i < n; ++i) {
+        const int lo = std::max(0, i - 1);
+        const int hi = std::min(n - 1, i + 1);
+        float w[3]; int wn = 0;
+        for (int j = lo; j <= hi; ++j) w[wn++] = in[j];
+        if (wn == 3) {
+            if (w[0] > w[1]) std::swap(w[0], w[1]);
+            if (w[1] > w[2]) std::swap(w[1], w[2]);
+            if (w[0] > w[1]) std::swap(w[0], w[1]);
+        }
+        filtered[i] = w[wn / 2];
+    }
+
+    // Sliding window minimum of size minContiguous; take the maximum of those
+    // minima.  This gives the highest level that is sustained for the required
+    // number of consecutive subframes.
+    float bestLevel = 0.0f;
+    int   bestEnd   = -1;
+    for (int j = 0; j + minContiguous <= n; ++j) {
+        float minVal = filtered[j];
+        for (int k = 1; k < minContiguous; ++k)
+            minVal = std::min(minVal, filtered[j + k]);
+        if (minVal > bestLevel) {
+            bestLevel = minVal;
+            bestEnd   = j + minContiguous - 1;
+        }
+    }
+
+    if (bestLevel < 1e-6f)
+        return {0.0f, maxRaw, false};
+
+    // Extend plateau rightward while the filtered signal stays at plateau level
+    while (bestEnd + 1 < n && filtered[bestEnd + 1] >= bestLevel)
+        ++bestEnd;
+
+    // Release detection: signal decays to near-silence by frame end.
+    // Hard tail guard: if the last subframe is below 10% of the plateau, it is
+    // unambiguously a release regardless of what the ring-down looks like in
+    // between (a gradual ring-down can keep anyHighAfter=true and incorrectly
+    // suppress release detection without this guard).
+    // Soft tail: also trigger when the tail is below 50% of the plateau AND no
+    // post-plateau subframe recovers above 70%.
+    static constexpr float kHardTailRatio  = 0.1f;
+    static constexpr float kReleaseHighTol  = 0.7f;
+    static constexpr float kReleaseTailRatio = 0.5f;
+    bool releaseAtEnd = false;
+    if (bestEnd < n - 1) {
+        if (in[n - 1] < bestLevel * kHardTailRatio) {
+            releaseAtEnd = true;
+        } else {
+            bool anyHighAfter = false;
+            for (int i = bestEnd + 1; i < n; ++i) {
+                if (in[i] >= bestLevel * kReleaseHighTol) {
+                    anyHighAfter = true;
+                    break;
+                }
+            }
+            releaseAtEnd = !anyHighAfter && (in[n - 1] < bestLevel * kReleaseTailRatio);
+        }
+    }
+
+    return {bestLevel, maxRaw, releaseAtEnd};
+}
+
 // Returns the RMS of in[start..end) or in[start] when the range is empty.
 // RMS gives a smoother energy estimate than max, reducing over-attenuation
 // from brief loudness spikes within a region.
@@ -132,12 +215,28 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     if (in.empty())
         return curve;
 
-    // When the caller provides the next frame's first-subframe amplitude, use
-    // it as the target: the last subframe of bufNext may be a release ramp
-    // whose peak still equals the preceding plateau, so in.back() would give
-    // the wrong (loud) target.  nextLevel tells us where the signal is going.
-    const float target         = nextLevel.has_value() ? *nextLevel : in.back();
+    // Use the plateau level as target when the frame contains a sustained peak
+    // that doesn't end in a release.  This ensures that pre-plateau quiet
+    // regions produce AMP curves (amplify quiet prefix toward plateau) rather
+    // than relying solely on nextLevel, which can be mismatched when the frame
+    // contains an attack followed by a new quiet segment.
+    // Fall back to nextLevel / in.back() for release frames and when no
+    // sustained plateau is found.
+    static constexpr int kMinPlateauLen = 3;
+    const TPlateauResult plateau = FindPlateau(in, kMinPlateauLen);
+    // Only use the plateau as target when it represents the dominant peak of the
+    // frame (>= 40% of the raw maximum).  If the plateau is far below the frame
+    // maximum it is the quiet floor, not the peak, and using it as target would
+    // produce extreme ATT curves for the loud peak region.
+    static constexpr float kMinPlateauFraction = 0.4f;
+    const bool usePlateau = plateau.Level > 1e-6f
+                            && !plateau.ReleaseAtEnd
+                            && plateau.Level >= plateau.MaxRaw * kMinPlateauFraction;
+    const float target = usePlateau
+        ? plateau.Level
+        : (nextLevel.has_value() ? *nextLevel : in.back());
     const float savedLastLevel = ctx.LastLevel;
+
     // Store in.back() as the next call's savedLastLevel instead of target (nextLevel).
     // Both in.back() (last analysis subframe of this call) and gain[0] of the next
     // call (first analysis subframe of the next frame) are measured in the analysis
