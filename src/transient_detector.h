@@ -59,7 +59,7 @@ struct TGainCurvePoint {
 struct TCurveBuilderCtx {
     float LastLevel = 0.0f;
     float LastHpfEnergy = 0.0f;  // mean HPF RMS of previous frame's gain[] subframes
-    // Filled by CalcCurve for YAML logging in the caller
+    float LastTarget = 0.0f;     // target amplitude from previous CalcCurve call (HPF domain)
 };
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,

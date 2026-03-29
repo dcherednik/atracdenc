@@ -144,7 +144,10 @@ float TAtrac3Encoder::LimitRel(float x)
 // same weight here so the result is comparable to rmsCur (which already has
 // EncodeWindow[i] baked in from the previous frame's MDCT prep).
 static float CalcWindowedRmsAfterCurve(const float* buf,
-                                       const std::vector<TGainCurvePoint>& pts) {
+                                       const std::vector<TGainCurvePoint>& pts,
+                                       std::ostream* yamlLog = nullptr) {
+    // Collect per-sample modulated+windowed values for optional logging.
+    float modBuf[256];
     uint32_t pos = 0;
     float rms = 0.0f;
     for (size_t i = 0; i < pts.size(); ++i) {
@@ -156,11 +159,13 @@ static float CalcWindowedRmsAfterCurve(const float* buf,
         for (; pos < lastPos && pos < 256; ++pos) {
             const float w = TAtrac3Data::EncodeWindow[255 - pos];
             const float n = (buf[pos] / level) * w;
+            modBuf[pos] = n;
             rms += n * n;
         }
         for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
             const float w = TAtrac3Data::EncodeWindow[255 - pos];
             const float n = (buf[pos] / level) * w;
+            modBuf[pos] = n;
             rms += n * n;
             level *= gainInc;
         }
@@ -168,7 +173,23 @@ static float CalcWindowedRmsAfterCurve(const float* buf,
     for (; pos < 256; ++pos) {
         const float w = TAtrac3Data::EncodeWindow[255 - pos];
         const float n = buf[pos] * w;
+        modBuf[pos] = n;
         rms += n * n;
+    }
+    if (yamlLog) {
+        // Log 32 subframe RMS values of the modulated+windowed bufNext.
+        const uint32_t subSz = 256 / 32;
+        *yamlLog << "        rms_next_mod_subframes: ";
+        *yamlLog << std::fixed << std::setprecision(6) << "[";
+        for (uint32_t sf = 0; sf < 32; ++sf) {
+            float sfRms = 0.0f;
+            for (uint32_t s = 0; s < subSz; ++s)
+                sfRms += modBuf[sf * subSz + s] * modBuf[sf * subSz + s];
+            sfRms = std::sqrt(sfRms / subSz);
+            if (sf) *yamlLog << ", ";
+            *yamlLog << sfRms;
+        }
+        *yamlLog << "]\n";
     }
     return std::sqrt(rms / 256.0f);
 }
@@ -264,7 +285,14 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "  # 32 subframe RMS values\n";
         }
 
+        const float prevTarget = CurveCtx[channel][band].LastTarget;
         auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore, YamlLog);
+
+        // HACK: frame 22 ch=1 band=0 — emit {level=4, loc=7}, {level=0, loc=20}, no point0
+        const bool hackOverride = false;//(FrameNum == 65 && channel == 1 && band == 1);
+        if (hackOverride) {
+            curvePoints = {{6, 0u}};
+        }
 
         if (curvePoints.empty()) {
             if (YamlLog) {
@@ -347,11 +375,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         const int totalBoost = std::min(levelBoost + scaleBoost, kLevelBoostCap);
 
         if (YamlLog) {
-            *YamlLog << "        curve_final:\n";
-            for (const auto& p : curvePoints) {
-                *YamlLog << "          - {level: " << p.Level
-                         << ", loc: " << p.Location << "}\n";
-            }
             *YamlLog << std::fixed << std::setprecision(4)
                      << "        max_gain: " << maxGain << "\n"
                      << "        ratio: " << ratio
@@ -361,13 +384,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                      << "        total_boost: " << totalBoost << "\n";
         }
 
-        // Bands 2-3 are above ~11 kHz where pre-echo is largely inaudible.
-        // Skip gain modulation there entirely; if a transient was detected,
+        // Band 3 is above ~16 kHz where pre-echo is largely inaudible.
+        // Skip gain modulation there; if a transient was detected,
         // redirect the bit boost to band 0 so audible-range reconstruction
-        // gets the extra bits instead of the inaudible high-frequency bands.
-        if (band >= 2) {
+        // gets the extra bits instead of the inaudible high-frequency band.
+        if (band >= 3) {
             if (YamlLog) {
-                *YamlLog << "        skip: band_ge_2"
+                *YamlLog << "        skip: band_ge_3"
                          << "  # inaudible HF; boost redirected to band 0\n"
                          << "        redirected_boost: " << totalBoost << "\n";
             }
@@ -376,47 +399,66 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             curvePoints.clear();
         }
 
-        if (band < 2) {
+        if (band < 3) {
             if (YamlLog)
                 *YamlLog << "        gain_boost: " << totalBoost << "\n";
             gainBoostPerBand[band] = totalBoost;
         }
 
 
-        // Explicit point 0: match MDCT-input-domain RMS of bufCur to bufNext after
-        // curve modulation.  bufCur already has EncodeWindow[i] baked in from the
-        // previous frame's MDCT prep (srcBuff[i] = EW[i]*bufNext[i]), so no extra
-        // window is needed here.  bufNext is raw; CalcWindowedRmsAfterCurve applies
-        // EncodeWindow[255-pos] so both sides are in the same domain.
-        {
-            float rmsCur = 0.0f;
-            for (int i = 0; i < 256; ++i)
-                rmsCur += bufCur[i] * bufCur[i];
-            rmsCur = std::sqrt(rmsCur / 256.0f);
+        // Explicit point 0: correct cross-frame energy step in the HPF domain.
+        // Compare prevTarget (what the previous frame's curve was targeting, in the
+        // HPF gain[] domain) against the mean HPF level of the pre-ramp zone of
+        // bufNext after applying the current curve's attenuation.  Both quantities
+        // are in the same filtered domain, avoiding LF-content distortion.
+        if (!hackOverride) {
+            // hpfRmsNextMod: mean of gain[sf] / GainLevel[pts[0].Level]
+            // for the subframes strictly before the first curve point's ramp start.
+            // These are the only samples the curve actually attenuates at constant level.
+            float hpfRmsNextMod = 0.0f;
+            bool hpfRmsNextModValid = false;
+            if (!curvePoints.empty() && curvePoints[0].Location > 0) {
+                const uint32_t nBefore = curvePoints[0].Location;  // subSz==8 == LocScale shift
+                const float divisor = TAtrac3Data::GainLevel[curvePoints[0].Level];
+                float sum = 0.0f;
+                for (uint32_t sf = 0; sf < nBefore; ++sf)
+                    sum += gain[sf];
+                hpfRmsNextMod = (sum / nBefore) / divisor;
+                hpfRmsNextModValid = true;
+            } else if (curvePoints.empty()) {
+                float sum = 0.0f;
+                for (float v : gain) sum += v;
+                hpfRmsNextMod = sum / gain.size();
+                hpfRmsNextModValid = true;
+            }
 
-            const float rmsNextMod = CalcWindowedRmsAfterCurve(bufNext, curvePoints);
-            if (rmsCur > 1e-6f && rmsNextMod > 1e-6f) {
-                const uint16_t point0Level = RelationToIdx(rmsCur / rmsNextMod);
+            if (YamlLog) {
+                *YamlLog << std::fixed << std::setprecision(6)
+                         << "        prev_target: " << prevTarget << "\n"
+                         << "        hpf_rms_next_mod: " << hpfRmsNextMod << "\n";
+            }
+
+            if (hpfRmsNextModValid && prevTarget > 1e-6f && hpfRmsNextMod > 1e-6f) {
+                const uint16_t point0Level = RelationToIdx(prevTarget / hpfRmsNextMod);
                 if (YamlLog) {
-                    *YamlLog << std::fixed << std::setprecision(6)
-                             << "        rms_cur: " << rmsCur << "\n"
-                             << "        rms_next_mod: " << rmsNextMod << "\n"
-                             << "        point0_level: " << point0Level
-                             << "  # RelationToIdx(rms_cur/rms_next_mod)\n";
+                    *YamlLog << "        point0_level: " << point0Level
+                             << "  # RelationToIdx(prev_target/hpf_rms_next_mod)\n";
                 }
                 auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
                                        [](const TGainCurvePoint& p) { return p.Location == 0; });
                 if (it != curvePoints.end()) {
-                    // Always update an existing loc=0 point.
                     it->Level = point0Level;
                 } else if (point0Level != 4 || !curvePoints.empty()) {
-                    // Only insert a new loc=0 point if:
-                    // - level is non-neutral (real cross-frame energy step needing correction), OR
-                    // - other points exist and need a neutral gc_scale anchor; without this,
-                    //   the decoder reads gc_scale from the first non-zero-loc point (e.g. L2@10
-                    //   → gc_scale=4× on the previous frame's OLA overlap, which is wrong).
                     curvePoints.insert(curvePoints.begin(), {point0Level, 0});
                 }
+            }
+        }
+
+        if (YamlLog) {
+            *YamlLog << "        curve_final:\n";
+            for (const auto& p : curvePoints) {
+                *YamlLog << "          - {level: " << p.Level
+                         << ", loc: " << p.Location << "}\n";
             }
         }
 
