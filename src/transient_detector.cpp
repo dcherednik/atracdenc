@@ -247,6 +247,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                  << "  # source: " << (usePlateau ? "plateau" : "last_subframe") << "\n";
     }
     const float savedLastLevel = ctx.LastLevel;
+    const float savedPrevTarget = ctx.LastTarget;  // previous frame's curve target
 
     // Store in.back() as the next call's savedLastLevel instead of target (nextLevel).
     // Both in.back() (last analysis subframe of this call) and gain[0] of the next
@@ -282,6 +283,24 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
         const float regionAmp = RegionRMS(in, prevLoc + 1, loc);
         const uint16_t level = RelationToIdx(regionAmp / target);
         curve.push_back({level, static_cast<uint32_t>(loc)});
+    }
+
+    // Edge case: first transient at loc=0.  The point at loc=0 sets
+    // gc_scale = GainLevel[curve[0].Level] which divides ALL of bufCur
+    // (the previous MDCT window).  The CalcCurve loop used in[0]/target,
+    // but in[0] is the ramp START, not a pre-ramp region (which is empty at
+    // loc=0).  The correct cross-frame ratio is savedPrevTarget/target:
+    // the same formula the external point0 block uses for loc>0 (where
+    // hpfRmsNextMod ≈ mean(gain[0..loc-1]) / GainLevel[pts[0].Level] ≈ target).
+    if (!curve.empty() && curve[0].Location == 0 && savedPrevTarget > 1e-6f && target > 1e-6f) {
+        const uint16_t p0Level = RelationToIdx(savedPrevTarget / target);
+        if (yamlLog) {
+            *yamlLog << std::fixed << std::setprecision(6)
+                     << "        prev_target: " << savedPrevTarget << "\n"
+                     << "        point0_level_override: " << p0Level
+                     << "  # loc=0 edge: RelationToIdx(prev_target/target)\n";
+        }
+        curve[0].Level = p0Level;
     }
 
     return curve;
