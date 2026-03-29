@@ -256,6 +256,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     // measures in the analysis domain — a different FFT context for the same 8
     // samples, which can produce false boundary transients.
     ctx.LastLevel = in.back();
+    ctx.LastTarget = target;
 
     if (target < 1e-6f)
         return curve;
