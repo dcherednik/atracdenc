@@ -289,9 +289,9 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore, YamlLog);
 
         // HACK: frame 22 ch=1 band=0 — emit {level=4, loc=7}, {level=0, loc=20}, no point0
-        const bool hackOverride = false;//(FrameNum == 65 && channel == 1 && band == 1);
+        const bool hackOverride = false;(FrameNum == 1406 && channel == 0 && band == 1);
         if (hackOverride) {
-            curvePoints = {{6, 0u}};
+            curvePoints = {{1,2}, {0,10}, {1,14}, {2,19}, {3,27}};
         }
 
         if (curvePoints.empty()) {
