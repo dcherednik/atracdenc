@@ -224,16 +224,18 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     const bool usePlateau = plateau.Level > 1e-6f
                             && !plateau.ReleaseAtEnd
                             && plateau.Level >= plateau.MaxRaw * kMinPlateauFraction;
-    const float target = usePlateau
-        ? plateau.Level
-        : (nextLevel.has_value() ? *nextLevel : in.back());
+    // For non-plateau frames always use the actual last subframe as the staircase
+    // target: that is where the signal returns to within this frame.  nextLevel
+    // (the lookahead first-subframe estimate) can be 6× higher than in.back() on
+    // release frames, causing the staircase to wrongly amplify the tail region.
+    const float target = usePlateau ? plateau.Level : in.back();
     if (yamlLog) {
         *yamlLog << std::fixed << std::setprecision(6)
                  << "        plateau_level: " << plateau.Level << "\n"
                  << "        plateau_max_raw: " << plateau.MaxRaw << "\n"
                  << "        plateau_release: " << (plateau.ReleaseAtEnd ? "true" : "false") << "\n"
                  << "        target: " << target
-                 << "  # source: " << (usePlateau ? "plateau" : "last_subframe") << "\n";
+                 << "  # source: " << (usePlateau ? "plateau" : "in.back") << "\n";
     }
 
     const float savedLastLevel = ctx.LastLevel;
