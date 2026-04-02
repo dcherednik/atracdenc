@@ -211,26 +211,15 @@ static float RegionRMS(const std::vector<float>& in, int start, int end) {
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel,
-                                       float minScore,
+                                       float /*minScore*/,
                                        std::ostream* yamlLog) {
     std::vector<TGainCurvePoint> curve;
 
     if (in.empty())
         return curve;
 
-    // Use the plateau level as target when the frame contains a sustained peak
-    // that doesn't end in a release.  This ensures that pre-plateau quiet
-    // regions produce AMP curves (amplify quiet prefix toward plateau) rather
-    // than relying solely on nextLevel, which can be mismatched when the frame
-    // contains an attack followed by a new quiet segment.
-    // Fall back to nextLevel / in.back() for release frames and when no
-    // sustained plateau is found.
     static constexpr int kMinPlateauLen = 3;
     const TPlateauResult plateau = FindPlateau(in, kMinPlateauLen);
-    // Only use the plateau as target when it represents the dominant peak of the
-    // frame (>= 40% of the raw maximum).  If the plateau is far below the frame
-    // maximum it is the quiet floor, not the peak, and using it as target would
-    // produce extreme ATT curves for the loud peak region.
     static constexpr float kMinPlateauFraction = 0.4f;
     const bool usePlateau = plateau.Level > 1e-6f
                             && !plateau.ReleaseAtEnd
@@ -246,62 +235,106 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                  << "        target: " << target
                  << "  # source: " << (usePlateau ? "plateau" : "last_subframe") << "\n";
     }
-    const float savedLastLevel = ctx.LastLevel;
-    const float savedPrevTarget = ctx.LastTarget;  // previous frame's curve target
 
-    // Store in.back() as the next call's savedLastLevel instead of target (nextLevel).
-    // Both in.back() (last analysis subframe of this call) and gain[0] of the next
-    // call (first analysis subframe of the next frame) are measured in the analysis
-    // domain and represent adjacent time blocks.  Using nextLevel here would make
-    // savedLastLevel a lookahead-domain estimate of the same samples that gain[0]
-    // measures in the analysis domain — a different FFT context for the same 8
-    // samples, which can produce false boundary transients.
+    const float savedLastLevel = ctx.LastLevel;
     ctx.LastLevel = in.back();
     ctx.LastTarget = target;
 
     if (target < 1e-6f)
         return curve;
 
-    // No valid prior-frame context: record the context for next frame but do not
-    // emit a curve.  A zero savedLastLevel would produce scaleLevel=15 (÷2048),
-    // causing extreme amplification in the gain modulator.
+    // No valid prior-frame context: skip curve emission on the first frame.
     if (savedLastLevel < 1e-6f)
         return curve;
 
-    static const int kMaxTransientPoints = 6;  // keep space for explicit point 0
-    const std::vector<int> transients =
-        DetectTransients(in, savedLastLevel, nextLevel, minScore, kMaxTransientPoints);
+    const int n = static_cast<int>(in.size());
 
-    if (transients.empty())
+    // Apply 3-point median filter to suppress isolated gain spikes that would
+    // otherwise produce spurious level transitions in the staircase scan.
+    std::vector<float> filtered(n);
+    for (int i = 0; i < n; ++i) {
+        const int lo = std::max(0, i - 1);
+        const int hi = std::min(n - 1, i + 1);
+        float w[3]; int wn = 0;
+        for (int j = lo; j <= hi; ++j) w[wn++] = in[j];
+        if (wn == 3) {
+            if (w[0] > w[1]) std::swap(w[0], w[1]);
+            if (w[1] > w[2]) std::swap(w[1], w[2]);
+            if (w[0] > w[1]) std::swap(w[0], w[1]);
+        }
+        filtered[i] = w[wn / 2];
+    }
+
+    // Per-subframe attenuation/amplification level relative to target.
+    std::vector<uint16_t> sfLevel(n);
+    for (int i = 0; i < n; ++i)
+        sfLevel[i] = RelationToIdx(filtered[i] / target);
+
+    // Find targetSf: index of the first subframe (from the right) after the last
+    // non-neutral subframe.  Everything at targetSf and beyond is at neutral —
+    // no gain curve coverage needed there.
+    // NOTE: the last subframe (sf = n-1) is always at neutral by design — the
+    // ATRAC3 gain ramp always returns to neutral before the frame boundary.
+    // Skipping sf = n-1 ensures targetSf <= n-1, keeping all emitted loc values
+    // within the 5-bit field (0..31) and preventing bitstream overflow.
+    int targetSf = 0;
+    for (int sf = n - 2; sf >= 0; --sf) {
+        if (sfLevel[sf] != 4u) {
+            targetSf = sf + 1;
+            break;
+        }
+    }
+
+    // Entire frame is at neutral — nothing to encode.
+    if (targetSf == 0)
         return curve;
 
-    // Build the gain curve in location order.
-    curve.reserve(transients.size());
-    for (int i = 0; i < static_cast<int>(transients.size()); ++i) {
-        const int loc = transients[i];
-        const int prevLoc = (i > 0) ? transients[i - 1] : -1;
-        const float regionAmp = RegionRMS(in, prevLoc + 1, loc);
-        const uint16_t level = RelationToIdx(regionAmp / target);
-        curve.push_back({level, static_cast<uint32_t>(loc)});
+    // Scan leftward from targetSf, collecting one curve point per level transition.
+    // Adjacent subframes at the same level share a single point (no redundant points).
+    // The point at loc=L covers the constant-level region ending just before L*LocSz.
+    struct TTransition {
+        int      Loc;    // ATRAC3 location index
+        uint16_t Level;  // gain level at this point
+        int      Delta;  // |level change| here, used for priority trimming
+    };
+    std::vector<TTransition> trans;
+    {
+        uint16_t prev = 4u;  // neutral anchor at targetSf
+        for (int sf = targetSf - 1; sf >= 0; --sf) {
+            const uint16_t lev = sfLevel[sf];
+            if (lev != prev) {
+                trans.push_back({sf + 1, lev,
+                    std::abs(static_cast<int>(lev) - static_cast<int>(prev))});
+                prev = lev;
+            }
+        }
+        std::reverse(trans.begin(), trans.end());
     }
 
-    // Edge case: first transient at loc=0.  The point at loc=0 sets
-    // gc_scale = GainLevel[curve[0].Level] which divides ALL of bufCur
-    // (the previous MDCT window).  The CalcCurve loop used in[0]/target,
-    // but in[0] is the ramp START, not a pre-ramp region (which is empty at
-    // loc=0).  The correct cross-frame ratio is savedPrevTarget/target:
-    // the same formula the external point0 block uses for loc>0 (where
-    // hpfRmsNextMod ≈ mean(gain[0..loc-1]) / GainLevel[pts[0].Level] ≈ target).
-    if (!curve.empty() && curve[0].Location == 0 && savedPrevTarget > 1e-6f && target > 1e-6f) {
-        const uint16_t p0Level = RelationToIdx(savedPrevTarget / target);
-        if (yamlLog) {
-            *yamlLog << std::fixed << std::setprecision(6)
-                     << "        prev_target: " << savedPrevTarget << "\n"
-                     << "        point0_level_override: " << p0Level
-                     << "  # loc=0 edge: RelationToIdx(prev_target/target)\n";
-        }
-        curve[0].Level = p0Level;
+    if (trans.empty())
+        return curve;
+
+    // Trim to point budget: keep transitions with the largest |DeltaLevel| first
+    // (they correct the most severe MDCT energy mismatches).
+    // Ties resolved by leftmost location (closest to the loud peak = higher impact).
+    static constexpr int kMaxCurvePoints = 6;  // leave room for external point0
+    if (static_cast<int>(trans.size()) > kMaxCurvePoints) {
+        std::stable_sort(trans.begin(), trans.end(),
+            [](const TTransition& a, const TTransition& b) {
+                if (a.Delta != b.Delta)
+                    return a.Delta > b.Delta;
+                return a.Loc < b.Loc;
+            });
+        trans.resize(static_cast<size_t>(kMaxCurvePoints));
+        std::sort(trans.begin(), trans.end(),
+            [](const TTransition& a, const TTransition& b) {
+                return a.Loc < b.Loc;
+            });
     }
+
+    curve.reserve(trans.size());
+    for (const auto& t : trans)
+        curve.push_back({t.Level, static_cast<uint32_t>(t.Loc)});
 
     return curve;
 }
