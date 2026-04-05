@@ -194,6 +194,79 @@ static float CalcWindowedRmsAfterCurve(const float* buf,
     return std::sqrt(rms / 256.0f);
 }
 
+// Build 32 subframe-average divisors (gain levels) that Modulate would apply
+// to bufNext for a given curve.
+static void BuildSubframeDivisors(const std::vector<TGainCurvePoint>& pts, float outDiv[32]) {
+    float sampleDiv[256];
+    std::fill(sampleDiv, sampleDiv + 256, 1.0f);
+
+    uint32_t pos = 0;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const uint32_t lastPos = pts[i].Location << TAtrac3Data::LocScale;
+        float level = TAtrac3Data::GainLevel[pts[i].Level];
+        const int incPos = ((i + 1) < pts.size() ? pts[i + 1].Level : TAtrac3Data::ExponentOffset)
+                         - pts[i].Level + TAtrac3Data::GainInterpolationPosShift;
+        const float gainInc = TAtrac3Data::GainInterpolation[incPos];
+
+        for (; pos < lastPos && pos < 256; ++pos) {
+            sampleDiv[pos] = level;
+        }
+        for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
+            sampleDiv[pos] = level;
+            level *= gainInc;
+        }
+    }
+
+    for (uint32_t sf = 0; sf < 32; ++sf) {
+        float sum = 0.0f;
+        for (uint32_t s = 0; s < 8; ++s)
+            sum += sampleDiv[sf * 8 + s];
+        outDiv[sf] = sum / 8.0f;
+    }
+}
+
+// Score how well the curve keeps early-frame modulated HPF envelope near target,
+// with a small penalty for abrupt divisor changes (a leakage proxy).
+static float CalcCurveEarlyMismatchScore(const std::vector<float>& gain,
+                                         float target,
+                                         const std::vector<TGainCurvePoint>& pts) {
+    if (gain.size() != 32 || target <= 1e-9f)
+        return 0.0f;
+
+    float div[32];
+    BuildSubframeDivisors(pts, div);
+
+    uint32_t maxLoc = 0;
+    for (const auto& p : pts)
+        maxLoc = std::max(maxLoc, p.Location);
+    const uint32_t evalSf = std::min<uint32_t>(32, std::max<uint32_t>(3, maxLoc + 3));
+
+    static constexpr float kEps = 1e-9f;
+    float fit = 0.0f;
+    for (uint32_t sf = 0; sf < evalSf; ++sf) {
+        const float mod = gain[sf] / std::max(div[sf], kEps);
+        const float e = std::log2(std::max(mod, kEps) / std::max(target, kEps));
+        fit += e * e;
+    }
+    fit /= evalSf;
+
+    float leak = 0.0f;
+    float wsum = 0.0f;
+    for (uint32_t sf = 0; sf + 1 < evalSf; ++sf) {
+        const float a = std::log2(std::max(div[sf], kEps));
+        const float b = std::log2(std::max(div[sf + 1], kEps));
+        const float d = b - a;
+        const float w = 0.5f * (gain[sf] + gain[sf + 1]);
+        leak += d * d * w;
+        wsum += w;
+    }
+    if (wsum > kEps)
+        leak /= wsum;
+
+    static constexpr float kLeakWeight = 0.25f;
+    return fit + kLeakWeight * leak;
+}
+
 void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          uint32_t channel,
                                          TAtrac3Data::SubbandInfo* subbandInfo,
@@ -287,6 +360,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         const float prevTarget = CurveCtx[channel][band].LastTarget;
         auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore, YamlLog);
+        const float curTarget = CurveCtx[channel][band].LastTarget;
 
         // HACK: frame 22 ch=1 band=0 — emit {level=4, loc=7}, {level=0, loc=20}, no point0
         const bool hackOverride = false;(FrameNum == 1406 && channel == 0 && band == 1);
@@ -412,6 +486,9 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // bufNext after applying the current curve's attenuation.  Both quantities
         // are in the same filtered domain, avoiding LF-content distortion.
         if (!hackOverride && band < 3) {
+            const auto curveBeforePoint0 = curvePoints;
+            bool point0Changed = false;
+
             // hpfRmsNextMod: mean of gain[sf] / GainLevel[pts[0].Level]
             // for the subframes strictly before the first curve point's ramp start.
             // These are the only samples the curve actually attenuates at constant level.
@@ -447,9 +524,62 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
                                        [](const TGainCurvePoint& p) { return p.Location == 0; });
                 if (it != curvePoints.end()) {
-                    it->Level = point0Level;
+                    if (it->Level != point0Level) {
+                        it->Level = point0Level;
+                        point0Changed = true;
+                    }
                 } else if (point0Level != 4 || !curvePoints.empty()) {
                     curvePoints.insert(curvePoints.begin(), {point0Level, 0});
+                    point0Changed = true;
+                }
+            }
+
+            // Guard: keep point0 only if it does not worsen local envelope fit.
+            // Additional boundary protection: keep point0 if it materially
+            // improves frame-boundary scale match to prevTarget/hpfRmsNextMod.
+            if (point0Changed) {
+                const float scoreBefore = CalcCurveEarlyMismatchScore(gain, curTarget, curveBeforePoint0);
+                const float scoreAfter = CalcCurveEarlyMismatchScore(gain, curTarget, curvePoints);
+                static constexpr float kPoint0WorseTol = 0.02f; // 2% tolerance
+                static constexpr float kBoundaryKeepMargin = 0.20f; // 0.2 bits in log2 scale
+
+                bool keepByBoundary = false;
+                float boundaryErrBefore = 0.0f;
+                float boundaryErrAfter = 0.0f;
+                if (hpfRmsNextModValid && prevTarget > 1e-6f && hpfRmsNextMod > 1e-6f) {
+                    const auto firstLevel = [](const std::vector<TGainCurvePoint>& pts) -> uint16_t {
+                        return pts.empty() ? static_cast<uint16_t>(TAtrac3Data::ExponentOffset) : pts[0].Level;
+                    };
+                    const float desiredScale = LimitRel(prevTarget / hpfRmsNextMod);
+                    const float scaleBefore = TAtrac3Data::GainLevel[firstLevel(curveBeforePoint0)];
+                    const float scaleAfter = TAtrac3Data::GainLevel[firstLevel(curvePoints)];
+                    static constexpr float kEps = 1e-9f;
+                    boundaryErrBefore = std::abs(std::log2(std::max(scaleBefore, kEps) / std::max(desiredScale, kEps)));
+                    boundaryErrAfter = std::abs(std::log2(std::max(scaleAfter, kEps) / std::max(desiredScale, kEps)));
+                    keepByBoundary = (boundaryErrAfter + kBoundaryKeepMargin < boundaryErrBefore);
+                    if (YamlLog) {
+                        *YamlLog << std::fixed << std::setprecision(6)
+                                 << "        point0_guard_boundary_err_before: " << boundaryErrBefore << "\n"
+                                 << "        point0_guard_boundary_err_after: " << boundaryErrAfter << "\n";
+                    }
+                }
+
+                if (!keepByBoundary && scoreAfter > scoreBefore * (1.0f + kPoint0WorseTol)) {
+                    curvePoints = curveBeforePoint0;
+                    if (YamlLog) {
+                        *YamlLog << std::fixed << std::setprecision(6)
+                                 << "        point0_guard: reverted  # score_after " << scoreAfter
+                                 << " > score_before " << scoreBefore << "\n";
+                    }
+                } else if (YamlLog) {
+                    *YamlLog << std::fixed << std::setprecision(6)
+                             << "        point0_guard: kept  # score_before " << scoreBefore
+                             << ", score_after " << scoreAfter;
+                    if (keepByBoundary) {
+                        *YamlLog << ", boundary_err_before " << boundaryErrBefore
+                                 << ", boundary_err_after " << boundaryErrAfter;
+                    }
+                    *YamlLog << "\n";
                 }
             }
         }
