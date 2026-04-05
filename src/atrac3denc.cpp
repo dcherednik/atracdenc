@@ -411,7 +411,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // HPF gain[] domain) against the mean HPF level of the pre-ramp zone of
         // bufNext after applying the current curve's attenuation.  Both quantities
         // are in the same filtered domain, avoiding LF-content distortion.
-        if (!hackOverride) {
+        if (!hackOverride && band < 3) {
             // hpfRmsNextMod: mean of gain[sf] / GainLevel[pts[0].Level]
             // for the subframes strictly before the first curve point's ramp start.
             // These are the only samples the curve actually attenuates at constant level.
@@ -452,6 +452,14 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                     curvePoints.insert(curvePoints.begin(), {point0Level, 0});
                 }
             }
+        }
+
+        // If explicit point0 has the same level as the next point, it does not
+        // change modulation shape and only wastes 9 bits in the bitstream.
+        if (curvePoints.size() >= 2
+            && curvePoints[0].Location == 0
+            && curvePoints[0].Level == curvePoints[1].Level) {
+            curvePoints.erase(curvePoints.begin());
         }
 
         if (YamlLog) {
