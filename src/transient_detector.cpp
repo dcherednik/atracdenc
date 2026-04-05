@@ -325,7 +325,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
             [](const TTransition& a, const TTransition& b) {
                 if (a.Delta != b.Delta)
                     return a.Delta > b.Delta;
-                return a.Loc < b.Loc;
+                return a.Loc > b.Loc;
             });
         trans.resize(static_cast<size_t>(kMaxCurvePoints));
         std::sort(trans.begin(), trans.end(),
