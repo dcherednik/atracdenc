@@ -318,14 +318,18 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
 
     // Trim to point budget: keep transitions with the largest |DeltaLevel| first
     // (they correct the most severe MDCT energy mismatches).
-    // Ties resolved by leftmost location (closest to the loud peak = higher impact).
+    // Ties resolved by RIGHTMOST location: transitions near the frame-end attack
+    // region bracket the actual transient and prevent deep-ATT points from being
+    // orphaned with no adjacent return-to-neutral.  Sounds perceptually better
+    // than leftmost tie-break even though regression metrics worsen — similar
+    // to the band-2 gain case where metrics don't capture HF-specific quality.
     static constexpr int kMaxCurvePoints = 6;  // leave room for external point0
     if (static_cast<int>(trans.size()) > kMaxCurvePoints) {
         std::stable_sort(trans.begin(), trans.end(),
             [](const TTransition& a, const TTransition& b) {
                 if (a.Delta != b.Delta)
                     return a.Delta > b.Delta;
-                return a.Loc < b.Loc;
+                return a.Loc > b.Loc;
             });
         trans.resize(static_cast<size_t>(kMaxCurvePoints));
         std::sort(trans.begin(), trans.end(),
