@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cassert>
 #include <iomanip>
@@ -114,6 +115,23 @@ static uint16_t RelationToIdx(float x) {
     }
 }
 
+template <size_t Radius>
+static void MedianFilter(const std::vector<float>& in, std::vector<float>& out) {
+    const int n = static_cast<int>(in.size());
+    std::array<float, Radius * 2 + 1> w{};
+    assert(out.size() == in.size());
+
+    for (int i = 0; i < n; ++i) {
+        const int lo = std::max(0, i - static_cast<int>(Radius));
+        const int hi = std::min(n - 1, i + static_cast<int>(Radius));
+        size_t wn = 0;
+        for (int j = lo; j <= hi; ++j)
+            w[wn++] = in[j];
+        std::sort(w.begin(), w.begin() + static_cast<std::ptrdiff_t>(wn));
+        out[i] = w[wn / 2];
+    }
+}
+
 // Find the maximum sustained amplitude level that persists for at least
 // minContiguous consecutive subframes.  A 3-point median filter is applied
 // first to reject isolated spikes.  Also detects whether the frame ends in
@@ -131,20 +149,9 @@ static TPlateauResult FindPlateau(const std::vector<float>& in, int minContiguou
     if (n < minContiguous)
         return {0.0f, maxRaw, false};
 
-    // 3-point median filter: suppresses single-sample spikes
+    // 3-point median filter: suppresses short local oscillations.
     std::vector<float> filtered(n);
-    for (int i = 0; i < n; ++i) {
-        const int lo = std::max(0, i - 1);
-        const int hi = std::min(n - 1, i + 1);
-        float w[3]; int wn = 0;
-        for (int j = lo; j <= hi; ++j) w[wn++] = in[j];
-        if (wn == 3) {
-            if (w[0] > w[1]) std::swap(w[0], w[1]);
-            if (w[1] > w[2]) std::swap(w[1], w[2]);
-            if (w[0] > w[1]) std::swap(w[0], w[1]);
-        }
-        filtered[i] = w[wn / 2];
-    }
+    MedianFilter<1>(in, filtered);
 
     // Sliding window minimum of size minContiguous; take the maximum of those
     // minima.  This gives the highest level that is sustained for the required
@@ -251,21 +258,10 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
 
     const int n = static_cast<int>(in.size());
 
-    // Apply 3-point median filter to suppress isolated gain spikes that would
+    // Apply 3-point median filter to suppress short gain oscillations that would
     // otherwise produce spurious level transitions in the staircase scan.
     std::vector<float> filtered(n);
-    for (int i = 0; i < n; ++i) {
-        const int lo = std::max(0, i - 1);
-        const int hi = std::min(n - 1, i + 1);
-        float w[3]; int wn = 0;
-        for (int j = lo; j <= hi; ++j) w[wn++] = in[j];
-        if (wn == 3) {
-            if (w[0] > w[1]) std::swap(w[0], w[1]);
-            if (w[1] > w[2]) std::swap(w[1], w[2]);
-            if (w[0] > w[1]) std::swap(w[0], w[1]);
-        }
-        filtered[i] = w[wn / 2];
-    }
+    MedianFilter<1>(in, filtered);
 
     // Per-subframe attenuation/amplification level relative to target.
     std::vector<uint16_t> sfLevel(n);
