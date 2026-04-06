@@ -464,17 +464,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         }
 
         // Band 3 is above ~16 kHz where pre-echo is largely inaudible.
-        // Skip gain modulation there; if a transient was detected,
-        // redirect the bit boost to band 0 so audible-range reconstruction
-        // gets the extra bits instead of the inaudible high-frequency band.
+        // Skip gain modulation there.
         if (band >= 3) {
             if (YamlLog) {
                 *YamlLog << "        skip: band_ge_3"
-                         << "  # inaudible HF; boost redirected to band 0\n"
-                         << "        redirected_boost: " << totalBoost << "\n";
+                         << "  # inaudible HF; gain modulation disabled\n";
             }
             gainBoostPerBand[band] = 0;
-            gainBoostPerBand[0] = std::min(gainBoostPerBand[0] + totalBoost, kLevelBoostCap + 1);
             curvePoints.clear();
         }
 
