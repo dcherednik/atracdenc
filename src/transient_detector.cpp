@@ -281,6 +281,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     }
 
     const float savedLastLevel = ctx.LastLevel;
+    const float savedLastTarget = ctx.LastTarget;
     ctx.LastLevel = in.back();
     ctx.LastTarget = target;
 
@@ -298,6 +299,35 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     std::vector<float> filtered(n);
     MedianFilter<1>(in, filtered);
 
+    float maxGain = 0.0f;
+    for (float v : in)
+        maxGain = std::max(maxGain, v);
+
+    // Sticky quantisation is safe only in relatively stable regimes. Disable it
+    // for deep release/transient shapes where preserving all transitions matters
+    // more than suppressing +/-1 chatter.
+    static constexpr float kStickyMaxIntraFrameRatio = 7.0f;  // max_gain / target
+    static constexpr float kStickyMaxInterFrameRatio = 10.0f;  // prev_target / target
+    const float intraRatio = maxGain / std::max(target, 1e-9f);
+    float interRatio = 1.0f;
+    if (savedLastTarget > 1e-6f) {
+        const float hi = std::max(savedLastTarget, target);
+        const float lo = std::min(savedLastTarget, target);
+        interRatio = hi / std::max(lo, 1e-9f);
+    }
+    const bool stickyFrameEligible = subframeLow && subframeHigh
+        && subframeLow->size() == in.size()
+        && subframeHigh->size() == in.size()
+        && intraRatio <= kStickyMaxIntraFrameRatio
+        && interRatio <= kStickyMaxInterFrameRatio;
+
+    if (yamlLog) {
+        *yamlLog << std::fixed << std::setprecision(4)
+                 << "        sticky_frame_eligible: " << (stickyFrameEligible ? "true" : "false") << "\n"
+                 << "        sticky_intra_ratio: " << intraRatio << "\n"
+                 << "        sticky_inter_ratio: " << interRatio << "\n";
+    }
+
     // Per-subframe attenuation/amplification level relative to target.
     //
     // Optional range-aware sticky quantisation:
@@ -308,10 +338,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     for (int i = 0; i < n; ++i) {
         const float ratioCenter = filtered[i] / target;
         uint16_t level = RelationToIdx(ratioCenter);
-        if (i > 0
-            && subframeLow && subframeHigh
-            && subframeLow->size() == in.size()
-            && subframeHigh->size() == in.size()) {
+        if (i > 0 && stickyFrameEligible) {
             float ratioLo = (*subframeLow)[i] / target;
             float ratioHi = (*subframeHigh)[i] / target;
             if (ratioLo > ratioHi)
@@ -321,7 +348,9 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
             const uint16_t minIdx = std::min(idxLo, idxHi);
             const uint16_t maxIdx = std::max(idxLo, idxHi);
             const uint16_t prev = sfLevel[i - 1];
-            if (std::abs(static_cast<int>(level) - static_cast<int>(prev)) == 1
+            const uint16_t idxSpan = maxIdx - minIdx;
+            if (idxSpan <= 1u
+                && std::abs(static_cast<int>(level) - static_cast<int>(prev)) == 1
                 && prev >= minIdx && prev <= maxIdx) {
                 level = prev;
             }
