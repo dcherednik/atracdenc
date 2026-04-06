@@ -302,7 +302,10 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         }
 
         // Analysis region [1024..3072) = current frame upsampled (8x)
-        const auto gain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
+        std::vector<float> gainLow;
+        std::vector<float> gainHigh;
+        const auto gain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true,
+                                      &gainLow, &gainHigh);
 
         // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
         const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
@@ -359,7 +362,9 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         }
 
         const float prevTarget = CurveCtx[channel][band].LastTarget;
-        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel, dynamicMinScore, YamlLog);
+        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel,
+                                     dynamicMinScore, YamlLog,
+                                     &gainLow, &gainHigh);
         const float curTarget = CurveCtx[channel][band].LastTarget;
 
         // HACK: frame 22 ch=1 band=0 — emit {level=4, loc=7}, {level=0, loc=20}, no point0

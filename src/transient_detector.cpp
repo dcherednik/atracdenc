@@ -92,12 +92,45 @@ bool TTransientDetector::Detect(const float* buf) {
     return trans;
 }
 
-std::vector<float> AnalyzeGain(const float* in, const uint32_t len, const uint32_t maxPoints, bool useRms) {
+std::vector<float> AnalyzeGain(const float* in, const uint32_t len, const uint32_t maxPoints, bool useRms,
+                               std::vector<float>* subframeLow,
+                               std::vector<float>* subframeHigh) {
     vector<float> res;
     const uint32_t step = len / maxPoints;
+    if (subframeLow) {
+        subframeLow->clear();
+        subframeLow->reserve(maxPoints);
+    }
+    if (subframeHigh) {
+        subframeHigh->clear();
+        subframeHigh->reserve(maxPoints);
+    }
+
     for (uint32_t pos = 0; pos < len; pos += step) {
-        float rms = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
-        res.emplace_back(rms);
+        const float val = useRms ? calculateRMS(in + pos, step) : calculatePeak(in + pos, step);
+        res.emplace_back(val);
+
+        if (subframeLow || subframeHigh) {
+            // Approximate within-subframe distribution by splitting each analysis
+            // subframe into micro-chunks and taking a robust inter-quantile range.
+            constexpr uint32_t kChunks = 8;
+            const uint32_t chunkSz = std::max(1u, step / kChunks);
+            std::vector<float> micro;
+            micro.reserve((step + chunkSz - 1) / chunkSz);
+            for (uint32_t off = 0; off < step; off += chunkSz) {
+                const uint32_t n = std::min(chunkSz, step - off);
+                const float m = useRms ? calculateRMS(in + pos + off, n)
+                                       : calculatePeak(in + pos + off, n);
+                micro.push_back(m);
+            }
+            std::sort(micro.begin(), micro.end());
+            const size_t loIdx = micro.size() / 4;
+            const size_t hiIdx = (micro.size() * 3) / 4;
+            if (subframeLow)
+                subframeLow->push_back(micro[loIdx]);
+            if (subframeHigh)
+                subframeHigh->push_back(micro[hiIdx]);
+        }
     }
     return res;
 }
@@ -219,7 +252,9 @@ static float RegionRMS(const std::vector<float>& in, int start, int end) {
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel,
                                        float /*minScore*/,
-                                       std::ostream* yamlLog) {
+                                       std::ostream* yamlLog,
+                                       const std::vector<float>* subframeLow,
+                                       const std::vector<float>* subframeHigh) {
     std::vector<TGainCurvePoint> curve;
 
     if (in.empty())
@@ -264,9 +299,35 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     MedianFilter<1>(in, filtered);
 
     // Per-subframe attenuation/amplification level relative to target.
+    //
+    // Optional range-aware sticky quantisation:
+    // if centre quantisation toggles by +/-1 from previous level but the
+    // subframe's [low, high] ratio band still supports the previous level,
+    // keep previous. This suppresses long-run boundary chatter (e.g. 7<->8).
     std::vector<uint16_t> sfLevel(n);
-    for (int i = 0; i < n; ++i)
-        sfLevel[i] = RelationToIdx(filtered[i] / target);
+    for (int i = 0; i < n; ++i) {
+        const float ratioCenter = filtered[i] / target;
+        uint16_t level = RelationToIdx(ratioCenter);
+        if (i > 0
+            && subframeLow && subframeHigh
+            && subframeLow->size() == in.size()
+            && subframeHigh->size() == in.size()) {
+            float ratioLo = (*subframeLow)[i] / target;
+            float ratioHi = (*subframeHigh)[i] / target;
+            if (ratioLo > ratioHi)
+                std::swap(ratioLo, ratioHi);
+            const uint16_t idxLo = RelationToIdx(ratioLo);
+            const uint16_t idxHi = RelationToIdx(ratioHi);
+            const uint16_t minIdx = std::min(idxLo, idxHi);
+            const uint16_t maxIdx = std::max(idxLo, idxHi);
+            const uint16_t prev = sfLevel[i - 1];
+            if (std::abs(static_cast<int>(level) - static_cast<int>(prev)) == 1
+                && prev >= minIdx && prev <= maxIdx) {
+                level = prev;
+            }
+        }
+        sfLevel[i] = level;
+    }
 
     // Find targetSf: index of the first subframe (from the right) after the last
     // non-neutral subframe.  Everything at targetSf and beyond is at neutral —

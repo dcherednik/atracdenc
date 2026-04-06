@@ -49,7 +49,9 @@ public:
     uint32_t GetLastTransientPos() const { return LastTransientPos; }
 };
 
-std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms);
+std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms,
+                               std::vector<float>* subframeLow = nullptr,
+                               std::vector<float>* subframeHigh = nullptr);
 
 struct TGainCurvePoint {
     uint32_t Level;
@@ -65,7 +67,9 @@ struct TCurveBuilderCtx {
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel = {},
                                        float minScore = 2.0f,
-                                       std::ostream* yamlLog = nullptr);
+                                       std::ostream* yamlLog = nullptr,
+                                       const std::vector<float>* subframeLow = nullptr,
+                                       const std::vector<float>* subframeHigh = nullptr);
 
 // Detect transient locations (0..in.size()-1) using the same logic as CalcCurve.
 // savedLastLevel/nextLevel provide boundary context. maxPoints caps the count.
