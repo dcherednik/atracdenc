@@ -249,9 +249,33 @@ static float RegionRMS(const std::vector<float>& in, int start, int end) {
     return std::sqrt(sum / (end - start));
 }
 
+// Transient score around a subframe boundary:
+// R = max(max_right / max_left, max_left / max_right) over short windows.
+// loc is the right-side start index of the boundary (1..n-1).
+static float BoundaryTransientScore(const std::vector<float>& env, int loc, int win) {
+    const int n = static_cast<int>(env.size());
+    assert(loc > 0 && loc < n);
+    const int leftStart = std::max(0, loc - win);
+    const int leftEnd = loc;
+    const int rightStart = loc;
+    const int rightEnd = std::min(n, loc + win);
+
+    float leftMax = 0.0f;
+    for (int i = leftStart; i < leftEnd; ++i)
+        leftMax = std::max(leftMax, env[i]);
+    float rightMax = 0.0f;
+    for (int i = rightStart; i < rightEnd; ++i)
+        rightMax = std::max(rightMax, env[i]);
+
+    static constexpr float kEps = 1e-9f;
+    const float attack = (rightMax + kEps) / (leftMax + kEps);
+    const float release = (leftMax + kEps) / (rightMax + kEps);
+    return std::max(attack, release);
+}
+
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel,
-                                       float /*minScore*/,
+                                       float minScore,
                                        std::ostream* yamlLog,
                                        const std::vector<float>* subframeLow,
                                        const std::vector<float>* subframeHigh) {
@@ -377,6 +401,17 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     if (targetSf == 0)
         return curve;
 
+    std::vector<float> boundaryScore(static_cast<size_t>(n + 1), 1.0f);
+    static constexpr int kTransientScoreWindow = 3;
+    for (int loc = 1; loc <= targetSf; ++loc)
+        boundaryScore[static_cast<size_t>(loc)] =
+            BoundaryTransientScore(filtered, loc, kTransientScoreWindow);
+    if (yamlLog) {
+        *yamlLog << std::fixed << std::setprecision(4)
+                 << "        transient_min_score: " << minScore << "\n"
+                 << "        transient_window: " << kTransientScoreWindow << "\n";
+    }
+
     // Scan leftward from targetSf, collecting one curve point per level transition.
     // Adjacent subframes at the same level share a single point (no redundant points).
     // The point at loc=L covers the constant-level region ending just before L*LocSz.
@@ -391,9 +426,24 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
         for (int sf = targetSf - 1; sf >= 0; --sf) {
             const uint16_t lev = sfLevel[sf];
             if (lev != prev) {
-                trans.push_back({sf + 1, lev,
-                    std::abs(static_cast<int>(lev) - static_cast<int>(prev))});
-                prev = lev;
+                const int loc = sf + 1;
+                const int delta = std::abs(static_cast<int>(lev) - static_cast<int>(prev));
+                const float score = boundaryScore[static_cast<size_t>(loc)];
+
+                // Keep strong level jumps regardless of score.
+                // For +/-1 toggles, require transient evidence around the boundary.
+                // Always keep the rightmost transition (loc==targetSf) so non-neutral
+                // regions remain anchored to neutral at the frame tail.
+                const bool keep = (loc == targetSf) || (delta >= 2) || (score >= minScore);
+                if (keep) {
+                    trans.push_back({loc, lev, delta});
+                    prev = lev;
+                } else if (yamlLog) {
+                    *yamlLog << std::fixed << std::setprecision(4)
+                             << "        transition_pruned: {loc: " << loc
+                             << ", delta: " << delta
+                             << ", score: " << score << "}\n";
+                }
             }
         }
         std::reverse(trans.begin(), trans.end());
