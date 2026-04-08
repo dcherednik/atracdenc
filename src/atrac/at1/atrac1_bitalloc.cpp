@@ -330,14 +330,14 @@ uint32_t TAt1BitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, cons
 {
     uint32_t bfuIdx = BfuIdxConst ? BfuIdxConst - 1 : 7;
     vector<uint8_t> bitsPerEachBlock(TAtrac1Data::BfuAmountTab[bfuIdx]);
-    TEncodeCtx ctx {
-        .Booster = this,
-        .ScaledBlocks = scaledBlocks,
-        .BlockSize = blockSize,
-        .Loudness = loudness,
-        .BfuIdx = bfuIdx,
-        .Spread = AnalizeScaleFactorSpread(scaledBlocks),
-        .BitsPerBlock = bitsPerEachBlock,
+    TEncodeCtx ctx{
+        this,
+        scaledBlocks,
+        blockSize,
+        loudness,
+        bfuIdx,
+        AnalizeScaleFactorSpread(scaledBlocks),
+        bitsPerEachBlock,
     };
 
     NBitStream::TBitStream bitStream;
