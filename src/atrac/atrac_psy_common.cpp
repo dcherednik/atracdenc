@@ -19,6 +19,7 @@
 #include "atrac_psy_common.h"
 
 #include <cmath>
+#include <iostream>
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace {
@@ -146,7 +147,6 @@ vector<float> CreateLoudnessCurve(size_t sz)
         float t = std::log10(f) - 3.5;
         t = -10 * t * t + 3 - f / 3000;
         t = std::pow(10, (0.1 * t));
-        //std::cerr << i << "  => " << f << "  "  << t <<std::endl;
         res[i] = t;
     }
 

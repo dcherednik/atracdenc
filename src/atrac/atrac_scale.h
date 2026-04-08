@@ -30,7 +30,7 @@ struct TScaledBlock {
     TScaledBlock(uint8_t sfi) : ScaleFactorIndex(sfi) {}
     /* const */ uint8_t ScaleFactorIndex = 0;
     std::vector<float> Values;
-    float MaxEnergy;
+    float Energy;
 };
 
 template <class TBaseData>

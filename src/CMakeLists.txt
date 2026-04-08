@@ -4,7 +4,9 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_C_STANDARD 11)
 
 #add_definitions( "-Wall -O2 -g -Rpass-analysis=loop-vectorize" )
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-omit-frame-pointer")
+if (NOT MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fno-omit-frame-pointer")
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
@@ -80,6 +82,7 @@ set(SOURCE_ATRACDENC_IMPL
     aea.cpp
     env.cpp
     transient_detector.cpp
+    transient_spectral_upsampler.cpp
     atrac1denc.cpp
     atrac/at1/atrac1.cpp
     atrac/at1/atrac1_bitalloc.cpp
@@ -101,6 +104,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/at3p/at3p_tables.cpp
     lib/mdct/mdct.cpp
     lib/bs_encode/encode.cpp
+    qmf/qmf.cpp
 )
 
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})

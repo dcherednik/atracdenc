@@ -29,7 +29,7 @@ public:
     explicit TImpl(std::vector<IBitStreamPartEncoder::TPtr>&& encoders);
     void DoStart(size_t targetBits, float minLambda, float maxLambda) noexcept;
     float DoContinue() noexcept;
-    void DoSubmit(size_t gotBits) noexcept;
+    bool DoSubmit(size_t gotBits) noexcept;
     bool DoCheck(size_t gotBits) const noexcept;
     void DoRun(void* frameData, TBitStream& bs);
     uint32_t DoGetCurGlobalConsumption() const noexcept;
@@ -72,7 +72,7 @@ float TBitStreamEncoder::TImpl::DoContinue() noexcept
     return CurLambda;
 }
 
-void TBitStreamEncoder::TImpl::DoSubmit(size_t gotBits) noexcept
+bool TBitStreamEncoder::TImpl::DoSubmit(size_t gotBits) noexcept
 {
     if  (MaxLambda <= MinLambda) {
         NeedRepeat = false;
@@ -88,6 +88,7 @@ void TBitStreamEncoder::TImpl::DoSubmit(size_t gotBits) noexcept
             NeedRepeat = false;
         }
     }
+    return !NeedRepeat;
 }
 
 bool TBitStreamEncoder::TImpl::DoCheck(size_t gotBits) const noexcept
@@ -122,6 +123,8 @@ void TBitStreamEncoder::TImpl::DoRun(void* frameData, TBitStream& bs)
     for (size_t i = 0; i < Encoders.size(); i++) {
         Encoders[i]->Dump(bs);
     }
+
+    RepeatEncPos = 0;
 }
 
 uint32_t TBitStreamEncoder::TImpl::DoGetCurGlobalConsumption() const noexcept
@@ -163,10 +166,10 @@ float TBitAllocHandler::Continue() noexcept
     return self->DoContinue();
 }
 
-void TBitAllocHandler::Submit(size_t gotBits) noexcept
+bool TBitAllocHandler::Submit(size_t gotBits) noexcept
 {
     TBitStreamEncoder::TImpl* self = static_cast<TBitStreamEncoder::TImpl*>(this);
-    self->DoSubmit(gotBits);
+    return self->DoSubmit(gotBits);
 }
 
 bool TBitAllocHandler::Check(size_t gotBits) const noexcept

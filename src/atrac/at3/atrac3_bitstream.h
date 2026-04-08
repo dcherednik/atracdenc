@@ -46,6 +46,11 @@ public:
         std::vector<TTonalBlock> TonalBlocks;
         std::vector<TScaledBlock> ScaledBlocks;
         float Loudness;
+        // Per-band bit-allocation boost to compensate for gain-demodulation noise
+        // amplification.  Combines the level boost (from the current frame's gain
+        // curve) and the scale boost (estimated from the next frame's first gain
+        // point).  Set by CreateSubbandInfo; read by CreateAllocation.
+        int GainBoostPerBand[TAtrac3Data::NumQMF] = {};
     };
 private:
     static std::vector<float> ATH;
@@ -66,7 +71,8 @@ private:
                     const uint32_t blockSize, NBitStream::TBitStream* bitStream);
 
     std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
-                                             uint32_t bfuNum, float spread, float shift, float loudness);
+                                             uint32_t bfuNum, float spread, float shift, float loudness,
+                                             const int gainBoostPerBand[TAtrac3Data::NumQMF]);
 
     std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
                                                                uint16_t targetBits, int mt[TAtrac3Data::MaxSpecs], float laudness);

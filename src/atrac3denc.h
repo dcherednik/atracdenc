@@ -28,6 +28,10 @@
 #include "atrac/atrac_scale.h"
 #include "lib/mdct/mdct.h"
 #include "gain_processor.h"
+#include "transient_detector.h"
+#include "transient_spectral_upsampler.h"
+
+#include "yaml_log.h"
 
 #include <algorithm>
 #include <functional>
@@ -91,29 +95,24 @@ class TAtrac3Encoder : public IProcessor, public TAtrac3MDCT {
 
     TScaler<TAtrac3Data> Scaler;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
-public:
-    struct TTransientParam {
-        int32_t Attack0Location; // Attack position relative to previous frame
-        float Attack0Relation;
-        int32_t Attack1Location; // Attack position relative to previous sample
-        float Attack1Relation;
-        int32_t ReleaseLocation;
-        float ReleaseRelation;
-    };
 private:
-    std::vector<std::vector<TTransientParam>> TransientParamsHistory;
+    bool LookAheadPending = true;
+    // [channel][band][prev_128 | current_256 | lookahead_256]
+    // &LookAheadBuf[ch][b][0] is the 512-sample input for TSpectralUpsampler
+    float LookAheadBuf[2][4][640] = {};
+    TCurveBuilderCtx CurveCtx[2][4] = {};
+    TSpectralUpsampler Upsampler;
     static constexpr float LoudFactor = 0.006;
     float Loudness = LoudFactor;
+    uint64_t FrameNum = 0;       // incremented each processed frame; used in YAML log
+    std::ostream* YamlLog = nullptr;  // non-null when --yaml-log is active
 #ifdef ATRAC_UT_PUBLIC
 public:
 #endif
     float LimitRel(float x);
-    TTransientParam CalcTransientParam(const std::vector<float>& gain, float lastMax);
-    void CreateSubbandInfo(float* in[4], uint32_t channel,
-                           TAtrac3Data::SubbandInfo* subbandInfo);
-    void ResetTransientParamsHistory(int channel, int band);
-    void SetTransientParamsHistory(int channel, int band, const TTransientParam& params);
-    const TTransientParam& GetTransientParamsHistory(int channel, int band) const;
+    void CreateSubbandInfo(const float* upInput[4], uint32_t channel,
+                           TAtrac3Data::SubbandInfo* subbandInfo,
+                           int gainBoostPerBand[TAtrac3Data::NumQMF]);
     void Matrixing();
 
 public:

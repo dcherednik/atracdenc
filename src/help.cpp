@@ -19,7 +19,6 @@ atracdenc {-e <codec> | --encode=<codec> | -d | --decode} -i <in> -o <out>
 
 Advanced options:
 --bfuidxconst		Set constant amount of used BFU (ATRAC1, ATRAC3).
---bfuidxfast		Enable fast search of BFU amount (ATRAC1)
 --notransient[=mask]	Disable transient detection and use optional mask
 			to set bands with forced short MDCT window (ATRAC1)
 

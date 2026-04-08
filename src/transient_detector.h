@@ -19,6 +19,8 @@
 #pragma once
 #include <math.h>
 #include <cstdint>
+#include <iosfwd>
+#include <optional>
 #include <vector>
 
 #include "config.h"
@@ -47,6 +49,33 @@ public:
     uint32_t GetLastTransientPos() const { return LastTransientPos; }
 };
 
-std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms);
+std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints, bool useRms,
+                               std::vector<float>* subframeLow = nullptr,
+                               std::vector<float>* subframeHigh = nullptr);
+
+struct TGainCurvePoint {
+    uint32_t Level;
+    uint32_t Location;
+};
+
+struct TCurveBuilderCtx {
+    float LastLevel = 0.0f;
+    float LastHpfEnergy = 0.0f;  // mean HPF RMS of previous frame's gain[] subframes
+    float LastTarget = 0.0f;     // target amplitude from previous CalcCurve call (HPF domain)
+};
+
+std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
+                                       std::optional<float> nextLevel = {},
+                                       float minScore = 2.0f,
+                                       std::ostream* yamlLog = nullptr,
+                                       const std::vector<float>* subframeLow = nullptr,
+                                       const std::vector<float>* subframeHigh = nullptr);
+
+// Detect transient locations (0..in.size()-1) using the same logic as CalcCurve.
+// savedLastLevel/nextLevel provide boundary context. maxPoints caps the count.
+std::vector<int> DetectTransients(const std::vector<float>& in, float savedLastLevel,
+                                  std::optional<float> nextLevel = {},
+                                  float minScore = 2.0f,
+                                  int maxPoints = 6);
 
 }
