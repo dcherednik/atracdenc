@@ -138,62 +138,6 @@ float TAtrac3Encoder::LimitRel(float x)
     return std::min(std::max(x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
 }
 
-// Apply the gain curve to raw bufNext and return its MDCT-input-domain RMS.
-// bufNext is raw (not pre-windowed); at MDCT time it will be multiplied by
-// EncodeWindow[255-pos] (second half of the overlap window).  We apply that
-// same weight here so the result is comparable to rmsCur (which already has
-// EncodeWindow[i] baked in from the previous frame's MDCT prep).
-static float CalcWindowedRmsAfterCurve(const float* buf,
-                                       const std::vector<TGainCurvePoint>& pts,
-                                       std::ostream* yamlLog = nullptr) {
-    // Collect per-sample modulated+windowed values for optional logging.
-    float modBuf[256];
-    uint32_t pos = 0;
-    float rms = 0.0f;
-    for (size_t i = 0; i < pts.size(); ++i) {
-        const uint32_t lastPos = pts[i].Location << TAtrac3Data::LocScale;
-        float level = TAtrac3Data::GainLevel[pts[i].Level];
-        const int incPos = ((i + 1) < pts.size() ? pts[i + 1].Level : TAtrac3Data::ExponentOffset)
-                         - pts[i].Level + TAtrac3Data::GainInterpolationPosShift;
-        const float gainInc = TAtrac3Data::GainInterpolation[incPos];
-        for (; pos < lastPos && pos < 256; ++pos) {
-            const float w = TAtrac3Data::EncodeWindow[255 - pos];
-            const float n = (buf[pos] / level) * w;
-            modBuf[pos] = n;
-            rms += n * n;
-        }
-        for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
-            const float w = TAtrac3Data::EncodeWindow[255 - pos];
-            const float n = (buf[pos] / level) * w;
-            modBuf[pos] = n;
-            rms += n * n;
-            level *= gainInc;
-        }
-    }
-    for (; pos < 256; ++pos) {
-        const float w = TAtrac3Data::EncodeWindow[255 - pos];
-        const float n = buf[pos] * w;
-        modBuf[pos] = n;
-        rms += n * n;
-    }
-    if (yamlLog) {
-        // Log 32 subframe RMS values of the modulated+windowed bufNext.
-        const uint32_t subSz = 256 / 32;
-        *yamlLog << "        rms_next_mod_subframes: ";
-        *yamlLog << std::fixed << std::setprecision(6) << "[";
-        for (uint32_t sf = 0; sf < 32; ++sf) {
-            float sfRms = 0.0f;
-            for (uint32_t s = 0; s < subSz; ++s)
-                sfRms += modBuf[sf * subSz + s] * modBuf[sf * subSz + s];
-            sfRms = std::sqrt(sfRms / subSz);
-            if (sf) *yamlLog << ", ";
-            *yamlLog << sfRms;
-        }
-        *yamlLog << "]\n";
-    }
-    return std::sqrt(rms / 256.0f);
-}
-
 // Build 32 subframe-average divisors (gain levels) that Modulate would apply
 // to bufNext for a given curve.
 static void BuildSubframeDivisors(const std::vector<TGainCurvePoint>& pts, float outDiv[32]) {
@@ -367,12 +311,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                      &gainLow, &gainHigh);
         const float curTarget = CurveCtx[channel][band].LastTarget;
 
-        // HACK: frame 22 ch=1 band=0 — emit {level=4, loc=7}, {level=0, loc=20}, no point0
-        const bool hackOverride = false;(FrameNum == 1406 && channel == 0 && band == 1);
-        if (hackOverride) {
-            curvePoints = {{1,2}, {0,10}, {1,14}, {2,19}, {3,27}};
-        }
-
         if (curvePoints.empty()) {
             if (YamlLog) {
                 *YamlLog << "        skip: no_curve\n";
@@ -486,7 +424,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // HPF gain[] domain) against the mean HPF level of the pre-ramp zone of
         // bufNext after applying the current curve's attenuation.  Both quantities
         // are in the same filtered domain, avoiding LF-content distortion.
-        if (!hackOverride && band < 3) {
+        if (band < 3) {
             const auto curveBeforePoint0 = curvePoints;
             bool point0Changed = false;
 

@@ -71,11 +71,4 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                                        const std::vector<float>* subframeLow = nullptr,
                                        const std::vector<float>* subframeHigh = nullptr);
 
-// Detect transient locations (0..in.size()-1) using the same logic as CalcCurve.
-// savedLastLevel/nextLevel provide boundary context. maxPoints caps the count.
-std::vector<int> DetectTransients(const std::vector<float>& in, float savedLastLevel,
-                                  std::optional<float> nextLevel = {},
-                                  float minScore = 2.0f,
-                                  int maxPoints = 6);
-
 }
