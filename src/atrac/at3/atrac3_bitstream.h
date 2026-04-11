@@ -20,6 +20,7 @@
 #include "atrac3.h"
 #include <compressed_io.h>
 #include <atrac/atrac_scale.h>
+#include <lib/bs_encode/encode.h>
 #include <vector>
 #include <utility>
 
@@ -49,48 +50,15 @@ public:
         // Per-band bit-allocation boost to compensate for gain-demodulation noise
         // amplification.  Combines the level boost (from the current frame's gain
         // curve) and the scale boost (estimated from the next frame's first gain
-        // point).  Set by CreateSubbandInfo; read by CreateAllocation.
+        // point).  Set by CreateSubbandInfo; read by the allocation stage.
         int GainBoostPerBand[TAtrac3Data::NumQMF] = {};
     };
 private:
-    static std::vector<float> ATH;
-
-    struct TTonalComponentsSubGroup {
-        std::vector<uint8_t> SubGroupMap;
-        std::vector<const TTonalBlock*> SubGroupPtr;
-    };
     ICompressedOutput* Container;
     const TContainerParams Params;
     const uint32_t BfuIdxConst;
+    TBitStreamEncoder Encoder;
     std::vector<char> OutBuffer;
-
-    uint32_t CLCEnc(const uint32_t selector, const int mantissas[TAtrac3Data::MaxSpecsPerBlock],
-                    const uint32_t blockSize, NBitStream::TBitStream* bitStream);
-
-    uint32_t VLCEnc(const uint32_t selector, const int mantissas[TAtrac3Data::MaxSpecsPerBlock],
-                    const uint32_t blockSize, NBitStream::TBitStream* bitStream);
-
-    std::vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
-                                             uint32_t bfuNum, float spread, float shift, float loudness,
-                                             const int gainBoostPerBand[TAtrac3Data::NumQMF]);
-
-    std::pair<uint8_t, std::vector<uint32_t>> CreateAllocation(const TSingleChannelElement& sce,
-                                                               uint16_t targetBits, int mt[TAtrac3Data::MaxSpecs], float laudness);
-
-    std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TSingleChannelElement& sce,
-                                                          const std::vector<uint32_t>& precisionPerEachBlocks,
-                                                          int* mantisas, std::vector<float>& energyErr);
-
-    void EncodeSpecs(const TSingleChannelElement& sce, NBitStream::TBitStream* bitStream,
-                     const std::pair<uint8_t, std::vector<uint32_t>>&, const int mt[TAtrac3Data::MaxSpecs]);
-
-    uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
-                                 const std::vector<uint32_t>& allocTable,
-                                 TTonalComponentsSubGroup groups[64]);
-
-    uint16_t EncodeTonalComponents(const TSingleChannelElement& sce,
-                                   const std::vector<uint32_t>& allocTable,
-                                   NBitStream::TBitStream* bitStream);
 public:
     TAtrac3BitStreamWriter(ICompressedOutput* container, const TContainerParams& params, uint32_t bfuIdxConst);
 
