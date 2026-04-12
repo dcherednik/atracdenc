@@ -182,7 +182,7 @@ public:
             }
         }
         for (int i = 0; i < 256; i++) {
-            EncodeWindow[i] = (sin(((i + 0.5) / 256.0 - 0.5) * M_PI) + 1.0)/* * 0.5*/;
+            EncodeWindow[i] = sin(M_PI * (2 * i + 1) / 512.0);
         }
         for (int i = 0; i < 256; i++) {
             const double a = EncodeWindow[i];
