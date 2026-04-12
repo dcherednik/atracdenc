@@ -39,8 +39,8 @@ TMDCTBase::TMDCTBase(size_t n, float scale)
     : N(n)
     , SinCos(CalcSinCos(n, scale))
 {
-    FFTIn = (kiss_fft_cpx*) malloc(sizeof(kiss_fft_cpx) * N >> 2);
-    FFTOut = (kiss_fft_cpx*) malloc(sizeof(kiss_fft_cpx) * N >> 2);
+    FFTIn = (kiss_fft_cpx*) malloc(sizeof(kiss_fft_cpx) * (N >> 2));
+    FFTOut = (kiss_fft_cpx*) malloc(sizeof(kiss_fft_cpx) * (N >> 2));
     FFTPlan = kiss_fft_alloc(N >> 2, false, nullptr, nullptr);
 }
 
