@@ -78,7 +78,7 @@ public:
     static const uint32_t frameSz = 152;
     static constexpr float MaxQuant[8] = {
         0.0,    1.5,    2.5,    3.5,
-        4.5,    7.5,    15.5,   31.5
+        5.5,    7.5,    15.5,   31.5
     };
     static constexpr uint32_t BlockSizeTab[33] = {
         0,    8,    16,    24,    32,    40,    48,    56,
