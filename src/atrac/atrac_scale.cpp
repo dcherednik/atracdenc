@@ -139,6 +139,18 @@ TScaler<TBaseData>::TScaler() {
 }
 
 template<class TBaseData>
+TScaler<TBaseData>::~TScaler() {
+    if (OverScaleCount > 0) {
+        cerr << "atracdenc: " << OverScaleCount
+             << " spectral values exceeded MAX_SCALE and were clamped" << endl;
+    }
+    if (ClipCount > 0) {
+        cerr << "atracdenc: " << ClipCount
+             << " scaled values exceeded 1.0 after rounding and were clipped" << endl;
+    }
+}
+
+template<class TBaseData>
 TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
     float maxAbsSpec = 0;
     for (uint16_t i = 0; i < len; ++i) {
@@ -148,7 +160,7 @@ TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
         }
     }
     if (maxAbsSpec > MAX_SCALE) {
-        cerr << "Scale error: absSpec > MAX_SCALE, val: " << maxAbsSpec << endl;
+        ++OverScaleCount;
         maxAbsSpec = MAX_SCALE;
     }
     const map<float, uint8_t>::const_iterator scaleIter = ScaleIndex.lower_bound(maxAbsSpec);
@@ -156,13 +168,14 @@ TScaledBlock TScaler<TBaseData>::Scale(const float* in, uint16_t len) {
     const uint8_t scaleFactorIndex = scaleIter->second;
     TScaledBlock res(scaleFactorIndex);
     res.Energy = 0.0;
+    res.Values.reserve(len);
     for (uint16_t i = 0; i < len; ++i) {
         float scaledValue = in[i] / scaleFactor;
         float energy = in[i] * in[i];
         res.Energy += energy;
         if (abs(scaledValue) >= 1.0) {
             if (abs(scaledValue) > 1.0) {
-                cerr << "clipping, scaled value: "<< scaledValue << endl;
+                ++ClipCount;
             }
             scaledValue = (scaledValue > 0) ? 0.99999 : -0.99999;
         }
