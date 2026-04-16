@@ -311,6 +311,70 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                      &gainLow, &gainHigh);
         const float curTarget = CurveCtx[channel][band].LastTarget;
 
+        // Full-band in-frame onset detection for bass bands.
+        //
+        // The existing HPF-based CalcCurve is blind to bass-heavy transients
+        // (60 Hz kick drums, sub-bass thumps) because TSpectralUpsampler
+        // high-passes below roughly 800 Hz before the subframe RMS is taken.
+        // When such a transient lands inside the current frame, no gain
+        // curve is emitted, the MDCT window ends up quantising a quiet
+        // pre-attack region next to a loud attack with one shared scale
+        // factor, and the quantisation noise spreads backward and becomes
+        // audible pre-echo ahead of the attack.  On a synthetic 60 Hz kick
+        // test this costs around 11-13 dB of pre-echo ratio versus Sony.
+        //
+        // Detect the case by computing per-subframe RMS directly on the
+        // current band's time-domain samples (bufNext) and looking for a
+        // step of kBassOnsetRatio or more over the strongest of the
+        // preceding kBassHistorySf subframes.  When it fires and
+        // CalcCurve produced no curve on its own, inject a single point
+        // that attenuates the pre-attack window by 6 dB.  Only applied to
+        // bands 0 and 1 (below ~5.5 kHz) where the HPF blindness bites
+        // hardest and pre-echo is most audible.
+        if (band <= 1 && curvePoints.empty()) {
+            constexpr float kBassOnsetRatio = 4.0f;
+            constexpr float kBassOnsetMinRms = 0.01f;  // -40 dBFS
+            constexpr int kBassHistorySf = 8;
+            constexpr uint16_t kBassInjectLevel = 5;  // GainLevel 0.5, 6 dB atten
+            constexpr int kMinOnsetSf = 2;
+            constexpr int kMaxOnsetSf = 28;
+
+            float sfRms[32];
+            for (int sf = 0; sf < 32; ++sf) {
+                float s = 0.0f;
+                for (int i = 0; i < 8; ++i) {
+                    const float v = bufNext[sf * 8 + i];
+                    s += v * v;
+                }
+                sfRms[sf] = std::sqrt(s / 8.0f);
+            }
+
+            int onsetSf = -1;
+            for (int sf = kMinOnsetSf; sf <= kMaxOnsetSf; ++sf) {
+                if (sfRms[sf] < kBassOnsetMinRms) continue;
+                const int histStart = std::max(0, sf - kBassHistorySf);
+                float priorMax = 0.0f;
+                for (int j = histStart; j < sf; ++j)
+                    priorMax = std::max(priorMax, sfRms[j]);
+                if (sfRms[sf] > priorMax * kBassOnsetRatio) {
+                    onsetSf = sf;
+                    break;
+                }
+            }
+
+            if (onsetSf > 0) {
+                const uint32_t injectLoc = static_cast<uint32_t>(onsetSf - 1);
+                curvePoints.push_back({kBassInjectLevel, injectLoc});
+                if (YamlLog) {
+                    *YamlLog << std::fixed << std::setprecision(4)
+                             << "        bass_onset_inject: {level: " << kBassInjectLevel
+                             << ", loc: " << injectLoc
+                             << ", onset_sf: " << onsetSf
+                             << ", rms_at_onset: " << sfRms[onsetSf] << "}\n";
+                }
+            }
+        }
+
         if (curvePoints.empty()) {
             if (YamlLog) {
                 *YamlLog << "        skip: no_curve\n";
