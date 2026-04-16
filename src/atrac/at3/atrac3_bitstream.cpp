@@ -206,6 +206,20 @@ bool ConsiderEnergyErr(const vector<float>& err, vector<uint32_t>& bits)
     return adjusted;
 }
 
+static float BfuPeakToMeanRatio(const TScaledBlock& block)
+{
+    if (block.Values.empty()) return 0.0f;
+    float peak = 0.0f;
+    float sum = 0.0f;
+    for (float v : block.Values) {
+        const float a = std::abs(v);
+        if (a > peak) peak = a;
+        sum += a;
+    }
+    const float mean = sum / block.Values.size();
+    return peak / std::max(mean, 1e-9f);
+}
+
 vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                     const uint32_t bfuNum,
                                     const float spread,
@@ -213,6 +227,15 @@ vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlock
                                     const float loudness,
                                     const int gainBoostPerBand[TAtrac3Data::NumQMF])
 {
+    // HF noise-floor kill: from BFU 22 upwards (>8 kHz) we detect BFUs whose
+    // scaled content looks like flat broadband noise and zero their
+    // precision.  Below 8 kHz we never kill, so vocal sibilance (4-8 kHz)
+    // and formant energy (1-4 kHz) stay encoded normally.  A per-block
+    // peak-to-mean ratio below kNoiseKillRatio flags the BFU as noise;
+    // saved bits flow to lower frequencies through the bisection.
+    static constexpr size_t kNoiseKillBfuStart = 22;
+    static constexpr float kNoiseKillRatio = 2.5f;
+
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         const float ath = ATH[i] * loudness;
@@ -225,6 +248,8 @@ vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlock
         }
 
         if (scaledBlocks[i].Energy < ath) {
+            bitsPerEachBlock[i] = 0;
+        } else if (i >= kNoiseKillBfuStart && BfuPeakToMeanRatio(scaledBlocks[i]) < kNoiseKillRatio) {
             bitsPerEachBlock[i] = 0;
         } else {
             const uint32_t fix = FixedBitAllocTable[i];
