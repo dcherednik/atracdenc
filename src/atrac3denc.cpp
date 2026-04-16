@@ -644,13 +644,12 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                 CreateSubbandInfo(up, channel, &sce->SubbandInfo, sce->GainBoostPerBand);
             }
 
-            float* maxOverlapLevels = PrevPeak[channel];
             {
                 float* p[4] = {
                     PcmBuffer.GetFirst(channel),   PcmBuffer.GetFirst(channel + 2),
                     PcmBuffer.GetFirst(channel + 4), PcmBuffer.GetFirst(channel + 6)
                 };
-                Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
+                Mdct(specs.data(), p, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
             float l = 0;

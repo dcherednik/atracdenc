@@ -110,7 +110,6 @@ enum EOptions
     O_NOTRANSIENT = 3,
     O_MONO = 'm',
     O_NOSTDOUT = '4',
-    O_NOTONAL = 5,
     O_NOGAINCONTROL = 6,
     O_ADVANCED_OPT = 7,
     O_YAML_LOG = 8,
@@ -338,7 +337,6 @@ int main_(int argc, char* const* argv)
     uint32_t bfuIdxConst = 0; //0 - auto, no const
     bool noStdOut = false;
     bool noGainControl = false;
-    bool noTonalComponents = false;
     string yamlLogFile;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
@@ -403,9 +401,6 @@ int main_(int argc, char* const* argv)
                 break;
             case O_NOSTDOUT:
                 noStdOut = true;
-                break;
-            case O_NOTONAL:
-                noTonalComponents = true;
                 break;
             case O_NOGAINCONTROL:
                 noGainControl = true;
@@ -483,7 +478,7 @@ int main_(int argc, char* const* argv)
                     yamlOut = &yamlLogStream;
                 }
                 NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl,
-                                                                noTonalComponents, wavIO->GetChannelNum(), bfuIdxConst,
+                                                                wavIO->GetChannelNum(), bfuIdxConst,
                                                                 yamlOut);
                 PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
                 &totalSamples, wavIO, &pcmEngine, &atracProcessor);

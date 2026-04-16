@@ -259,18 +259,16 @@ public:
 
 struct TAtrac3EncoderSettings {
     TAtrac3EncoderSettings(uint32_t bitrate, bool noGainControll,
-                           bool noTonalComponents, uint8_t sourceChannels, uint32_t bfuIdxConst,
+                           uint8_t sourceChannels, uint32_t bfuIdxConst,
                            std::ostream* yamlLog = nullptr)
         : ConteinerParams(TAtrac3Data::GetContainerParamsForBitrate(bitrate))
         , NoGainControll(noGainControll)
-        , NoTonalComponents(noTonalComponents)
         , SourceChannels(sourceChannels)
         , BfuIdxConst(bfuIdxConst)
         , YamlLog(yamlLog)
     { }
     const TContainerParams* ConteinerParams;
     const bool NoGainControll;
-    const bool NoTonalComponents;
     const uint8_t SourceChannels;
     const uint32_t BfuIdxConst;
     std::ostream* YamlLog;  // nullable; gain control debug log (--yaml-log)

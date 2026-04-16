@@ -36,8 +36,15 @@ struct TScaledBlock {
 template <class TBaseData>
 class TScaler {
     std::map<float, uint8_t> ScaleIndex;
+    // Track how often the scaling path had to clamp clipping samples or an
+    // over-range spectral value.  Printing a single summary on destruction
+    // replaces a per-sample cerr line that could flood the terminal for
+    // hundreds of frames of clip-heavy input.
+    uint64_t ClipCount = 0;
+    uint64_t OverScaleCount = 0;
 public:
     TScaler();
+    ~TScaler();
     TScaledBlock Scale(const float* in, uint16_t len);
     std::vector<TScaledBlock> ScaleFrame(const std::vector<float>& specs, const typename TBaseData::TBlockSizeMod& blockSize);
 };

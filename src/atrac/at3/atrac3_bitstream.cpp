@@ -534,6 +534,30 @@ public:
 
 class TAlloc final : public IBitStreamPartEncoder {
 public:
+    TAlloc() {
+        // Opt-in bit budget accounting for allocator tuning.  Set
+        // ATRACDENC_BUDGET_STATS=1 to get a one-line summary on stderr at
+        // the end of the run with average target, average used, utilisation
+        // percentage, and counts of frames that fell below 80 percent or
+        // ran into the target cap.  Disabled by default, zero overhead.
+        StatsEnabled = std::getenv("ATRACDENC_BUDGET_STATS") != nullptr;
+    }
+
+    ~TAlloc() {
+        if (StatsEnabled && FrameCount > 0) {
+            const double avgTarget = static_cast<double>(TargetSum) / FrameCount;
+            const double avgUsed = static_cast<double>(UsedSum) / FrameCount;
+            const double util = 100.0 * avgUsed / avgTarget;
+            std::cerr << "[atrac3 budget] frames=" << FrameCount
+                      << " avg_target=" << avgTarget
+                      << " avg_used=" << avgUsed
+                      << " util=" << util << "%"
+                      << " under_80pct=" << LowUtilFrames
+                      << " at_cap=" << CappedFrames
+                      << "\n";
+        }
+    }
+
     EStatus Encode(void* frameData, TBitAllocHandler& ba) override {
         TEncodeCtx* ctx = TEncodeCtx::Cast(frameData);
 
@@ -569,6 +593,13 @@ public:
             ctx->PrecisionPerBlock = std::move(tmpAlloc);
             ctx->CodingMode = consumption.first;
             Ctx = ctx;
+            if (StatsEnabled) {
+                TargetSum += ctx->TargetBits;
+                UsedSum += totalBits;
+                ++FrameCount;
+                if (totalBits * 5 < ctx->TargetBits * 4) ++LowUtilFrames;
+                if (totalBits >= ctx->TargetBits) ++CappedFrames;
+            }
         }
 
         return EStatus::Ok;
@@ -592,6 +623,12 @@ public:
 
 private:
     TEncodeCtx* Ctx = nullptr;
+    bool StatsEnabled = false;
+    uint64_t TargetSum = 0;
+    uint64_t UsedSum = 0;
+    uint64_t FrameCount = 0;
+    uint64_t LowUtilFrames = 0;
+    uint64_t CappedFrames = 0;
 };
 
 std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
