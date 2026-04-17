@@ -517,6 +517,13 @@ public:
         if (!ctx->AllocInitDone) {
             ctx->Spread = AnalizeScaleFactorSpread(ctx->Sce->ScaledBlocks);
             ctx->NumBfu = CalcInitialNumBfu(ctx->BfuIdxConst, ctx->TargetBits);
+            // Cap NumBfu to the actual number of scaled blocks the
+            // encoder side prepared.  When the top QMF band was dropped
+            // upstream (silent band 3), ScaledBlocks only carries the
+            // first 30 BFUs and the allocator must not over-run them.
+            if (ctx->NumBfu > ctx->Sce->ScaledBlocks.size()) {
+                ctx->NumBfu = static_cast<uint16_t>(ctx->Sce->ScaledBlocks.size());
+            }
             ctx->AllocInitDone = true;
         }
         ctx->PrecisionPerBlock.assign(ctx->NumBfu, 0);
