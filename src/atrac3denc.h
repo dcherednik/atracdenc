@@ -113,7 +113,10 @@ public:
     void CreateSubbandInfo(const float* upInput[4], uint32_t channel,
                            TAtrac3Data::SubbandInfo* subbandInfo,
                            int gainBoostPerBand[TAtrac3Data::NumQMF]);
+    TAtrac3Data::TTonalComponents ExtractTonalComponents(float* specs,
+                                                         const std::vector<float>& flatnessPerBfu);
     void Matrixing();
+    void MapTonalComponents(const TAtrac3Data::TTonalComponents& tonalComponents, std::vector<NAtracDEnc::NAtrac3::TTonalBlock>* componentMap);
 
 public:
     TAtrac3Encoder(TCompressedOutputPtr&& oma, NAtrac3::TAtrac3EncoderSettings&& encoderSettings);

@@ -548,6 +548,90 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
     }
 }
 
+TAtrac3Data::TTonalComponents TAtrac3Encoder::ExtractTonalComponents(float* specs,
+                                                                     const std::vector<float>& flatnessPerBfu)
+{
+    TAtrac3Data::TTonalComponents res;
+    static constexpr float kFlatnessThreshold = 0.01f;
+    static constexpr uint32_t kMaxTonalLen = 5;
+    // BFU below 8 is too short to get notisiable profit
+    // BFU above 29 is hard to tune
+    for (uint32_t blockNum = 8; blockNum < 29u; ++blockNum) {
+        if (blockNum >= flatnessPerBfu.size()) {
+            break;
+        }
+
+        const float flatness = flatnessPerBfu[blockNum];
+        if (flatness >= kFlatnessThreshold) {
+            continue;
+        }
+
+        const uint32_t specNumStart = TAtrac3Data::SpecsStartLong[blockNum];
+        const uint32_t blockLen = TAtrac3Data::SpecsPerBlock[blockNum];
+        const uint32_t specNumEnd = specNumStart + blockLen;
+        if (specNumStart >= specNumEnd) {
+            continue;
+        }
+
+        const uint32_t maxLen = std::min(kMaxTonalLen, blockLen);
+        float bestScore = -1.0f;
+        uint32_t bestStart = specNumStart;
+        uint32_t bestLen = 1;
+        for (uint32_t start = specNumStart; start < specNumEnd; ++start) {
+            const uint32_t maxLenForStart = std::min(maxLen, specNumEnd - start);
+            float score = 0.0f;
+            for (uint32_t len = 1; len <= maxLenForStart; ++len) {
+                score += std::abs(specs[start + len - 1]);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestStart = start;
+                    bestLen = len;
+                }
+            }
+        }
+
+        if (bestScore <= 0.0f) {
+            continue;
+        }
+
+        /*
+        std::cerr << "atrac3 tonal bfu=" << (uint32_t)blockNum
+                  << " flatness=" << flatness
+                  << " start=" << bestStart
+                  << " len=" << bestLen
+                  << " score=" << bestScore
+                  << std::endl; */
+
+        for (uint32_t n = 0; n < bestLen; ++n) {
+            const uint32_t pos = bestStart + n;
+            res.push_back({(uint16_t)pos, specs[pos], (uint8_t)blockNum});
+            specs[pos] = 0.0f;
+        }
+    }
+
+    return res;
+}
+
+
+void TAtrac3Encoder::MapTonalComponents(const TAtrac3Data::TTonalComponents& tonalComponents, vector<TTonalBlock>* componentMap)
+{
+    for (size_t i = 0; i < tonalComponents.size();) {
+        const uint32_t startPos = i;
+        uint32_t curPos;
+        do {
+            curPos = tonalComponents[i].Pos;
+            ++i;
+        } while ( i < tonalComponents.size() && tonalComponents[i].Pos == curPos + 1 && i - startPos < 7);
+        const uint32_t len = i - startPos;
+        float tmp[8];
+        for (uint32_t j = 0; j < len; ++j)
+            tmp[j] = tonalComponents[startPos + j].Val;
+        const TScaledBlock& scaledBlock = Scaler.Scale(tmp, len);
+        componentMap->push_back({&tonalComponents[startPos], scaledBlock});
+    }
+}
+
+
 void TAtrac3Encoder::Matrixing()
 {
     for (uint32_t subband = 0; subband < 4; subband++) {
@@ -624,9 +708,12 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                      << "channels:\n";
         }
 
+        TAtrac3Data::TTonalComponents tonals[2];
+
         for (uint32_t channel = 0; channel < meta.Channels; channel++) {
             auto& specs = (*buf)[channel].Specs;
             TSce* sce = &SingleChannelElements[channel];
+            sce->TonalBlocks.clear();
 
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
@@ -653,13 +740,22 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                 Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
+            vector<float> mdctEnergy(specs.size(), 0.0f);
             float l = 0;
             for (size_t i = 0; i < specs.size(); i++) {
                 float e = specs[i] * specs[i];
+                mdctEnergy[i] = e;
                 l += e * LoudnessCurve[i];
             }
 
             sce->Loudness = l;
+
+            if (!Params.NoTonalComponents) {
+                const vector<float> flatnessPerBfu = CalcSpectralFlatnessPerBfu<TAtrac3Data>(mdctEnergy);
+                tonals[channel] = ExtractTonalComponents(specs.data(), flatnessPerBfu);
+                sce->TonalBlocks.clear();
+                MapTonalComponents(tonals[channel], &sce->TonalBlocks);
+            }
 
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
             sce->ScaledBlocks = Scaler.ScaleFrame(specs, TAtrac3Data::TBlockSizeMod());
