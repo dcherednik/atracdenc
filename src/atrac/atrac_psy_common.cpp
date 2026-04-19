@@ -18,6 +18,8 @@
 
 #include "atrac_psy_common.h"
 
+#include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <iostream>
 
@@ -151,6 +153,49 @@ vector<float> CreateLoudnessCurve(size_t sz)
     }
 
     return res;
+}
+
+vector<float> CalcSpectralFlatnessPerBfu(const vector<float>& mdctEnergy,
+                                         const uint32_t* specsStart,
+                                         const uint32_t* specsPerBlock,
+                                         size_t numBfu,
+                                         float energyFloor)
+{
+    assert(specsStart != nullptr);
+    assert(specsPerBlock != nullptr);
+    const float floor = std::max(energyFloor, 1e-20f);
+
+    vector<float> flatness(numBfu, 1.0f);
+    for (size_t bfu = 0; bfu < numBfu; ++bfu) {
+        const size_t start = specsStart[bfu];
+        const size_t len = specsPerBlock[bfu];
+        const size_t end = start + len;
+        assert(end <= mdctEnergy.size());
+        if (len == 0 || end > mdctEnergy.size()) {
+            flatness[bfu] = 1.0f;
+            continue;
+        }
+
+        double arithMean = 0.0;
+        double meanLog = 0.0;
+        for (size_t i = start; i < end; ++i) {
+            const double e = std::max(0.0f, mdctEnergy[i]);
+            arithMean += e;
+            meanLog += std::log(std::max<double>(e, floor));
+        }
+        arithMean /= static_cast<double>(len);
+        meanLog /= static_cast<double>(len);
+
+        if (arithMean <= floor) {
+            flatness[bfu] = 1.0f;
+            continue;
+        }
+
+        const double geomMean = std::exp(meanLog);
+        const double ratio = geomMean / arithMean;
+        flatness[bfu] = static_cast<float>(std::min(1.0, std::max(0.0, ratio)));
+    }
+    return flatness;
 }
 
 } // namespace NAtracDEnc

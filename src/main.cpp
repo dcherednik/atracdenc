@@ -325,6 +325,7 @@ int main_(int argc, char* const* argv)
         { "bfuidxfast", no_argument, NULL, O_BFUIDXFAST},
         { "notransient", optional_argument, NULL, O_NOTRANSIENT},
         { "nostdout", no_argument, NULL, O_NOSTDOUT},
+        { "notonal", no_argument, NULL, O_NOTONAL},
         { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
         { "advanced", required_argument, NULL, O_ADVANCED_OPT},
         { "yaml-log", required_argument, NULL, O_YAML_LOG},

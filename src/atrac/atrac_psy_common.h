@@ -18,12 +18,30 @@
 
 #pragma once
 #include "atrac_scale.h"
+#include <cstdint>
 #include <stddef.h>
+#include <vector>
 
 namespace NAtracDEnc {
 
 float AnalizeScaleFactorSpread(const std::vector<TScaledBlock>& scaledBlocks);
 std::vector<float> CalcATH(int len, int sampleRate);
+std::vector<float> CalcSpectralFlatnessPerBfu(const std::vector<float>& mdctEnergy,
+                                              const uint32_t* specsStart,
+                                              const uint32_t* specsPerBlock,
+                                              size_t numBfu,
+                                              float energyFloor = 1e-12f);
+
+template <class TData>
+inline std::vector<float> CalcSpectralFlatnessPerBfu(const std::vector<float>& mdctEnergy,
+                                                     float energyFloor = 1e-12f)
+{
+    return CalcSpectralFlatnessPerBfu(mdctEnergy,
+                                      TData::SpecsStartLong,
+                                      TData::SpecsPerBlock,
+                                      TData::MaxBfus,
+                                      energyFloor);
+}
 
 inline float TrackLoudness(float prevLoud, float l0, float l1)
 {

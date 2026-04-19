@@ -33,6 +33,12 @@ namespace NAtrac3 {
 
 using std::vector;
 
+// BFU right border frequencies at 44.1 kHz (kHz), computed from
+// TAtrac3Data::BlockSizeTab[bfu + 1] * 44100 / (2 * 1024):
+// bfu  0.. 7: 0.172, 0.345, 0.517, 0.689, 0.861, 1.034, 1.206, 1.378
+// bfu  8..15: 1.723, 2.067, 2.412, 2.756, 3.101, 3.445, 3.790, 4.134
+// bfu 16..23: 4.823, 5.513, 6.202, 6.891, 7.580, 8.269, 8.958, 9.647
+// bfu 24..31: 10.336, 11.025, 12.403, 13.781, 15.159, 16.538, 19.294, 22.050
 static const uint32_t FixedBitAllocTable[TAtrac3Data::MaxBfus] = {
   4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
   2, 2, 2, 2, 2, 1, 1, 1,
@@ -206,13 +212,14 @@ bool ConsiderEnergyErr(const vector<float>& err, vector<uint32_t>& bits)
     return adjusted;
 }
 
-vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
+vector<uint32_t> CalcBitsAllocation(const TAtrac3BitStreamWriter::TSingleChannelElement& sce,
                                     const uint32_t bfuNum,
                                     const float spread,
                                     const float shift,
-                                    const float loudness,
-                                    const int gainBoostPerBand[TAtrac3Data::NumQMF])
+                                    const float loudness)
 {
+    const std::vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
+    const auto gainBoostPerBand = sce.GainBoostPerBand;
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         const float ath = ATH[i] * loudness;
@@ -254,30 +261,47 @@ vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlock
             }
         }
     }
+
+    for (const TTonalBlock& tc : sce.TonalBlocks) {
+        ASSERT(tc.ScaledBlock.Values.size() < 8);
+        ASSERT(tc.ScaledBlock.Values.size() > 0);
+        if(tc.ValPtr->Bfu < bitsPerEachBlock.size()) {
+            if (bitsPerEachBlock[tc.ValPtr->Bfu] > 2) {
+                bitsPerEachBlock[tc.ValPtr->Bfu] -= 1;
+            }
+        }
+    }
+
     return bitsPerEachBlock;
 }
 
-uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
+uint32_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                              const vector<uint32_t>& allocTable,
                              TTonalComponentsSubGroup groups[64])
 {
     for (const TTonalBlock& tc : tonalComponents) {
         ASSERT(tc.ScaledBlock.Values.size() < 8);
         ASSERT(tc.ScaledBlock.Values.size() > 0);
-        ASSERT(tc.ValPtr->Bfu < allocTable.size());
-        const auto quant = std::max((uint32_t)2, std::min(allocTable[tc.ValPtr->Bfu] + 1, (uint32_t)7));
+        ASSERT(tc.ValPtr);
+        const uint32_t bfu = tc.ValPtr->Bfu;
+        if (bfu >= allocTable.size()) {
+            // NumBfu may be reduced by allocator tail trimming.
+            // Skip tonal blocks that map to BFUs outside current allocation table.
+            continue;
+        }
+        const auto quant = std::max((uint32_t)2, std::min(allocTable[bfu] + 4, (uint32_t)7));
         groups[quant * 8 + tc.ScaledBlock.Values.size()].SubGroupPtr.push_back(&tc);
     }
 
-    uint8_t tcsgn = 0;
-    for (uint8_t i = 0; i < 64; ++i) {
-        size_t startPos;
-        size_t curPos = 0;
+    uint32_t tcsgn = 0;
+    for (uint32_t i = 0; i < 64; ++i) {
+        uint32_t startPos;
+        uint32_t curPos = 0;
         while (curPos < groups[i].SubGroupPtr.size()) {
             startPos = curPos;
             ++tcsgn;
             groups[i].SubGroupMap.push_back(static_cast<uint8_t>(curPos));
-            uint8_t groupLimiter = 0;
+            uint32_t groupLimiter = 0;
             do {
                 ++curPos;
                 if (curPos == groups[i].SubGroupPtr.size()) {
@@ -289,7 +313,7 @@ uint8_t GroupTonalComponents(const std::vector<TTonalBlock>& tonalComponents,
                     groupLimiter = 0;
                     startPos = curPos;
                 }
-            } while (groupLimiter < 7);
+            } while (groupLimiter < 7u);
         }
     }
     return tcsgn;
@@ -302,12 +326,12 @@ uint16_t EncodeTonalComponents(const TAtrac3BitStreamWriter::TSingleChannelEleme
     const uint16_t bitsUsedOld = bitStream ? (uint16_t)bitStream->GetSizeInBits() : 0;
     const std::vector<TTonalBlock>& tonalComponents = sce.TonalBlocks;
     const TAtrac3Data::SubbandInfo& subbandInfo = sce.SubbandInfo;
-    const uint8_t numQmfBand = subbandInfo.GetQmfNum();
+    const uint32_t numQmfBand = subbandInfo.GetQmfNum();
     uint16_t bitsUsed = 0;
 
     //group tonal components with same quantizer and len
     TTonalComponentsSubGroup groups[64];
-    const uint8_t tcsgn = GroupTonalComponents(tonalComponents, allocTable, groups);
+    const uint32_t tcsgn = GroupTonalComponents(tonalComponents, allocTable, groups);
 
     ASSERT(tcsgn < 32);
 
@@ -369,7 +393,7 @@ uint16_t EncodeTonalComponents(const TAtrac3BitStreamWriter::TSingleChannelEleme
 
             bitsUsed += numQmfBand;
             if (bitStream) {
-                for (uint8_t j = 0; j < numQmfBand; ++j) {
+                for (uint32_t j = 0; j < numQmfBand; ++j) {
                     bitStream->Write((bool)bandFlags.i[j], 1);
                 }
             }
@@ -543,12 +567,11 @@ public:
         }
 
         const float shift = ba.Continue();
-        vector<uint32_t> tmpAlloc = CalcBitsAllocation(ctx->Sce->ScaledBlocks,
+        vector<uint32_t> tmpAlloc = CalcBitsAllocation(*ctx->Sce,
                                                        ctx->NumBfu,
                                                        ctx->Spread,
                                                        shift,
-                                                       ctx->Loudness,
-                                                       ctx->Sce->GainBoostPerBand);
+                                                       ctx->Loudness);
 
         ctx->EnergyErr.assign(ctx->NumBfu, 0.0f);
         std::pair<uint8_t, uint32_t> consumption;
