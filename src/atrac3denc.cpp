@@ -759,6 +759,37 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
 
             //TBlockSize for ATRAC3 - 4 subband, all are long (no short window)
             sce->ScaledBlocks = Scaler.ScaleFrame(specs, TAtrac3Data::TBlockSizeMod());
+
+            // Drop the top QMF band (band 3, ~16 kHz and above) when its
+            // BFUs (30 and 31, each covering 128 MDCT bins) contain no
+            // meaningful content.  Sony's reference encoder writes
+            // numQmfBand = 3 for every frame we have inspected; atracdenc
+            // always writes 4 today, which costs 3 bits of gain info plus
+            // whatever precision the allocator wastes on silent BFUs 30
+            // and 31.  When the top band is silent we shrink SubbandInfo
+            // and ScaledBlocks so that the downstream allocator and
+            // bitstream writer see exactly what we want to encode.
+            //
+            // The threshold is relative to the tracked loudness so the
+            // drop survives loud tracks with genuine HF content and only
+            // fires when band 3 really is silent or nearly so.
+            if (sce->ScaledBlocks.size() >= 32 && sce->SubbandInfo.GetQmfNum() == 4) {
+                const float band3Energy = sce->ScaledBlocks[30].Energy
+                                          + sce->ScaledBlocks[31].Energy;
+                // Loudness here scales with track energy.  Use a small
+                // fraction of it as the threshold so we drop band 3 both
+                // on truly silent frames and on frames where the HF is
+                // more than 40 dB below the track's average loudness.
+                const float threshold = std::max(1e-8f, Loudness * 1e-4f);
+                if (band3Energy < threshold) {
+                    sce->SubbandInfo.Info.resize(3);
+                    // TScaledBlock has no default ctor, so use erase to
+                    // drop BFUs 30 and 31 without constructing anything.
+                    sce->ScaledBlocks.erase(
+                        sce->ScaledBlocks.begin() + 30,
+                        sce->ScaledBlocks.end());
+                }
+            }
         }
 
         if (meta.Channels == 2 && !Params.ConteinerParams->Js) {
