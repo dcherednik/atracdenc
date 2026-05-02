@@ -219,7 +219,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
     string contName;
     if (ext == "wav" || ext == "at3") {
         contName = "AT3 (RIFF)";
-        omaIO = CreateAt3Output(outFile, numChannels, numFrames,
+        omaIO = CreateAt3Output(outFile, 2, numFrames,
                 encoderSettings.ConteinerParams->FrameSz,
                 encoderSettings.ConteinerParams->Js);
     } else if (ext == "rm") {
