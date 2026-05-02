@@ -59,6 +59,7 @@ void TBitStreamEncoder::TImpl::DoStart(size_t targetBits, float minLambda, float
     TargetBits = targetBits;
     MinLambda = minLambda;
     MaxLambda = maxLambda;
+    LastLambda = maxLambda;
 }
 
 float TBitStreamEncoder::TImpl::DoContinue() noexcept
