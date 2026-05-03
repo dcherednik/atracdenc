@@ -41,7 +41,7 @@ using std::string;
 FILE* OpenFile(const string& filename) {
     FILE* fp = NAtracDEnc::FOpenUtf8(filename, "wb");
     if (!fp)
-        throw std::runtime_error("Can't open file to write: " + filename);
+        throw std::runtime_error("unable to open output file '" + filename + "'");
     return fp;
 }
 

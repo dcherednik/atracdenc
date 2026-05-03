@@ -55,41 +55,25 @@ endif()
 add_subdirectory(src)
 
 if (ATRACDENC_PYTHON_EXECUTABLE)
-    add_test(NAME input_missing_file
-        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
-            --exe $<TARGET_FILE:atracdenc>
-            --work-dir ${CMAKE_BINARY_DIR}/integration/input_missing_file
-            --case missing-input
-    )
-    add_test(NAME input_utf8_filename
-        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
-            --exe $<TARGET_FILE:atracdenc>
-            --work-dir ${CMAKE_BINARY_DIR}/integration/input_utf8_filename
-            --case utf8-input
-    )
-    add_test(NAME output_utf8_oma_filename
-        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
-            --exe $<TARGET_FILE:atracdenc>
-            --work-dir ${CMAKE_BINARY_DIR}/integration/output_utf8_oma_filename
-            --case utf8-output-oma
-    )
-    add_test(NAME output_utf8_at3_filename
-        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
-            --exe $<TARGET_FILE:atracdenc>
-            --work-dir ${CMAKE_BINARY_DIR}/integration/output_utf8_at3_filename
-            --case utf8-output-at3
-    )
-    add_test(NAME output_utf8_rm_filename
-        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
-            --exe $<TARGET_FILE:atracdenc>
-            --work-dir ${CMAKE_BINARY_DIR}/integration/output_utf8_rm_filename
-            --case utf8-output-rm
-    )
+    function(add_input_file_test test_name test_case)
+        add_test(NAME ${test_name}
+            COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/test/integration/input_file_tests.py
+                --exe $<TARGET_FILE:atracdenc>
+                --work-dir ${CMAKE_BINARY_DIR}/integration/${test_name}
+                --case ${test_case}
+        )
+    endfunction()
+
+    add_input_file_test(input_missing_file missing-input)
+    add_input_file_test(input_utf8_filename utf8-input)
+    add_input_file_test(input_utf8_atrac1_filename utf8-input-atrac1)
+    add_input_file_test(output_utf8_oma_filename utf8-output-oma)
+    add_input_file_test(output_utf8_at3_filename utf8-output-at3)
+    add_input_file_test(output_utf8_rm_filename utf8-output-rm)
+    add_input_file_test(output_utf8_aea_filename utf8-output-aea)
+    add_input_file_test(decode_utf8_input_filename utf8-decode-input)
+    add_input_file_test(decode_utf8_output_filename utf8-decode-output)
 endif()
 
 if (GTest_FOUND)

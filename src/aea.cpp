@@ -18,6 +18,8 @@
 
 #include "aea.h"
 
+#include "utf8_file.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
@@ -77,9 +79,9 @@ TAeaInput::TAeaInput(const string& filename)
 {}
 
 TAeaCommon::TMeta TAeaInput::ReadMeta(const string& filename) {
-    FILE* fp = fopen(filename.c_str(), "rb");
+    FILE* fp = NAtracDEnc::FOpenUtf8(filename, "rb");
     if (!fp)
-        throw TAeaIOError("Can't open file to read", errno);
+        throw TAeaIOError("unable to open input file '" + filename + "'", errno);
     array<char, AeaMetaSize> buf;
     if (fread(&buf[0], AeaMetaSize, 1, fp) != 1) {
         const int errnum = errno;
@@ -139,9 +141,9 @@ TAeaOutput::TAeaOutput(const string& filename, const string& title, size_t numCh
 TAeaCommon::TMeta TAeaOutput::CreateMeta(const string& filename, const string& title,
     size_t channelsNum, uint32_t numFrames)
 {
-    FILE* fp = fopen(filename.c_str(), "wb");
+    FILE* fp = NAtracDEnc::FOpenUtf8(filename, "wb");
     if (!fp)
-        throw TAeaIOError("Can't open file to write", errno);
+        throw TAeaIOError("unable to open output file '" + filename + "'", errno);
 
     array<char, AeaMetaSize> buf;
     memset(&buf[0], 0, AeaMetaSize);

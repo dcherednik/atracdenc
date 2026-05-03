@@ -19,6 +19,7 @@
 #pragma once
 
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -42,13 +43,50 @@ inline std::wstring Utf8ToWidePath(const std::string& path) {
     res.pop_back();
     return res;
 }
+
+inline const wchar_t* FileModeToWide(const char* mode) {
+    if (!mode) {
+        return nullptr;
+    }
+    if (std::strcmp(mode, "r") == 0) {
+        return L"r";
+    }
+    if (std::strcmp(mode, "w") == 0) {
+        return L"w";
+    }
+    if (std::strcmp(mode, "a") == 0) {
+        return L"a";
+    }
+    if (std::strcmp(mode, "rb") == 0) {
+        return L"rb";
+    }
+    if (std::strcmp(mode, "wb") == 0) {
+        return L"wb";
+    }
+    if (std::strcmp(mode, "ab") == 0) {
+        return L"ab";
+    }
+    if (std::strcmp(mode, "rb+") == 0 || std::strcmp(mode, "r+b") == 0) {
+        return L"rb+";
+    }
+    if (std::strcmp(mode, "wb+") == 0 || std::strcmp(mode, "w+b") == 0) {
+        return L"wb+";
+    }
+    if (std::strcmp(mode, "ab+") == 0 || std::strcmp(mode, "a+b") == 0) {
+        return L"ab+";
+    }
+    return nullptr;
+}
 #endif
 
 inline FILE* FOpenUtf8(const std::string& path, const char* mode) {
 #ifdef _WIN32
+    const wchar_t* wmode = FileModeToWide(mode);
+    if (!wmode) {
+        return nullptr;
+    }
     const std::wstring wpath = Utf8ToWidePath(path);
-    const std::wstring wmode = Utf8ToWidePath(mode);
-    return _wfopen(wpath.c_str(), wmode.c_str());
+    return _wfopen(wpath.c_str(), wmode);
 #else
     return fopen(path.c_str(), mode);
 #endif

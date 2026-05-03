@@ -19,6 +19,8 @@
 #include "../../../wav.h"
 #include "../../../env.h"
 
+#include "utf8_file.h"
+
 #include "pcm_io_mf.h"
 #include "../pcm_io_impl.h"
 
@@ -39,7 +41,6 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <stdexcept>
 
 #include <string>
 
@@ -57,18 +58,6 @@ public:
         : std::exception((msg + ", " + hrToText(hr)).c_str())
     {}
 };
-
-static std::wstring Utf8ToWidePath(const std::string& in) {
-    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.c_str(), -1, nullptr, 0);
-    if (!len) {
-        throw std::runtime_error("unable to convert UTF-8 path to UTF-16: " + in);
-    }
-
-    std::wstring res(static_cast<size_t>(len), L'\0');
-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.c_str(), -1, res.data(), len);
-    res.pop_back();
-    return res;
-}
 
 // TODO: add dither, noise shape?
 static inline int16_t FloatToInt16(float in) {
@@ -213,7 +202,7 @@ public:
             throw THException(hr, "unable to initialize Media Foundation platform");
         }
 
-        std::wstring wpath = Utf8ToWidePath(path);
+        std::wstring wpath = NAtracDEnc::Utf8ToWidePath(path);
 
         hr = MFCreateSourceReaderFromURL(wpath.c_str(), NULL, &Reader_);
 
@@ -280,7 +269,7 @@ public:
 
         DWORD dataHeader[] = { FCC('data'), 0 };
 
-        std::wstring wpath = Utf8ToWidePath(path);
+        std::wstring wpath = NAtracDEnc::Utf8ToWidePath(path);
 
         OutFile = CreateFileW(wpath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL,
 			CREATE_ALWAYS, 0, NULL);

@@ -20,18 +20,20 @@
 
 #include "compressed_io.h"
 
+#include <string>
+
 class TAeaIOError : public std::exception {
     const int ErrNum = 0;
-    const char* Text;
+    const std::string Text;
 public:
-    TAeaIOError(const char* str, int err)
+    TAeaIOError(const std::string& str, int err)
         : ErrNum(err)
         , Text(str)
     {
         (void)ErrNum; //TODO: use it
     }
     virtual const char* what() const throw() {
-        return Text;
+        return Text.c_str();
     }
 };
 

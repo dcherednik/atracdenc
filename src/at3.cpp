@@ -96,7 +96,7 @@ public:
         , FramesWritten(0)
     {
         if (!fp) {
-            throw std::runtime_error("Cannot open file to write: " + filename);
+            throw std::runtime_error("unable to open output file '" + filename + "'");
         }
 
         struct At3WaveHeader header;

@@ -19,6 +19,7 @@
 #include "oma.h"
 
 #include <stdlib.h>
+#include <stdexcept>
 
 using std::string;
 using std::vector;
@@ -34,8 +35,9 @@ TOma::TOma(const string& filename, const string&, size_t numChannel,
         : (numChannel == 1 ? OMA_MONO : OMA_STEREO);
     info.framesize = framesize;
     File = oma_open(filename.c_str(), OMAM_W, &info);
-    if (!File)
-        abort();
+    if (!File) {
+        throw std::runtime_error("unable to open output file '" + filename + "'");
+    }
 }
 
 TOma::~TOma() {
