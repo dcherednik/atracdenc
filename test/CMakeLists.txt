@@ -9,6 +9,10 @@ include_directories(
     "../src/lib"
 )
 
+if (NOT WIN32)
+    set(MATH_LIB m)
+endif()
+
 set(atracdenc_ut
     ${CMAKE_SOURCE_DIR}/src/lib/mdct/mdct_ut.cpp
     ${CMAKE_SOURCE_DIR}/src/lib/bitstream/bitstream_ut.cpp
@@ -54,7 +58,7 @@ set(at3plus_pqf_ut
 add_executable(at3plus_pqf_ut ${at3plus_pqf_ut})
 
 target_link_libraries(at3plus_pqf_ut
-    m
+    ${MATH_LIB}
     fft_impl
     GTest::gtest_main
 )
@@ -68,7 +72,7 @@ set(at3plus_bitstream_ut
 add_executable(at3plus_bitstream_ut ${at3plus_bitstream_ut})
 
 target_link_libraries(at3plus_bitstream_ut
-    m
+    ${MATH_LIB}
     fft_impl
     atracdenc_impl
     GTest::gtest_main
@@ -83,7 +87,7 @@ set(at3plus_gha_ut
 add_executable(at3plus_gha_ut ${at3plus_gha_ut})
 
 target_link_libraries(at3plus_gha_ut
-    m
+    ${MATH_LIB}
     fft_impl
     atracdenc_impl
     GTest::gtest_main
@@ -98,7 +102,7 @@ set(at3plus_mdct_ut
 add_executable(at3plus_mdct_ut ${at3plus_mdct_ut})
 
 target_link_libraries(at3plus_mdct_ut
-    m
+    ${MATH_LIB}
     fft_impl
     atracdenc_impl
     GTest::gtest_main
@@ -114,7 +118,7 @@ set(bs_encode_ut
 add_executable(bs_encode_ut ${bs_encode_ut})
 
 target_link_libraries(bs_encode_ut
-    m
+    ${MATH_LIB}
     bitstream
     GTest::gtest_main
 )

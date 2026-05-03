@@ -102,6 +102,7 @@ jobs:
           git
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gtest
           mingw-w64-x86_64-libsndfile
           mingw-w64-x86_64-ninja
 
