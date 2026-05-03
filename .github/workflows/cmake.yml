@@ -115,10 +115,13 @@ jobs:
     - name: Build
       run: cmake --build build-msys2
 
+    - name: Package
+      run: bash tools/package-msys2-runtime.sh build-msys2/src/atracdenc.exe dist-msys2
+
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        path: build-msys2/src/atracdenc.exe
+        path: dist-msys2
         name: windows_msys2
 
     - name: Test
