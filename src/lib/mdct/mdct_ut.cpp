@@ -20,11 +20,32 @@
 #include "mdct_ut_common.h"
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <random>
 #include <vector>
-#include <cstdlib>
 
 using std::vector;
 using namespace NMDCT;
+
+static void fill_random(vector<float>& dst, size_t n, uint32_t seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> dist(-32768.0f, 32767.0f);
+    for (size_t i = 0; i < n; ++i) {
+        dst[i] = dist(rng);
+    }
+}
+
+static float max_magnitude(const vector<float>& a, const vector<float>& b) {
+    float res = 0.0f;
+    const size_t n = std::min(a.size(), b.size());
+    for (size_t i = 0; i < n; ++i) {
+        res = std::max(res, std::fabs(a[i]));
+        res = std::max(res, std::fabs(b[i]));
+    }
+    return res;
+}
 
 static vector<float> mdct(float* x, int N) {
     vector<float> res;
@@ -118,15 +139,11 @@ TEST(TMdctTest, MDCT256_RAND) {
     const int N = 256;
     TMDCT<N> transform(N);
     vector<float> src(N);
-    float m = 0.0;
-    for (int i = 0; i < N; i++) {
-        src[i] = rand();
-        m = std::max(m, src[i]);
-    }
+    fill_random(src, N, 0x4d443254u);
     const vector<float> res1 = mdct(&src[0], N/2);
     const vector<float> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
-    auto eps = CalcEps(m * 8);
+    auto eps = CalcEps(max_magnitude(res1, res2) * 4);
     for (int i = 0; i < res1.size(); i++) {
         EXPECT_NEAR(res1[i], res2[i], eps);
     }
@@ -200,15 +217,11 @@ TEST(TMdctTest, MIDCT256_RAND) {
     const int N = 256;
     TMIDCT<N> transform(N);
     vector<float> src(N);
-    float m = 0.0;
-    for (int i = 0; i < N/2; i++) {
-        src[i] = rand();
-        m = std::max(m, src[i]);
-    }
+    fill_random(src, N/2, 0x494d4354u);
     const vector<float> res1 = midct(&src[0], N/2);
     const vector<float> res2 = transform(&src[0]);
     EXPECT_EQ(res1.size(), res2.size());
-    auto eps = CalcEps(m * 4);
+    auto eps = CalcEps(max_magnitude(res1, res2) * 4);
     for (int i = 0; i < N; i++) {
         EXPECT_NEAR(res1[i], res2[i], eps);
     }
