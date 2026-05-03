@@ -26,6 +26,9 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define OMA_HEADER_SIZE 96
 
@@ -61,6 +64,44 @@ int oma_get_last_err() {
 static void save_err(int e) {
     err = e;
 }
+
+#ifdef _WIN32
+static FILE* fopen_utf8(const char* path, const char* mode) {
+    int path_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    int mode_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, NULL, 0);
+    wchar_t* wpath = NULL;
+    wchar_t* wmode = NULL;
+    FILE* file = NULL;
+
+    if (!path_len || !mode_len) {
+        return NULL;
+    }
+
+    wpath = (wchar_t*)malloc((size_t)path_len * sizeof(wchar_t));
+    wmode = (wchar_t*)malloc((size_t)mode_len * sizeof(wchar_t));
+    if (!wpath || !wmode) {
+        goto out;
+    }
+
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wpath, path_len)) {
+        goto out;
+    }
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, wmode, mode_len)) {
+        goto out;
+    }
+
+    file = _wfopen(wpath, wmode);
+
+out:
+    free(wpath);
+    free(wmode);
+    return file;
+}
+#else
+static FILE* fopen_utf8(const char* path, const char* mode) {
+    return fopen(path, mode);
+}
+#endif
 
 static int oma_check_header(const char* buf) {
     if (memcmp(buf, &ea3_str[0], 3) || buf[4] != 0 || buf[5] != OMA_HEADER_SIZE) {
@@ -230,7 +271,7 @@ static int oma_parse_header(OMAFILE* file) {
 
 OMAFILE* oma_open(const char *path, int mode, oma_info_t *info) {
     const static char* modes[3] = {"", "rb", "wb"};
-    FILE* file = fopen(path, modes[mode]);
+    FILE* file = fopen_utf8(path, modes[mode]);
     int err = 0;
     if (NULL == file) {
         return NULL;

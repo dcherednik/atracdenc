@@ -19,6 +19,7 @@
 #include "rm.h"
 
 #include "lib/endian_tools.h"
+#include "utf8_file.h"
 #include <cstring>
 #include <iostream>
 #include <cmath>
@@ -38,9 +39,9 @@ namespace {
 using std::string;
 
 FILE* OpenFile(const string& filename) {
-    FILE* fp = fopen(filename.c_str(), "wb");
+    FILE* fp = NAtracDEnc::FOpenUtf8(filename, "wb");
     if (!fp)
-        throw std::runtime_error("Can't open file to write");
+        throw std::runtime_error("Can't open file to write: " + filename);
     return fp;
 }
 

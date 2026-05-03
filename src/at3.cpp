@@ -19,6 +19,7 @@
 #include "at3.h"
 
 #include "lib/endian_tools.h"
+#include "utf8_file.h"
 #include <cstring>
 #include <iostream>
 #include <cmath>
@@ -90,12 +91,12 @@ class TAt3 : public ICompressedOutput {
 public:
     TAt3(const std::string &filename, size_t numChannels,
         uint32_t numFrames, uint32_t frameSize, bool jointStereo)
-        : fp(fopen(filename.c_str(), "wb"))
+        : fp(NAtracDEnc::FOpenUtf8(filename, "wb"))
         , FrameSize(frameSize)
         , FramesWritten(0)
     {
         if (!fp) {
-            throw std::runtime_error("Cannot open file to write");
+            throw std::runtime_error("Cannot open file to write: " + filename);
         }
 
         struct At3WaveHeader header;

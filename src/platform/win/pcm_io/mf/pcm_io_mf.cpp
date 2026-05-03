@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 #include <string>
 
@@ -57,15 +58,16 @@ public:
     {}
 };
 
-static std::wstring Utf8ToMultiByte(const std::string& in) {
-    std::vector<wchar_t> buf;
-    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.data(), in.size(), buf.data(), 0);
+static std::wstring Utf8ToWidePath(const std::string& in) {
+    int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.c_str(), -1, nullptr, 0);
     if (!len) {
-        throw std::exception("unable to convert utf8 to multiByte");
+        throw std::runtime_error("unable to convert UTF-8 path to UTF-16: " + in);
     }
-    buf.resize((size_t)len);
-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.data(), in.size(), buf.data(), buf.size());
-    return std::wstring(buf.data(), buf.size());
+
+    std::wstring res(static_cast<size_t>(len), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in.c_str(), -1, res.data(), len);
+    res.pop_back();
+    return res;
 }
 
 // TODO: add dither, noise shape?
@@ -211,12 +213,12 @@ public:
             throw THException(hr, "unable to initialize Media Foundation platform");
         }
 
-        std::wstring wpath = Utf8ToMultiByte(path);
+        std::wstring wpath = Utf8ToWidePath(path);
 
         hr = MFCreateSourceReaderFromURL(wpath.c_str(), NULL, &Reader_);
 
         if (FAILED(hr)) {
-            throw THException(hr, "qqq unable to open input file");
+            throw THException(hr, "unable to open input file '" + path + "'");
         }
 
         hr = ConfigureAudioStream(Reader_, &MediaType_);
@@ -278,14 +280,14 @@ public:
 
         DWORD dataHeader[] = { FCC('data'), 0 };
 
-        std::wstring wpath = Utf8ToMultiByte(path);
+        std::wstring wpath = Utf8ToWidePath(path);
 
         OutFile = CreateFileW(wpath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL,
 			CREATE_ALWAYS, 0, NULL);
 
         if (OutFile == INVALID_HANDLE_VALUE) {
             hr = HRESULT_FROM_WIN32(GetLastError());
-            throw THException(hr, "qqq2 unable to open output file");
+            throw THException(hr, "unable to open output file '" + path + "'");
         }
 
         hr = WriteToFile(OutFile, header, sizeof(header));
