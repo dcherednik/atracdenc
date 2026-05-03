@@ -49,13 +49,13 @@ static void create_chirp(int sz, float* buf) {
 }
 
 TEST(ipqf, CheckOnRefData) {
-    FILE* mr_f = fopen("test_data/ipqftest_pcm_mr.dat", "r");
+    FILE* mr_f = fopen("test_data/ipqftest_pcm_mr.dat", "rb");
     if (!mr_f) {
         fprintf(stderr, "unable to open multirate file\n");
 	FAIL();
     }
 
-    FILE* ref_f = fopen("test_data/ipqftest_pcm_out.dat", "r");
+    FILE* ref_f = fopen("test_data/ipqftest_pcm_out.dat", "rb");
     if (!ref_f) {
         fclose(mr_f);
         fprintf(stderr, "unable to open reference file\n");
@@ -305,5 +305,4 @@ TEST(pqf, Noise_Long) {
 
     at3plus_pqf_free_a_ctx(actx);
 }
-
 
