@@ -81,3 +81,45 @@ jobs:
       # Execute tests defined by the CMake configuration.  
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}}
+
+  msys2:
+    name: Windows_Latest_MSYS2
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          git
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gtest
+          mingw-w64-x86_64-libsndfile
+          mingw-w64-x86_64-ninja
+
+    - name: Configure CMake
+      run: >
+        cmake -S . -B build-msys2 -G Ninja
+        -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        -DATRACDENC_PCM_IO_BACKEND=libsndfile
+
+    - name: Build
+      run: cmake --build build-msys2
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        path: build-msys2/src/atracdenc.exe
+        name: windows_msys2
+
+    - name: Test
+      run: ctest --test-dir build-msys2 --output-on-failure

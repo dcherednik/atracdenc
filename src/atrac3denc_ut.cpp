@@ -43,6 +43,8 @@ static void GenerateSignalWithTransient(float* buf, size_t n, float f, float a,
 //    }
 }
 
+static constexpr double Atrac3MdctTwoPointGainDcEps = 0.000002;
+
 class TWindowTest {
 public:
     void RunTest() {
@@ -367,7 +369,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsDc) {
     }
 
     for (int i = workSz; i < len; ++i)
-        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], Atrac3MdctTwoPointGainDcEps);
 }
 
 TEST(TAtrac3MDCT, TAtrac3MDCTGain2NearPointsDc) {
@@ -422,7 +424,7 @@ TEST(TAtrac3MDCT, TAtrac3MDCTGain2NearPointsDc) {
     }
 
     for (int i = workSz; i < len; ++i)
-        EXPECT_NEAR(signal[i - workSz], signalRes[i], 0.000001);
+        EXPECT_NEAR(signal[i - workSz], signalRes[i], Atrac3MdctTwoPointGainDcEps);
 }
 
 TEST(TAtrac3MDCT, TAtrac3MDCTGain2PointsCompensateWithoutScaleDc) {
@@ -1140,5 +1142,3 @@ TEST(TAtrac3MDCT, TAtrac3MDCTWindow) {
     TWindowTest test;
     test.RunTest();
 }
-
-

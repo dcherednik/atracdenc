@@ -31,6 +31,14 @@ project("atracdenc" CXX C)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 
+set(ATRACDENC_PCM_IO_BACKEND "auto" CACHE STRING
+    "PCM I/O backend: auto, mediafoundation, libsndfile")
+set_property(CACHE ATRACDENC_PCM_IO_BACKEND PROPERTY STRINGS auto mediafoundation libsndfile)
+string(TOLOWER "${ATRACDENC_PCM_IO_BACKEND}" ATRACDENC_PCM_IO_BACKEND)
+if (ATRACDENC_PCM_IO_BACKEND STREQUAL "sndfile")
+    set(ATRACDENC_PCM_IO_BACKEND "libsndfile")
+endif()
+
 enable_cxx_compiler_flag_if_supported("-Wall")
 enable_cxx_compiler_flag_if_supported("-Wextra")
 
@@ -38,6 +46,26 @@ if (WIN32)
     add_compile_definitions(PLATFORM_WINDOWS)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
     include_directories("platform/win/getopt")
+endif()
+
+if (ATRACDENC_PCM_IO_BACKEND STREQUAL "auto")
+    if (WIN32 AND MSVC)
+        set(ATRACDENC_PCM_IO_BACKEND "mediafoundation")
+    else()
+        set(ATRACDENC_PCM_IO_BACKEND "libsndfile")
+    endif()
+elseif (NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "mediafoundation" AND
+        NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "libsndfile")
+    message(FATAL_ERROR "Unsupported ATRACDENC_PCM_IO_BACKEND: ${ATRACDENC_PCM_IO_BACKEND}")
+endif()
+
+set(PCM_IO_LIBRARIES)
+message(STATUS "PCM I/O backend: ${ATRACDENC_PCM_IO_BACKEND}")
+
+if (ATRACDENC_PCM_IO_BACKEND STREQUAL "mediafoundation")
+    if (NOT WIN32)
+        message(FATAL_ERROR "Media Foundation PCM I/O is only available on Windows")
+    endif()
     set(SOURCE_PCM_IO_LIB
         platform/win/pcm_io/mf/pcm_io_mf.cpp
 		platform/win/pcm_io/win32/pcm_io_win32.cpp
@@ -45,7 +73,11 @@ if (WIN32)
     )
 else()
     INCLUDE(FindLibSndFile)
+    if (NOT LIBSNDFILE_FOUND)
+        message(FATAL_ERROR "libsndfile PCM I/O backend requires libsndfile")
+    endif()
     include_directories(${LIBSNDFILE_INCLUDE_DIR})
+    set(PCM_IO_LIBRARIES ${SNDFILE_LIBRARIES})
     set(SOURCE_PCM_IO_LIB
         pcm_io_sndfile.cpp
     )
@@ -108,18 +140,21 @@ set(SOURCE_ATRACDENC_IMPL
 )
 
 add_library(pcm_io STATIC ${SOURCE_PCM_IO_LIB})
-if (NOT WIN32)
-target_link_libraries(pcm_io ${SNDFILE_LIBRARIES})
+if (PCM_IO_LIBRARIES)
+target_link_libraries(pcm_io ${PCM_IO_LIBRARIES})
 endif()
 
 add_library(oma STATIC ${SOURCE_OMA_LIB})
 add_library(bitstream STATIC ${SOURCE_BITSTREAM_LIB})
 add_library(atracdenc_impl STATIC ${SOURCE_ATRACDENC_IMPL})
-target_link_libraries(atracdenc_impl fft_impl pcm_io oma bitstream ${SNDFILE_LIBRARIES} gha)
+target_link_libraries(atracdenc_impl fft_impl pcm_io oma bitstream ${PCM_IO_LIBRARIES} gha)
 set(SOURCE_EXE
     main.cpp
     help.cpp
 )
 add_executable(atracdenc ${SOURCE_EXE})
-target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${SNDFILE_LIBRARIES})
+target_link_libraries(atracdenc pcm_io oma atracdenc_impl ${PCM_IO_LIBRARIES})
+if (WIN32)
+target_link_libraries(atracdenc shell32)
+endif()
 install(TARGETS atracdenc)
