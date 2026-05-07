@@ -695,7 +695,18 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             }
         }
 
-        if (Params.ConteinerParams->Js && meta.Channels == 2) {
+        const bool jsStereo = Params.ConteinerParams->Js && meta.Channels == 2;
+        float jsGainInput[2][4][TSpectralUpsampler::kInN];
+        if (jsStereo) {
+            for (uint32_t band = 0; band < 4; ++band) {
+                for (uint32_t i = 0; i < TSpectralUpsampler::kInN; ++i) {
+                    const float left = LookAheadBuf[0][band][i];
+                    const float right = LookAheadBuf[1][band][i];
+                    jsGainInput[0][band][i] = (left + right) * 0.5f;
+                    jsGainInput[1][band][i] = (left - right) * 0.5f;
+                }
+            }
+
             Matrixing();
         }
 
@@ -717,14 +728,18 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
 
             sce->SubbandInfo.Reset();
             if (!Params.NoGainControll) {
-                // upInput[b] = &LookAheadBuf[channel][b][0]:
+                // upInput[b]:
                 //   [0..127]   prev tail (last 128 of previous frame)
-                //   [128..383] current frame (pre-matrixing)
+                //   [128..383] current frame
                 //   [384..511] first 128 of lookahead frame
+                // In JointStereo mode the MDCT encodes M/S, so gain analysis
+                // must use the same channel domain.
                 // Ready to pass directly to TSpectralUpsampler::Process()
                 const float* up[4] = {
-                    LookAheadBuf[channel][0], LookAheadBuf[channel][1],
-                    LookAheadBuf[channel][2], LookAheadBuf[channel][3]
+                    jsStereo ? jsGainInput[channel][0] : LookAheadBuf[channel][0],
+                    jsStereo ? jsGainInput[channel][1] : LookAheadBuf[channel][1],
+                    jsStereo ? jsGainInput[channel][2] : LookAheadBuf[channel][2],
+                    jsStereo ? jsGainInput[channel][3] : LookAheadBuf[channel][3]
                 };
                 std::fill(sce->GainBoostPerBand,
                           sce->GainBoostPerBand + TAtrac3Data::NumQMF, 0);
