@@ -77,6 +77,90 @@ static void ExpectCurveReasonable(const std::vector<TGainCurvePoint>& curve) {
     }
 }
 
+static float Sqr(float x) {
+    return x * x;
+}
+
+// ============================================================================
+// Gain energy scale tests
+// ============================================================================
+
+TEST(TGainProcessor_EnergyScale, EmptyGain_IsUnity) {
+    vector<float> prev(256);
+    vector<float> cur(256);
+    for (uint32_t i = 0; i < 256; ++i) {
+        prev[i] = 0.001f * static_cast<float>((i % 17) + 1);
+        cur[i] = 0.002f * static_cast<float>((i % 11) + 1);
+    }
+
+    const vector<TGP> empty;
+    const auto res = TAtrac3MDCT::CalcGainEnergyScale(prev.data(), cur.data(), empty, 1.0f);
+
+    EXPECT_NEAR(res.Scale.PrevHalf, 1.0f, 1e-6f);
+    EXPECT_NEAR(res.Scale.CurHalf, 1.0f, 1e-6f);
+    EXPECT_NEAR(res.Scale.Frame, 1.0f, 1e-6f);
+    EXPECT_NEAR(res.NextOverlapScale, 1.0f, 1e-6f);
+}
+
+TEST(TGainProcessor_EnergyScale, PreviousHalfIncludesStoredOverlapScaleAndCurrentFirstGain) {
+    vector<float> prev(256, 0.0f);
+    vector<float> cur(256, 0.0f);
+    prev[17] = 0.25f;
+    prev[190] = -0.5f;
+
+    const vector<TGP> gain = {{2, 31}};
+    const float prevOverlapScale = 1.5f;
+    const float gainScale = GainLevelAt(2);
+    const auto res = TAtrac3MDCT::CalcGainEnergyScale(prev.data(), cur.data(),
+                                                      gain, prevOverlapScale);
+
+    const float expected = prevOverlapScale * gainScale * gainScale;
+    EXPECT_NEAR(res.Scale.PrevHalf, expected, 1e-5f);
+    EXPECT_NEAR(res.Scale.Frame, expected, 1e-5f);
+    EXPECT_NEAR(res.Scale.CurHalf, 1.0f, 1e-6f);
+    EXPECT_NEAR(res.NextOverlapScale, 1.0f, 1e-6f);
+}
+
+TEST(TGainProcessor_EnergyScale, CurrentHalfConstantRegionUsesGainSquared) {
+    vector<float> prev(256, 0.0f);
+    vector<float> cur(256, 0.0f);
+    cur[128] = 2.0f;
+
+    const vector<TGP> gain = {{2, 31}};
+    const float gainScale = GainLevelAt(2);
+    const auto res = TAtrac3MDCT::CalcGainEnergyScale(prev.data(), cur.data(), gain, 1.0f);
+
+    const float expected = gainScale * gainScale;
+    EXPECT_NEAR(res.Scale.PrevHalf, 1.0f, 1e-6f);
+    EXPECT_NEAR(res.Scale.CurHalf, expected, 1e-5f);
+    EXPECT_NEAR(res.Scale.Frame, expected, 1e-5f);
+    EXPECT_NEAR(res.NextOverlapScale, expected, 1e-5f);
+}
+
+TEST(TGainProcessor_EnergyScale, CurrentAndNextOverlapUseOppositeMdctWindows) {
+    vector<float> prev(256, 0.0f);
+    vector<float> cur(256, 0.0f);
+    cur[4] = 1.0f;    // attenuated constant region, strong in current MDCT half
+    cur[240] = 1.0f;  // unattenuated remainder, strong in next overlap half
+
+    const vector<TGP> gain = {{2, 1}};
+    const float div = GainLevelAt(2);
+    const auto res = TAtrac3MDCT::CalcGainEnergyScale(prev.data(), cur.data(), gain, 1.0f);
+
+    const float curW0 = TAtrac3Data::EncodeWindow[255 - 4];
+    const float curW1 = TAtrac3Data::EncodeWindow[255 - 240];
+    const float nextW0 = TAtrac3Data::EncodeWindow[4];
+    const float nextW1 = TAtrac3Data::EncodeWindow[240];
+    const float expectedCur = (Sqr(curW0) + Sqr(curW1))
+                            / (Sqr(curW0 / div) + Sqr(curW1));
+    const float expectedNext = (Sqr(nextW0) + Sqr(nextW1))
+                             / (Sqr(nextW0 / div) + Sqr(nextW1));
+
+    EXPECT_NEAR(res.Scale.CurHalf, expectedCur, 1e-5f);
+    EXPECT_NEAR(res.NextOverlapScale, expectedNext, 1e-5f);
+    EXPECT_GT(res.Scale.CurHalf, res.NextOverlapScale);
+}
+
 // ============================================================================
 // Modulate tests
 // ============================================================================

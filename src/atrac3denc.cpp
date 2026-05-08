@@ -97,6 +97,8 @@ TAtrac3Encoder::TAtrac3Encoder(TCompressedOutputPtr&& oma, TAtrac3EncoderSetting
     , SingleChannelElements(Params.SourceChannels)
     , Upsampler(11025.0f, 800.0f)
 {
+    for (auto& ch : PrevOverlapGainScale)
+        ch.fill(1.0f);
     YamlLog = Params.YamlLog;
 }
 
@@ -136,6 +138,89 @@ TAtrac3MDCT::TGainModulatorArray TAtrac3MDCT::MakeGainModulatorArray(const TAtra
 float TAtrac3Encoder::LimitRel(float x)
 {
     return std::min(std::max(x, TAtrac3Data::GainLevel[15]), TAtrac3Data::GainLevel[0]);
+}
+
+static float SafeEnergyScale(float originalEnergy, float modulatedEnergy)
+{
+    static constexpr float kEnergyEps = 1.0e-20f;
+    if (originalEnergy <= kEnergyEps || modulatedEnergy <= kEnergyEps
+        || !std::isfinite(originalEnergy) || !std::isfinite(modulatedEnergy)) {
+        return 1.0f;
+    }
+    const float scale = originalEnergy / modulatedEnergy;
+    return std::isfinite(scale) && scale > 0.0f ? scale : 1.0f;
+}
+
+static void BuildSampleDivisors(const std::vector<TAtrac3Data::SubbandInfo::TGainPoint>& pts, float outDiv[256])
+{
+    std::fill(outDiv, outDiv + 256, 1.0f);
+
+    uint32_t pos = 0;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const uint32_t lastPos = pts[i].Location << TAtrac3Data::LocScale;
+        float level = TAtrac3Data::GainLevel[pts[i].Level];
+        const int incPos = ((i + 1) < pts.size() ? pts[i + 1].Level : TAtrac3Data::ExponentOffset)
+                         - pts[i].Level + TAtrac3Data::GainInterpolationPosShift;
+        const float gainInc = TAtrac3Data::GainInterpolation[incPos];
+
+        for (; pos < lastPos && pos < 256; ++pos)
+            outDiv[pos] = level;
+        for (; pos < lastPos + TAtrac3Data::LocSz && pos < 256; ++pos) {
+            outDiv[pos] = level;
+            level *= gainInc;
+        }
+    }
+}
+
+TAtrac3MDCT::TGainEnergyAnalysis TAtrac3MDCT::CalcGainEnergyScale(
+    const float prevOverlap[256],
+    const float curInput[256],
+    const std::vector<TAtrac3Data::SubbandInfo::TGainPoint>& gainPoints,
+    float prevOverlapScale)
+{
+    TGainEnergyAnalysis res;
+    if (!std::isfinite(prevOverlapScale) || prevOverlapScale <= 0.0f)
+        prevOverlapScale = 1.0f;
+
+    const float prevDiv = gainPoints.empty()
+        ? 1.0f
+        : TAtrac3Data::GainLevel[gainPoints.front().Level];
+
+    float prevStoredEnergy = 0.0f;
+    for (uint32_t i = 0; i < 256; ++i)
+        prevStoredEnergy += prevOverlap[i] * prevOverlap[i];
+
+    const float prevOriginalEnergy = prevStoredEnergy * prevOverlapScale;
+    const float prevModulatedEnergy = prevStoredEnergy / (prevDiv * prevDiv);
+
+    float sampleDiv[256];
+    BuildSampleDivisors(gainPoints, sampleDiv);
+
+    float curOriginalEnergy = 0.0f;
+    float curModulatedEnergy = 0.0f;
+    float nextOriginalEnergy = 0.0f;
+    float nextModulatedEnergy = 0.0f;
+    for (uint32_t i = 0; i < 256; ++i) {
+        const float cur = curInput[i];
+        const float mod = cur / sampleDiv[i];
+        const float winCur = TAtrac3Data::EncodeWindow[255 - i];
+        const float winNext = TAtrac3Data::EncodeWindow[i];
+        const float curWin = cur * winCur;
+        const float modCurWin = mod * winCur;
+        const float nextWin = cur * winNext;
+        const float modNextWin = mod * winNext;
+        curOriginalEnergy += curWin * curWin;
+        curModulatedEnergy += modCurWin * modCurWin;
+        nextOriginalEnergy += nextWin * nextWin;
+        nextModulatedEnergy += modNextWin * modNextWin;
+    }
+
+    res.Scale.PrevHalf = SafeEnergyScale(prevOriginalEnergy, prevModulatedEnergy);
+    res.Scale.CurHalf = SafeEnergyScale(curOriginalEnergy, curModulatedEnergy);
+    res.Scale.Frame = SafeEnergyScale(prevOriginalEnergy + curOriginalEnergy,
+                                      prevModulatedEnergy + curModulatedEnergy);
+    res.NextOverlapScale = SafeEnergyScale(nextOriginalEnergy, nextModulatedEnergy);
+    return res;
 }
 
 // Build 32 subframe-average divisors (gain levels) that Modulate would apply
@@ -213,12 +298,8 @@ static float CalcCurveEarlyMismatchScore(const std::vector<float>& gain,
 
 void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          uint32_t channel,
-                                         TAtrac3Data::SubbandInfo* subbandInfo,
-                                         int gainBoostPerBand[TAtrac3Data::NumQMF])
+                                         TAtrac3Data::SubbandInfo* subbandInfo)
 {
-    static constexpr float kLowOverlapRelax = 0.6f;      // allow softer min level when overlap is small
-    static constexpr int kLevelBoostCap = 1;             // cap level boost to reduce bit starvation
-    static constexpr int kScaleBoostCap = 2;             // allow extra scale boost in low-risk cases
     static constexpr float kMinScore = 1.9f;
 
     // YAML: channel header (one channel per CreateSubbandInfo call)
@@ -315,7 +396,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             if (YamlLog) {
                 *YamlLog << "        skip: no_curve\n";
             }
-            gainBoostPerBand[band] = 0;
             continue;
         }
 
@@ -329,8 +409,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         float maxGain = 0.0f;
         for (float g : gain) maxGain = std::max(maxGain, g);
-        const float frameEndLevel = gain.back();
-        const float ratio = maxGain / (frameEndLevel + 1e-9f);
 
         // Minimum signal gate: suppress curves on near-silent frames.
         // Firing on noise-floor content wastes bitrate and can produce extreme
@@ -342,7 +420,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             if (YamlLog)
                 *YamlLog << std::fixed << std::setprecision(6)
                          << "        skip: below_min_signal  # maxGain " << maxGain << "\n";
-            gainBoostPerBand[band] = 0;
             curvePoints.clear();
         }
 
@@ -354,51 +431,12 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         if (result.highFreqRatio < kMinHfrForAmplify) {
             if (YamlLog)
                 *YamlLog << "        skip: amplify_low_hfr\n";
-            gainBoostPerBand[band] = 0;
             curvePoints.clear();
         }
 
-        int levelBoost = 0;
-
-        // Scale boost: compensate for Demodulate's `scale = GainLevel[giNext[0].Level]`.
-        // When decoding frame N, scale = GainLevel[frame N+1's first gain point Level].
-        // Frame N+1's CalcCurve: scaleLevel = RelationToIdx(gain.back()_N / nextLevel_{N+2}).
-        // We have the full frame N+1 in the lookahead [3072..5119].  Use min(lookaheadGain)
-        // as a conservative proxy for nextLevel_{N+2} (≈ quietest level reachable in N+1,
-        // a lower bound on frame N+2's start level).
-        int scaleBoost = 0;
-        {
-            static constexpr size_t kLookaheadOffset = 3072;
-            const size_t outSz = result.signal.size();
-            if (outSz > kLookaheadOffset + 64) {
-                const uint32_t lookaheadPoints =
-                    static_cast<uint32_t>(std::min<size_t>(1024, outSz - kLookaheadOffset) / 64);
-                if (lookaheadPoints > 0) {
-                    const auto lookaheadGain = AnalyzeGain(result.signal.data() + kLookaheadOffset,
-                                                           lookaheadPoints * 64,
-                                                           lookaheadPoints, true);
-                    const float lookaheadMin = *std::min_element(lookaheadGain.begin(), lookaheadGain.end());
-                    if (lookaheadMin > 1e-6f) {
-                        const uint32_t estimatedNextScaleLevel = RelationToIdx(frameEndLevel / lookaheadMin);
-                        if (estimatedNextScaleLevel < 4u)
-                            scaleBoost = static_cast<int>(4u - estimatedNextScaleLevel);
-                    }
-                }
-            }
-        }
-
-        const int scaleCap = (overlapRatio < kLowOverlapRelax) ? kScaleBoostCap : kLevelBoostCap;
-        scaleBoost = std::min(scaleBoost, scaleCap);
-        const int totalBoost = std::min(levelBoost + scaleBoost, kLevelBoostCap);
-
         if (YamlLog) {
             *YamlLog << std::fixed << std::setprecision(4)
-                     << "        max_gain: " << maxGain << "\n"
-                     << "        ratio: " << ratio
-                     << "  # max_gain/frame_end_level, transient strength\n"
-                     << "        level_boost: " << levelBoost << "\n"
-                     << "        scale_boost: " << scaleBoost << "\n"
-                     << "        total_boost: " << totalBoost << "\n";
+                     << "        max_gain: " << maxGain << "\n";
         }
 
         // Band 3 is above ~16 kHz where pre-echo is largely inaudible.
@@ -408,16 +446,8 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 *YamlLog << "        skip: band_ge_3"
                          << "  # inaudible HF; gain modulation disabled\n";
             }
-            gainBoostPerBand[band] = 0;
             curvePoints.clear();
         }
-
-        if (band < 3) {
-            if (YamlLog)
-                *YamlLog << "        gain_boost: " << totalBoost << "\n";
-            gainBoostPerBand[band] = totalBoost;
-        }
-
 
         // Explicit point 0: correct cross-frame energy step in the HPF domain.
         // Compare prevTarget (what the previous frame's curve was targeting, in the
@@ -727,6 +757,8 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             sce->TonalBlocks.clear();
 
             sce->SubbandInfo.Reset();
+            for (auto& scale : sce->GainEnergyScale)
+                scale = TGainEnergyScale{};
             if (!Params.NoGainControll) {
                 // upInput[b]:
                 //   [0..127]   prev tail (last 128 of previous frame)
@@ -741,9 +773,30 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                     jsStereo ? jsGainInput[channel][2] : LookAheadBuf[channel][2],
                     jsStereo ? jsGainInput[channel][3] : LookAheadBuf[channel][3]
                 };
-                std::fill(sce->GainBoostPerBand,
-                          sce->GainBoostPerBand + TAtrac3Data::NumQMF, 0);
-                CreateSubbandInfo(up, channel, &sce->SubbandInfo, sce->GainBoostPerBand);
+                CreateSubbandInfo(up, channel, &sce->SubbandInfo);
+            }
+
+            for (uint32_t band = 0; band < TAtrac3Data::NumQMF; ++band) {
+                const uint32_t qmfIdx = channel + band * 2;
+                const auto gainEnergy = CalcGainEnergyScale(PcmBuffer.GetFirst(qmfIdx),
+                                                            PcmBuffer.GetSecond(qmfIdx),
+                                                            sce->SubbandInfo.GetGainPoints(band),
+                                                            PrevOverlapGainScale[channel][band]);
+                sce->GainEnergyScale[band] = gainEnergy.Scale;
+                PrevOverlapGainScale[channel][band] = gainEnergy.NextOverlapScale;
+            }
+            if (YamlLog && !Params.NoGainControll) {
+                *YamlLog << std::fixed << std::setprecision(6)
+                         << "    gain_energy_scale:\n";
+                for (uint32_t band = 0; band < TAtrac3Data::NumQMF; ++band) {
+                    const auto& scale = sce->GainEnergyScale[band];
+                    *YamlLog << "      - {band: " << band
+                             << ", prev_half: " << scale.PrevHalf
+                             << ", cur_half: " << scale.CurHalf
+                             << ", frame: " << scale.Frame
+                             << ", next_overlap: " << PrevOverlapGainScale[channel][band]
+                             << "}\n";
+                }
             }
 
             float* maxOverlapLevels = PrevPeak[channel];
@@ -760,7 +813,8 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
             for (size_t i = 0; i < specs.size(); i++) {
                 float e = specs[i] * specs[i];
                 mdctEnergy[i] = e;
-                l += e * LoudnessCurve[i];
+                const uint32_t band = static_cast<uint32_t>(i / 256);
+                l += e * sce->GainEnergyScale[band].Frame * LoudnessCurve[i];
             }
 
             sce->Loudness = l;

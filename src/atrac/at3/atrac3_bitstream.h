@@ -40,6 +40,12 @@ struct TTonalBlock {
     TScaledBlock ScaledBlock;
 };
 
+struct TGainEnergyScale {
+    float PrevHalf = 1.0f;
+    float CurHalf = 1.0f;
+    float Frame = 1.0f;
+};
+
 class TAtrac3BitStreamWriter {
 public:
     struct TSingleChannelElement {
@@ -47,11 +53,7 @@ public:
         std::vector<TTonalBlock> TonalBlocks;
         std::vector<TScaledBlock> ScaledBlocks;
         float Loudness;
-        // Per-band bit-allocation boost to compensate for gain-demodulation noise
-        // amplification.  Combines the level boost (from the current frame's gain
-        // curve) and the scale boost (estimated from the next frame's first gain
-        // point).  Set by CreateSubbandInfo; read by the allocation stage.
-        int GainBoostPerBand[TAtrac3Data::NumQMF] = {};
+        TGainEnergyScale GainEnergyScale[TAtrac3Data::NumQMF] = {};
     };
 private:
     ICompressedOutput* Container;

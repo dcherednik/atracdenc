@@ -27,6 +27,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdlib>
+#include <cmath>
 
 namespace NAtracDEnc {
 namespace NAtrac3 {
@@ -212,6 +213,19 @@ bool ConsiderEnergyErr(const vector<float>& err, vector<uint32_t>& bits)
     return adjusted;
 }
 
+float SanitizeGainEnergyScale(float scale)
+{
+    return std::isfinite(scale) && scale > 0.0f ? scale : 1.0f;
+}
+
+float EnergyScaleToScaleFactorOffset(float energyScale)
+{
+    // ScaleFactorIndex is logarithmic in amplitude with 3 steps per octave.
+    // The gain estimate is an energy ratio, so sqrt(energyScale) is the
+    // corresponding amplitude ratio.
+    return 1.5f * std::log2(SanitizeGainEnergyScale(energyScale));
+}
+
 vector<uint32_t> CalcBitsAllocation(const TAtrac3BitStreamWriter::TSingleChannelElement& sce,
                                     const uint32_t bfuNum,
                                     const float spread,
@@ -219,11 +233,8 @@ vector<uint32_t> CalcBitsAllocation(const TAtrac3BitStreamWriter::TSingleChannel
                                     const float loudness)
 {
     const std::vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
-    const auto gainBoostPerBand = sce.GainBoostPerBand;
     vector<uint32_t> bitsPerEachBlock(bfuNum);
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
-        const float ath = ATH[i] * loudness;
-
         uint32_t bfuBand = 0;
         for (uint32_t b = 1; b < TAtrac3Data::NumQMF; ++b) {
             if (i >= TAtrac3Data::BlocksPerBand[b]) {
@@ -231,7 +242,11 @@ vector<uint32_t> CalcBitsAllocation(const TAtrac3BitStreamWriter::TSingleChannel
             }
         }
 
-        if (scaledBlocks[i].Energy < ath) {
+        const float gainEnergyScale = SanitizeGainEnergyScale(sce.GainEnergyScale[bfuBand].Frame);
+        const float correctedEnergy = scaledBlocks[i].Energy * gainEnergyScale;
+        const float ath = ATH[i] * loudness;
+
+        if (correctedEnergy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
             const uint32_t fix = FixedBitAllocTable[i];
@@ -248,8 +263,10 @@ vector<uint32_t> CalcBitsAllocation(const TAtrac3BitStreamWriter::TSingleChannel
                 x = 4.2;
             }
 
-            const int tmp = spread * ((float)scaledBlocks[i].ScaleFactorIndex / x) + (1.0f - spread) * fix - shift
-                            + gainBoostPerBand[bfuBand];
+            const float correctedScaleFactorIndex = std::max(0.0f, std::min(63.0f,
+                static_cast<float>(scaledBlocks[i].ScaleFactorIndex)
+                + EnergyScaleToScaleFactorOffset(gainEnergyScale)));
+            const int tmp = spread * (correctedScaleFactorIndex / x) + (1.0f - spread) * fix - shift;
             if (tmp > 7) {
                 bitsPerEachBlock[i] = 7;
             } else if (tmp < 0) {

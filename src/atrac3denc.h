@@ -66,8 +66,17 @@ public:
 public:
     using TGainModulator = TAtrac3GainProcessor::TGainModulator;
     using TGainDemodulator = TAtrac3GainProcessor::TGainDemodulator;
+    struct TGainEnergyAnalysis {
+        NAtrac3::TGainEnergyScale Scale;
+        float NextOverlapScale = 1.0f;
+    };
     typedef std::array<TGainDemodulator, 4> TGainDemodulatorArray;
     typedef std::array<TGainModulator, 4> TGainModulatorArray;
+    static TGainEnergyAnalysis CalcGainEnergyScale(
+        const float prevOverlap[256],
+        const float curInput[256],
+        const std::vector<TAtrac3Data::SubbandInfo::TGainPoint>& gainPoints,
+        float prevOverlapScale);
     void Mdct(float specs[1024],
               float* bands[4],
               float maxLevels[4],
@@ -95,6 +104,7 @@ class TAtrac3Encoder : public IProcessor, public TAtrac3MDCT {
 
     TScaler<TAtrac3Data> Scaler;
     std::vector<NAtrac3::TAtrac3BitStreamWriter::TSingleChannelElement> SingleChannelElements;
+    std::array<std::array<float, NAtrac3::TAtrac3Data::NumQMF>, 2> PrevOverlapGainScale;
 private:
     bool LookAheadPending = true;
     // [channel][band][prev_128 | current_256 | lookahead_256]
@@ -111,8 +121,7 @@ public:
 #endif
     float LimitRel(float x);
     void CreateSubbandInfo(const float* upInput[4], uint32_t channel,
-                           TAtrac3Data::SubbandInfo* subbandInfo,
-                           int gainBoostPerBand[TAtrac3Data::NumQMF]);
+                           TAtrac3Data::SubbandInfo* subbandInfo);
     TAtrac3Data::TTonalComponents ExtractTonalComponents(float* specs,
                                                          const std::vector<float>& flatnessPerBfu);
     void Matrixing();

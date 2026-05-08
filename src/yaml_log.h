@@ -53,11 +53,8 @@
 //             - {level: 4, loc: 0}
 //             - {level: 3, loc: 12}
 //           max_gain: 5.1000
-//           ratio: 4.7300
-//           level_boost: 1
-//           scale_boost: 0
-//           total_boost: 1
-//           gain_boost: 1
+//       gain_energy_scale:
+//         - {band: 0, prev_half: 1.000000, cur_half: 16.000000, frame: 8.500000, next_overlap: 1.100000}
 
 #include <ostream>
 #include <iomanip>
