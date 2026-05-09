@@ -71,7 +71,7 @@ Install Visual Studio or Visual Studio Build Tools with the C++ desktop
 workload. Run the commands from an `x64 Native Tools Command Prompt for VS`.
 
 ```
-cmake -S . -B build-msvc -G "Visual Studio 17 2022" -A x64 ^
+cmake -S . -B build-msvc -G "Visual Studio 18 2026" -A x64 ^
     -DATRACDENC_PCM_IO_BACKEND=mediafoundation
 cmake --build build-msvc --config Release
 ctest --test-dir build-msvc -C Release --output-on-failure
@@ -89,15 +89,21 @@ ATRAC1:
 ATRAC3:
 ```
 ./atracdenc -e atrac3 -i ~/01.wav -o /tmp/01.oma
-```
+
+./atracdenc -e atrac3 -i ~/01.wav -o /tmp/01.at3
+
 
 ATRAC3PLUS:
 ```
 ./atracdenc -e atrac3plus -i ~/01.wav -o /tmp/01.oma
-```
+
+./atracdenc -e atrac3plus -i ~/01.wav -o /tmp/01.at3
 
 
 More information on the [atracdenc man page](https://code.mastervirt.ru/atracdenc/about/man/atracdenc.1)
 
 Limitations:
- - Only 44100 16bit wav input file
+
+Accepts 44100 Hz WAV audio by default. Non-44100 Hz WAV inputs will be automatically resampled prior to encoding.
+
+ATRAC3 encoding speed has seen a minor increase, but ATRAC3plus encoding speed has been significantly increased.
