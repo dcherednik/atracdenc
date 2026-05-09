@@ -9,7 +9,7 @@ Usage:
 atracdenc {-e <codec> | --encode=<codec> | -d | --decode} -i <in> -o <out>
 
 -e or --encode		encode file using one of codecs
-	{atrac1 | atrac3 | atrac3_lp4 | atrac3plus}
+	{atrac1 | atrac3 | atrac3plus}
 -d or --decode		decode file (only ATRAC1 supported for decoding)
 -i			path to input file (any sample rate, auto-resampled to 44100 Hz)
 -o			path to output file
