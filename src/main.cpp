@@ -20,6 +20,7 @@
 #include <fstream>
 #include <string>
 #include <stdexcept>
+#include <clocale>
 
 #include <getopt.h>
 
@@ -30,11 +31,13 @@
 #include "aea.h"
 #include "rm.h"
 #include "at3.h"
+#include "at3_riff.h"
 #include "oma.h"
 #include "config.h"
 #include "atrac1denc.h"
 #include "atrac3denc.h"
 #include "atrac3p.h"
+#include "resampler.h"
 
 #ifdef PLATFORM_WINDOWS
 #include <windows.h>
@@ -116,13 +119,12 @@ enum EOptions
     O_YAML_LOG = 8,
 };
 
-static void CheckInputFormat(const TWav* p)
+static void CheckInputFormat(const TWav* /*p*/)
 {
 //    if (p->IsFormatSupported() == false)
 //        throw std::runtime_error("unsupported format of input file");
 
-    if (p->GetSampleRate() != 44100)
-        throw std::runtime_error("unsupported sample rate");
+    // Sample rate check removed: non-44100Hz inputs are now auto-resampled
 }
 
 static TWavPtr OpenWavFile(const string& inFile)
@@ -150,6 +152,15 @@ static void PrepareAtrac1Encoder(const string& inFile,
     }
     const size_t numChannels = (*wavIO)->GetChannelNum();
     *totalSamples = (*wavIO)->GetTotalSamples();
+
+    const uint32_t srcRate = (uint32_t)(*wavIO)->GetSampleRate();
+    const uint32_t dstRate = 44100;
+    const bool needResample = (srcRate != dstRate);
+
+    if (needResample) {
+        *totalSamples = ResampledLength(*totalSamples, srcRate, dstRate);
+    }
+
     //TODO: recheck it
     const uint64_t numFrames = numChannels * (*totalSamples) / TAtrac1Data::NumSamples;
     if (numFrames >= UINT32_MAX) {
@@ -157,14 +168,22 @@ static void PrepareAtrac1Encoder(const string& inFile,
             "the result will be incorrect" << std::endl;
     }
     TCompressedOutputPtr aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
+
+    TPCMEngine::TReaderPtr reader((*wavIO)->GetPCMReader());
+    if (needResample) {
+        if (!noStdOut)
+            cout << "Resampling from " << srcRate << " Hz to " << dstRate << " Hz" << endl;
+        reader = CreateResamplingReader(std::move(reader), srcRate, dstRate, (uint16_t)numChannels);
+    }
+
     pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
-                                            TPCMEngine::TReaderPtr((*wavIO)->GetPCMReader())));
+                                            TPCMEngine::TReaderPtr(std::move(reader))));
     if (!noStdOut)
         cout << "Input\n Filename: " << inFile
              << "\n Channels: " << (int)numChannels
-             << "\n SampleRate: " << (*wavIO)->GetSampleRate()
-             << "\n Duration (sec): " << *totalSamples / (*wavIO)->GetSampleRate()
+             << "\n SampleRate: " << srcRate
+             << "\n Duration (sec): " << *totalSamples / dstRate
 	     << "\nOutput:\n Filename: " << outFile
 	     << "\n Codec: ATRAC1"
              << endl;
@@ -206,6 +225,15 @@ static void PrepareAtrac3Encoder(const string& inFile,
 {
     const int numChannels = encoderSettings.SourceChannels;
     *totalSamples = wavIO->GetTotalSamples();
+
+    const uint32_t srcRate = (uint32_t)wavIO->GetSampleRate();
+    const uint32_t dstRate = 44100;
+    const bool needResample = (srcRate != dstRate);
+
+    if (needResample) {
+        *totalSamples = ResampledLength(*totalSamples, srcRate, dstRate);
+    }
+
     const uint64_t numFrames = (*totalSamples) / 1024;
     if (numFrames >= UINT32_MAX) {
         std::cerr << "Number of input samples exceeds output format limitation,"
@@ -240,17 +268,24 @@ static void PrepareAtrac3Encoder(const string& inFile,
     if (!noStdOut)
         cout << "Input:\n Filename: " << inFile
              << "\n Channels: " << (int)numChannels
-             << "\n SampleRate: " << wavIO->GetSampleRate()
-             << "\n Duration (sec): " << *totalSamples / wavIO->GetSampleRate()
+             << "\n SampleRate: " << srcRate
+             << "\n Duration (sec): " << *totalSamples / dstRate
 	     << "\nOutput:\n Filename: " << outFile
 	     << "\n Codec: ATRAC3"
 	     << "\n Container: " << contName
              << "\n Bitrate: " << encoderSettings.ConteinerParams->Bitrate
              << endl;
 
+    TPCMEngine::TReaderPtr reader(wavIO->GetPCMReader());
+    if (needResample) {
+        if (!noStdOut)
+            cout << "Resampling from " << srcRate << " Hz to " << dstRate << " Hz" << endl;
+        reader = CreateResamplingReader(std::move(reader), srcRate, dstRate, (uint16_t)numChannels);
+    }
+
     pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
-                                            TPCMEngine::TReaderPtr(wavIO->GetPCMReader())));
+                                            TPCMEngine::TReaderPtr(std::move(reader))));
     atracProcessor->reset(new TAtrac3Encoder(std::move(omaIO), std::move(encoderSettings)));
 }
 
@@ -265,6 +300,15 @@ static void PrepareAtrac3PEncoder(const string& inFile,
                                   const char* advancedOpt)
 {
     *totalSamples = wavIO->GetTotalSamples();
+
+    const uint32_t srcRate = (uint32_t)wavIO->GetSampleRate();
+    const uint32_t dstRate = 44100;
+    const bool needResample = (srcRate != dstRate);
+
+    if (needResample) {
+        *totalSamples = ResampledLength(*totalSamples, srcRate, dstRate);
+    }
+
     const uint64_t numFrames = (*totalSamples) / 2048;
     if (numFrames >= UINT32_MAX) {
         std::cerr << "Number of input samples exceeds output format limitation,"
@@ -277,7 +321,8 @@ static void PrepareAtrac3PEncoder(const string& inFile,
 
     string contName;
     if (ext == "wav" || ext == "at3") {
-        throw std::runtime_error("Not implemented");
+        contName = "AT3 (RIFF)";
+        omaIO = std::make_unique<TAt3Riff>(outFile, (uint16_t)numChannels, 2048);
     } else if (ext == "rm") {
         throw std::runtime_error("RealMedia container is not supported for ATRAC3PLUS");
     } else {
@@ -293,17 +338,24 @@ static void PrepareAtrac3PEncoder(const string& inFile,
     if (!noStdOut)
         cout << "Input:\n Filename: " << inFile
              << "\n Channels: " << (int)numChannels
-             << "\n SampleRate: " << wavIO->GetSampleRate()
-             << "\n Duration (sec): " << *totalSamples / wavIO->GetSampleRate()
+             << "\n SampleRate: " << srcRate
+             << "\n Duration (sec): " << *totalSamples / dstRate
 	     << "\nOutput:\n Filename: " << outFile
 	     << "\n Codec: ATRAC3Plus"
 	     << "\n Container: " << contName
              //<< "\n Bitrate: " << encoderSettings.ConteinerParams->Bitrate
              << endl;
 
+    TPCMEngine::TReaderPtr reader(wavIO->GetPCMReader());
+    if (needResample) {
+        if (!noStdOut)
+            cout << "Resampling from " << srcRate << " Hz to " << dstRate << " Hz" << endl;
+        reader = CreateResamplingReader(std::move(reader), srcRate, dstRate, (uint16_t)numChannels);
+    }
+
     pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
-                                            TPCMEngine::TReaderPtr(wavIO->GetPCMReader())));
+                                            TPCMEngine::TReaderPtr(std::move(reader))));
     TAt3PEnc::TSettings settings;
     if (advancedOpt) {
         TAt3PEnc::ParseAdvancedOpt(advancedOpt, settings);
@@ -540,6 +592,10 @@ int main(int argc, char* const* argv) {
 #ifndef PLATFORM_WINDOWS
 	return main_(argc, argv);
 # else
+	SetConsoleOutputCP(CP_UTF8);
+	SetConsoleCP(CP_UTF8);
+	setlocale(LC_ALL, ".UTF-8");
+
 	LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
 
 	std::vector<char*> newArgv(argc);

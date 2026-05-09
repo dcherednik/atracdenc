@@ -18,169 +18,137 @@
 
 #include "at3.h"
 
-#include "lib/endian_tools.h"
 #include "utf8_file.h"
 #include <cstring>
-#include <iostream>
-#include <cmath>
-#include <assert.h>
+#include <stdexcept>
 
 /*
- * ATRAC3-in-WAV file format.
+ * ATRAC3-in-WAV RIFF container.
  *
- * Documented for example here:
- *   - ffmpeg: libavcodec/atrac3.c (atrac3_decode_init() talks about "extradata")
- *   - libnetmd: libnetmd/secure.c (netmd_write_wav_header() has "ATRAC extensions")
+ * Compatible with ffmpeg's ATRAC3 decoder (libavcodec/atrac3.c).
+ *
+ * RIFF structure:
+ *   RIFF header (12 bytes)
+ *   fmt  chunk: 32 bytes total = 8 header + 18 WaveFormatEx + 14 extradata
+ *   fact chunk: 16 bytes total = 8 header + 4 frame_count + 4 samples_per_frame
+ *   data chunk: compressed ATRAC3 frames
+ *
+ * Extradata layout (14 bytes, parsed by ffmpeg):
+ *   [0-1]   mode              (uint16 LE) = 1
+ *   [2-5]   reserved          (uint32 LE) = 0
+ *   [6-7]   coding_mode       (uint16 LE) = 0 (stereo) or 1 (joint stereo)
+ *   [8-9]   coding_mode_dup   (uint16 LE) = same as [6-7]
+ *   [10-11] frame_factor      (uint16 LE) = 1
+ *   [12-13] reserved          (uint16 LE) = 0
  */
 
-namespace {
+static void WriteLE16(FILE* f, uint16_t v) {
+    uint8_t buf[2];
+    buf[0] = (uint8_t)(v & 0xFF);
+    buf[1] = (uint8_t)((v >> 8) & 0xFF);
+    fwrite(buf, 1, 2, f);
+}
 
-// Based on http://soundfile.sapp.org/doc/WaveFormat/ + ffmpeg/libnetmd docs
-#ifdef _MSC_VER
-#pragma pack(push, 1)
-struct
-#else
-struct __attribute__((packed))
-#endif
-At3WaveHeader {
-    // "RIFF" "WAVE" header
-    char riff_chunk_id[4];
-    uint32_t chunk_size;
-    char riff_format[4];
+static void WriteLE32(FILE* f, uint32_t v) {
+    uint8_t buf[4];
+    buf[0] = (uint8_t)(v & 0xFF);
+    buf[1] = (uint8_t)((v >> 8) & 0xFF);
+    buf[2] = (uint8_t)((v >> 16) & 0xFF);
+    buf[3] = (uint8_t)((v >> 24) & 0xFF);
+    fwrite(buf, 1, 4, f);
+}
 
-    // "fmt " subchunk
-    char subchunk1_id[4];
-    uint32_t subchunk1_size;
+static void WriteFourCC(FILE* f, const char* cc) {
+    fwrite(cc, 1, 4, f);
+}
 
-    // WAVEFORMAT
-    uint16_t audio_format;
-    uint16_t num_channels;
-    uint32_t sample_rate;
-    uint32_t byte_rate;
-    uint16_t block_align;
-    uint16_t bits_per_sample;
-
-    // WAVEFORMATEX cbSize
-    uint16_t extradata_size; // 14
-
-    // atrac3 extradata
-    uint16_t unknown0; // always 1
-    uint32_t bytes_per_frame; // PCM bytes represented per frame = 1024 samples * 2ch * 2B = 0x1000
-    uint16_t coding_mode; // 1 = joint stereo, 0 = stereo
-    uint16_t coding_mode2; // same as <coding_mode>
-    uint16_t unknown1; // always 1
-    uint16_t unknown2; // always 0
-
-    // "fact" subchunk — required by Sony's psp_at3tool decoder and by ffmpeg
-    // for encoder-delay compensation.  Without it, PSP tool rejects files
-    // > ~40 s with "input file is illegal file or over 2G Byte".
-    char fact_id[4];
-    uint32_t fact_size;       // 8
-    uint32_t total_samples;   // total PCM samples per channel
-    uint32_t samples_per_frame; // 1024 for ATRAC3
-
-    // "data" subchunk
-    char subchunk2_id[4];
-    uint32_t subchunk2_size;
-};
-#ifdef _MSC_VER
-#pragma pack(pop)
-#endif
+/*
+ * RIFF file layout (all offsets from start of file):
+ *   0:  "RIFF" (4)
+ *   4:  file size - 8 (4)
+ *   8:  "WAVE" (4)
+ *  12:  "fmt " (4)
+ *  16:  fmt chunk size = 32 (4)
+ *  20:  WaveFormatEx (18 bytes)
+ *  38:  extradata (14 bytes)
+ *  52:  "fact" (4)
+ *  56:  fact chunk size = 8 (4)
+ *  60:  total samples (4)
+ *  64:  samples per frame = 1024 (4)
+ *  68:  "data" (4)
+ *  72:  data chunk size (4)
+ *  76:  compressed data begins
+ */
+static const long OFF_RIFF_SIZE  = 4;
+static const long OFF_FACT_COUNT = 60;
+static const long OFF_FACT_SPF   = 64;
+static const long OFF_DATA_SIZE  = 72;
 
 class TAt3 : public ICompressedOutput {
 public:
-    TAt3(const std::string &filename, size_t numChannels,
-        uint32_t numFrames, uint32_t frameSize, bool jointStereo)
-        : fp(NAtracDEnc::FOpenUtf8(filename, "wb"))
+    TAt3(const std::string& filename, size_t numChannels,
+        uint32_t /*numFrames*/, uint32_t frameSize, bool jointStereo)
+        : Fp(NAtracDEnc::FOpenUtf8(filename, "wb"))
         , FrameSize(frameSize)
         , FramesWritten(0)
+        , NumChannels((uint16_t)numChannels)
     {
-        if (!fp) {
+        if (!Fp) {
             throw std::runtime_error("unable to open output file '" + filename + "'");
         }
 
-        struct At3WaveHeader header;
-        memset(&header, 0, sizeof(header));
+        const uint16_t blockAlign = (uint16_t)frameSize;
+        const uint32_t avgBytesPerSec = ((uint32_t)blockAlign * 44100u + 512u) / 1024u;
 
-        uint64_t file_size = sizeof(struct At3WaveHeader) + uint64_t(numFrames) * uint64_t(frameSize);
+        // RIFF header
+        WriteFourCC(Fp, "RIFF");
+        WriteLE32(Fp, 0);  // placeholder
+        WriteFourCC(Fp, "WAVE");
 
-        if (file_size >= UINT32_MAX) {
-            throw std::runtime_error("File size is too big for this file format");
+        // fmt chunk (32 bytes = 8 header + 18 WaveFormatEx + 14 extradata)
+        WriteFourCC(Fp, "fmt ");
+        WriteLE32(Fp, 32);
+
+        // WaveFormatEx (18 bytes)
+        WriteLE16(Fp, 0x0270);           // wFormatTag = WAVE_FORMAT_ATRAC3
+        WriteLE16(Fp, (uint16_t)numChannels);
+        WriteLE32(Fp, 44100);            // nSamplesPerSec
+        WriteLE32(Fp, avgBytesPerSec);   // nAvgBytesPerSec
+        WriteLE16(Fp, blockAlign);       // nBlockAlign
+        WriteLE16(Fp, 0);                // wBitsPerSample
+        WriteLE16(Fp, 14);               // cbSize
+
+        // ATRAC3 extradata (14 bytes) — ffmpeg-compatible layout
+        WriteLE16(Fp, 1);                            // [0-1]  mode = 1
+        WriteLE32(Fp, 0);                            // [2-5]  reserved = 0
+        WriteLE16(Fp, jointStereo ? 1 : 0);          // [6-7]  coding_mode
+        WriteLE16(Fp, jointStereo ? 1 : 0);          // [8-9]  coding_mode duplicate
+        WriteLE16(Fp, 1);                            // [10-11] frame_factor = 1
+        WriteLE16(Fp, 0);                            // [12-13] reserved = 0
+
+        // fact chunk (16 bytes = 8 header + 8 data)
+        WriteFourCC(Fp, "fact");
+        WriteLE32(Fp, 8);
+        WriteLE32(Fp, 0);  // placeholder: total samples
+        WriteLE32(Fp, 1024);  // samples per frame
+
+        // data chunk header
+        WriteFourCC(Fp, "data");
+        WriteLE32(Fp, 0);  // placeholder
+    }
+
+    ~TAt3() override {
+        if (Fp && FramesWritten > 0) {
+            Finalize();
         }
-
-        memcpy(header.riff_chunk_id, "RIFF", 4);
-        // RIFF spec: chunk_size is the size of everything after this field,
-        // i.e. file_size - 8 (RIFF marker + size field itself).
-        header.chunk_size = swapbyte32_on_be(file_size - 8);
-        memcpy(header.riff_format, "WAVE", 4);
-
-        memcpy(header.subchunk1_id, "fmt ", 4);
-        // fmt chunk ends where the next chunk ("fact") begins.
-        header.subchunk1_size = swapbyte32_on_be(offsetof(struct At3WaveHeader, fact_id) -
-                                                 offsetof(struct At3WaveHeader, audio_format));
-
-        // libnetmd: #define NETMD_RIFF_FORMAT_TAG_ATRAC3 0x270
-        // mmreg.h (mingw-w64): WAVE_FORMAT_SONY_SCX 0x270
-        // riff.c (ffmpeg): AV_CODEC_ID_ATRAC3 0x0270
-        header.audio_format = swapbyte16_on_be(0x270);
-        header.num_channels = swapbyte16_on_be(numChannels);
-        header.sample_rate = swapbyte32_on_be(44100);
-        header.byte_rate = swapbyte32_on_be(frameSize * header.sample_rate / 1024);
-        header.block_align = swapbyte16_on_be(frameSize);
-        header.bits_per_sample = swapbyte16_on_be(0);
-        header.extradata_size = swapbyte16_on_be(offsetof(struct At3WaveHeader, fact_id) -
-                                                 offsetof(struct At3WaveHeader, unknown0));
-
-        header.unknown0 = swapbyte16_on_be(1);
-        // 1024 samples × 2 channels × 2 bytes = 4096 (0x1000).  Sony's encoder
-        // writes this value; PSP tool and ffmpeg rely on it for frame sizing.
-        header.bytes_per_frame = swapbyte32_on_be(0x1000);
-        header.coding_mode = swapbyte16_on_be(jointStereo ? 0x0001 : 0x0000);
-        header.coding_mode2 = header.coding_mode; // already byte-swapped (if needed)
-        header.unknown1 = swapbyte16_on_be(1);
-        header.unknown2 = swapbyte16_on_be(0);
-
-        memcpy(header.fact_id, "fact", 4);
-        header.fact_size = swapbyte32_on_be(8);
-        header.total_samples = swapbyte32_on_be(uint32_t(numFrames) * 1024);
-        header.samples_per_frame = swapbyte32_on_be(1024);
-
-        memcpy(header.subchunk2_id, "data", 4);
-        header.subchunk2_size = swapbyte32_on_be(numFrames * frameSize); // TODO
-
-        if (fwrite(&header, 1, sizeof(header), fp) != sizeof(header)) {
-            throw std::runtime_error("Cannot write WAV header to file");
+        if (Fp) {
+            fclose(Fp);
         }
     }
 
-    virtual ~TAt3() override {
-        // The PCM engine can flush more frames than initially estimated
-        // (encoder look-ahead tail).  Backfill the length fields so
-        // RIFF chunk_size, fact total_samples, and data subchunk_size
-        // reflect the actual frame count on disk.
-        if (FramesWritten > 0) {
-            const uint64_t actualFileSize = sizeof(struct At3WaveHeader) +
-                                            uint64_t(FramesWritten) * uint64_t(FrameSize);
-            if (actualFileSize < UINT32_MAX) {
-                const uint32_t chunkSize = uint32_t(actualFileSize - 8);
-                const uint32_t totalSamples = uint32_t(FramesWritten) * 1024u;
-                const uint32_t dataSize = uint32_t(FramesWritten) * FrameSize;
-                const uint32_t chunkSizeLE = swapbyte32_on_be(chunkSize);
-                const uint32_t totalSamplesLE = swapbyte32_on_be(totalSamples);
-                const uint32_t dataSizeLE = swapbyte32_on_be(dataSize);
-                fseek(fp, offsetof(struct At3WaveHeader, chunk_size), SEEK_SET);
-                fwrite(&chunkSizeLE, sizeof(uint32_t), 1, fp);
-                fseek(fp, offsetof(struct At3WaveHeader, total_samples), SEEK_SET);
-                fwrite(&totalSamplesLE, sizeof(uint32_t), 1, fp);
-                fseek(fp, offsetof(struct At3WaveHeader, subchunk2_size), SEEK_SET);
-                fwrite(&dataSizeLE, sizeof(uint32_t), 1, fp);
-            }
-        }
-        fclose(fp);
-    }
-
-    virtual void WriteFrame(std::vector<char> data) override {
-        if (fwrite(data.data(), 1, data.size(), fp) != data.size()) {
+    void WriteFrame(std::vector<char> data) override {
+        if (!Fp) return;
+        if (fwrite(data.data(), 1, data.size(), Fp) != data.size()) {
             throw std::runtime_error("Cannot write AT3 data to file");
         }
         ++FramesWritten;
@@ -191,16 +159,33 @@ public:
     }
 
     size_t GetChannelNum() const override {
-        return 2;
+        return NumChannels;
     }
 
 private:
-    FILE *fp;
+    void Finalize() {
+        // Backfill data chunk size
+        fseek(Fp, OFF_DATA_SIZE, SEEK_SET);
+        WriteLE32(Fp, (uint32_t)FramesWritten * FrameSize);
+
+        // Backfill fact chunk: total samples = frames * 1024
+        fseek(Fp, OFF_FACT_COUNT, SEEK_SET);
+        WriteLE32(Fp, (uint32_t)FramesWritten * 1024u);
+
+        // Backfill RIFF chunk size
+        fseek(Fp, 0, SEEK_END);
+        long fileSize = ftell(Fp);
+        fseek(Fp, OFF_RIFF_SIZE, SEEK_SET);
+        WriteLE32(Fp, (uint32_t)(fileSize - 8));
+
+        fseek(Fp, 0, SEEK_END);
+    }
+
+    FILE* Fp;
     uint32_t FrameSize;
     uint64_t FramesWritten;
+    uint16_t NumChannels;
 };
-
-} //namespace
 
 TCompressedOutputPtr
 CreateAt3Output(const std::string& filename, size_t numChannel,

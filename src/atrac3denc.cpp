@@ -41,9 +41,10 @@ void TAtrac3MDCT::Mdct(float specs[1024], float* bands[4], float maxLevels[4], T
         if (modFn) {
             modFn(&tmp[0], &srcBuff[256]);
         }
-        float max = 0.0;
+        float max = 0.0f;
         for (int i = 0; i < 256; i++) {
-            max = std::max(max, std::abs(srcBuff[256+i]));
+            const float absVal = fabsf(srcBuff[256+i]);
+            if (absVal > max) max = absVal;
             srcBuff[i] = TAtrac3Data::EncodeWindow[i] * srcBuff[256+i];
             tmp[256+i] = TAtrac3Data::EncodeWindow[255-i] * srcBuff[256+i];
         }
@@ -233,17 +234,17 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "      - band: " << band << "\n";
         }
 
-        auto result = Upsampler.Process(upInput[band]);
-
-        if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
+        const float hfr = Upsampler.CalcHighFreqRatio(upInput[band]);
+        if (hfr < TSpectralUpsampler::kHighFreqThreshold) {
             if (YamlLog) {
                 *YamlLog << std::fixed << std::setprecision(4)
                          << "        skip: low_hfr  # high_freq_ratio "
-                         << result.highFreqRatio << " < threshold\n";
+                         << hfr << " < threshold\n";
             }
             CurveCtx[channel][band].LastLevel = 0.0f;
             continue;
         }
+        auto result = Upsampler.Process(upInput[band]);
 
         // Analysis region [1024..3072) = current frame upsampled (8x)
         std::vector<float> gainLow;
@@ -661,7 +662,10 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
     using TData = vector<TChannelData>;
     auto buf = std::make_shared<TData>(2);
 
-    return [this, bitStreamWriter, buf](float* data, const TPCMEngine::ProcessMeta& meta) {
+    // Pre-allocate mdctEnergy vector to avoid per-frame allocation
+    auto mdctEnergy = std::make_shared<std::vector<float>>(TAtrac3Data::NumSamples, 0.0f);
+
+    return [this, bitStreamWriter, buf, mdctEnergy](float* data, const TPCMEngine::ProcessMeta& meta) {
         using TSce = TAtrac3BitStreamWriter::TSingleChannelElement;
 
         // QMF-filter into the appropriate slot of LookAheadBuf:
@@ -755,18 +759,18 @@ TPCMEngine::TProcessLambda TAtrac3Encoder::GetLambda()
                 Mdct(specs.data(), p, maxOverlapLevels, MakeGainModulatorArray(sce->SubbandInfo));
             }
 
-            vector<float> mdctEnergy(specs.size(), 0.0f);
+            std::fill(mdctEnergy->begin(), mdctEnergy->end(), 0.0f);
             float l = 0;
             for (size_t i = 0; i < specs.size(); i++) {
                 float e = specs[i] * specs[i];
-                mdctEnergy[i] = e;
+                (*mdctEnergy)[i] = e;
                 l += e * LoudnessCurve[i];
             }
 
             sce->Loudness = l;
 
             if (!Params.NoTonalComponents) {
-                const vector<float> flatnessPerBfu = CalcSpectralFlatnessPerBfu<TAtrac3Data>(mdctEnergy);
+                const vector<float> flatnessPerBfu = CalcSpectralFlatnessPerBfu<TAtrac3Data>(*mdctEnergy);
                 tonals[channel] = ExtractTonalComponents(specs.data(), flatnessPerBfu);
                 sce->TonalBlocks.clear();
                 MapTonalComponents(tonals[channel], &sce->TonalBlocks);

@@ -82,6 +82,10 @@ public:
     // Returns the upsampled signal and its high-frequency energy ratio.
     TProcessResult Process(const float* in) const;
 
+    // 只计算highFreqRatio（只做512点前向FFT，跳过4096点逆FFT）
+    // 当ratio低于阈值时，可以跳过昂贵的Process()调用
+    float CalcHighFreqRatio(const float* in) const;
+
 private:
     const int          LowCutBin;  // first kept bin (inclusive); bins [0,LowCutBin) are zeroed
     std::vector<float> Win;

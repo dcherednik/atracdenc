@@ -12,6 +12,12 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
 endif()
 
+# Aggressive optimization for Release builds
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -funroll-loops")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -funroll-loops")
+endif()
+
 include(CheckCXXCompilerFlag)
 
 function(enable_cxx_compiler_flag_if_supported flag)
@@ -32,8 +38,8 @@ project("atracdenc" CXX C)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 
 set(ATRACDENC_PCM_IO_BACKEND "auto" CACHE STRING
-    "PCM I/O backend: auto, mediafoundation, libsndfile")
-set_property(CACHE ATRACDENC_PCM_IO_BACKEND PROPERTY STRINGS auto mediafoundation libsndfile)
+    "PCM I/O backend: auto, mediafoundation, libsndfile, builtin")
+set_property(CACHE ATRACDENC_PCM_IO_BACKEND PROPERTY STRINGS auto mediafoundation libsndfile builtin)
 string(TOLOWER "${ATRACDENC_PCM_IO_BACKEND}" ATRACDENC_PCM_IO_BACKEND)
 if (ATRACDENC_PCM_IO_BACKEND STREQUAL "sndfile")
     set(ATRACDENC_PCM_IO_BACKEND "libsndfile")
@@ -55,7 +61,8 @@ if (ATRACDENC_PCM_IO_BACKEND STREQUAL "auto")
         set(ATRACDENC_PCM_IO_BACKEND "libsndfile")
     endif()
 elseif (NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "mediafoundation" AND
-        NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "libsndfile")
+        NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "libsndfile" AND
+        NOT ATRACDENC_PCM_IO_BACKEND STREQUAL "builtin")
     message(FATAL_ERROR "Unsupported ATRACDENC_PCM_IO_BACKEND: ${ATRACDENC_PCM_IO_BACKEND}")
 endif()
 
@@ -71,16 +78,25 @@ if (ATRACDENC_PCM_IO_BACKEND STREQUAL "mediafoundation")
 		platform/win/pcm_io/win32/pcm_io_win32.cpp
 		platform/win/pcm_io/pcm_io.cpp
     )
+elseif (ATRACDENC_PCM_IO_BACKEND STREQUAL "builtin")
+    set(SOURCE_PCM_IO_LIB
+        pcm_io_builtin.cpp
+    )
 else()
     INCLUDE(FindLibSndFile)
     if (NOT LIBSNDFILE_FOUND)
-        message(FATAL_ERROR "libsndfile PCM I/O backend requires libsndfile")
+        message(STATUS "libsndfile not found, falling back to built-in WAV reader")
+        set(ATRACDENC_PCM_IO_BACKEND "builtin")
+        set(SOURCE_PCM_IO_LIB
+            pcm_io_builtin.cpp
+        )
+    else()
+        include_directories(${LIBSNDFILE_INCLUDE_DIR})
+        set(PCM_IO_LIBRARIES ${SNDFILE_LIBRARIES})
+        set(SOURCE_PCM_IO_LIB
+            pcm_io_sndfile.cpp
+        )
     endif()
-    include_directories(${LIBSNDFILE_INCLUDE_DIR})
-    set(PCM_IO_LIBRARIES ${SNDFILE_LIBRARIES})
-    set(SOURCE_PCM_IO_LIB
-        pcm_io_sndfile.cpp
-    )
 endif()
 
 include (TestBigEndian)
@@ -124,6 +140,8 @@ set(SOURCE_ATRACDENC_IMPL
     oma.cpp
     rm.cpp
     at3.cpp
+    at3_riff.cpp
+    resampler.cpp
     atrac3denc.cpp
     atrac/at3/atrac3.cpp
     atrac/at3/atrac3_bitstream.cpp
