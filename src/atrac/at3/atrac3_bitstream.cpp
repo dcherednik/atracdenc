@@ -155,29 +155,24 @@ std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TAtrac3BitStreamWrit
     const uint32_t numBlocks = precisionPerEachBlocks.size();
     uint32_t bitsUsed = numBlocks * 3;
 
-    auto lambda = [numBlocks, mantisas, &precisionPerEachBlocks, &scaledBlocks, &energyErr](bool clcMode, bool calcMant) {
-        uint32_t bits = 0;
-        for (uint32_t i = 0; i < numBlocks; ++i) {
-            if (precisionPerEachBlocks[i] == 0) {
-                continue;
-            }
-            bits += 6; // sfi
-            const uint32_t first = TAtrac3Data::BlockSizeTab[i];
-            const uint32_t last = TAtrac3Data::BlockSizeTab[i + 1];
-            const uint32_t blockSize = last - first;
-            const float mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
-            if (calcMant) {
-                const float* values = scaledBlocks[i].Values.data();
-                energyErr[i] = QuantMantisas(values, first, last, mul, i > LOSY_NAQ_START, mantisas);
-            }
-            bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr)
-                            : VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
+    // Quantize mantissas once, then count bits for both CLC and VLC modes
+    uint32_t clcBits = 0;
+    uint32_t vlcBits = 0;
+    for (uint32_t i = 0; i < numBlocks; ++i) {
+        if (precisionPerEachBlocks[i] == 0) {
+            continue;
         }
-        return bits;
-    };
+        bitsUsed += 6; // sfi
+        const uint32_t first = TAtrac3Data::BlockSizeTab[i];
+        const uint32_t last = TAtrac3Data::BlockSizeTab[i + 1];
+        const uint32_t blockSize = last - first;
+        const float mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
+        const float* values = scaledBlocks[i].Values.data();
+        energyErr[i] = QuantMantisas(values, first, last, mul, i > LOSY_NAQ_START, mantisas);
+        clcBits += CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
+        vlcBits += VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
+    }
 
-    const uint32_t clcBits = lambda(true, true);
-    const uint32_t vlcBits = lambda(false, false);
     const bool mode = clcBits <= vlcBits;
     return std::make_pair(mode, bitsUsed + (mode ? clcBits : vlcBits));
 }
@@ -204,7 +199,10 @@ bool ConsiderEnergyErr(const vector<float>& err, vector<uint32_t>& bits)
     const size_t lim = std::min((size_t)BOOST_NAQ_END, bits.size());
     for (size_t i = 0; i < lim; i++) {
         const float e = err[i];
-        if (((e > 0 && e < 0.7f) || e > 1.2f) & (bits[i] < 7)) {
+        if (e > 0.0f && e < 0.7f && bits[i] < 7) {
+            bits[i]++;
+            adjusted = true;
+        } else if (e > 1.2f && bits[i] < 7) {
             bits[i]++;
             adjusted = true;
         }
@@ -575,9 +573,11 @@ public:
 
         ctx->EnergyErr.assign(ctx->NumBfu, 0.0f);
         std::pair<uint8_t, uint32_t> consumption;
+        // Limit energy error correction iterations to 3 for speed
+        int maxIter = 3;
         do {
             consumption = CalcSpecsBitsConsumption(*ctx->Sce, tmpAlloc, ctx->Mantissas.data(), ctx->EnergyErr);
-        } while (ConsiderEnergyErr(ctx->EnergyErr, tmpAlloc));
+        } while (--maxIter > 0 && ConsiderEnergyErr(ctx->EnergyErr, tmpAlloc));
 
         uint32_t totalBits = consumption.second + EncodeTonalComponents(*ctx->Sce, tmpAlloc, nullptr);
 

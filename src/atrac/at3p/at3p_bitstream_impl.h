@@ -23,6 +23,7 @@
 #include <lib/bitstream/bitstream.h>
 #include <lib/bs_encode/encode.h>
 #include <atrac/atrac_scale.h>
+#include <map>
 #include <vector>
 
 namespace NAtracDEnc {

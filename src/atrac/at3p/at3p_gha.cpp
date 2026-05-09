@@ -30,6 +30,7 @@
 #include <cmath>
 #include <iostream>
 #include <map>
+#include <map>
 #include <vector>
 
 using std::map;
