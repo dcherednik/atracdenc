@@ -23,3 +23,7 @@
 TCompressedOutputPtr
 CreateAt3Output(const std::string& filename, size_t numChannel,
         uint32_t numFrames, uint32_t framesize, bool jointStereo);
+
+TCompressedOutputPtr
+CreateAt3POutput(const std::string& filename, size_t numChannel,
+        uint32_t numFrames, uint32_t framesize);

@@ -277,7 +277,8 @@ static void PrepareAtrac3PEncoder(const string& inFile,
 
     string contName;
     if (ext == "wav" || ext == "at3") {
-        throw std::runtime_error("Not implemented");
+        contName = "AT3 (RIFF)";
+        omaIO = CreateAt3POutput(outFile, numChannels, numFrames, 2048);
     } else if (ext == "rm") {
         throw std::runtime_error("RealMedia container is not supported for ATRAC3PLUS");
     } else {
