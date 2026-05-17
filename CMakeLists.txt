@@ -36,6 +36,11 @@ if (NOT ATRACDENC_PYTHON_EXECUTABLE)
     message("python3 has not been found, skipping integration tests...")
 endif()
 
+# build universal binary on macos
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+endif()
+
 if (UNIX)
     if (NOT DEFINED CMAKE_INSTALL_MANDIR)
         set(CMAKE_INSTALL_MANDIR ${CMAKE_INSTALL_PREFIX}/share/man)

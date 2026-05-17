@@ -24,6 +24,7 @@ jobs:
             name: "Windows_Latest_MSVC",
             os: windows-latest,
             artifact: "windows_msvc",
+            atrifact_path: "build/src/Release",
             build_type: "Release",
             cc: "cl",
             cxx: "cl",
@@ -34,12 +35,22 @@ jobs:
             name: "Ubuntu_Latest_GCC",
             os: ubuntu-latest,
             artifact: "ubuntu_gcc.7z",
+            atrifact_path: "build/src/atracdenc",
             build_type: "Release",
             cc: "gcc",
             cxx: "g++",
             generators: "make"
         }
-
+        - {
+            name: "MacOS_Latest_Clang",
+            os: macos-latest,
+            artifact: "mac_clang.7z",
+            atrifact_path: "build/src/atracdenc",
+            build_type: "Release",
+            cc: "clang",
+            cxx: "clang++",
+            generators: "make"
+        }
     steps:
     - uses: actions/checkout@v4
       with:
@@ -64,6 +75,18 @@ jobs:
         cmake --version
         gcc --version
 
+    # have to libsndfile as not installed by default and no package manager on MacOS.
+    - name: Install dependencies on mac
+      if: startsWith(matrix.config.name,'MacOS_Latest_Clang')
+      run: |
+        git clone https://github.com/libsndfile/libsndfile.git --recursive
+        cd libsndfile
+        cmake -B build -DBUILD_SHARED_LIBS=off -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        cd build
+        sudo make install
+        cd ../..
+        rm -rf libsndfile
+        
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
@@ -72,13 +95,14 @@ jobs:
     - name: Build
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-          
+
+        
     - name: Upload
-      if: startsWith(matrix.config.os,'Windows')
       uses: actions/upload-artifact@v4
       with:
-        path: ${{github.workspace}}/build/src/Release
+        path: ${{ matrix.config.atrifact_path }}
         name: ${{ matrix.config.artifact }}
+        
 
     - name: Test
       working-directory: ${{github.workspace}}/build
