@@ -30,6 +30,7 @@
 #include "aea.h"
 #include "rm.h"
 #include "at3.h"
+#include "raw.h"
 #include "oma.h"
 #include "config.h"
 #include "atrac1denc.h"
@@ -156,7 +157,18 @@ static void PrepareAtrac1Encoder(const string& inFile,
         std::cerr << "Number of input samples exceeds output format limitation,"
             "the result will be incorrect" << std::endl;
     }
-    TCompressedOutputPtr aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
+    const string ext = GetFileExt(outFile);
+
+    TCompressedOutputPtr aeaIO;
+    string contName;
+    if (ext == "raw" || ext == "dat") {
+        contName = "raw ATRAC1";
+        aeaIO = CreateRawOutput(outFile, numChannels, TAtrac1Data::SoundUnitSize);
+    } else {
+        contName = "AEA";
+        aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
+    }
+
     pcmEngine->reset(new TPCMEngine(4096,
                                             numChannels,
                                             TPCMEngine::TReaderPtr((*wavIO)->GetPCMReader())));
@@ -167,6 +179,7 @@ static void PrepareAtrac1Encoder(const string& inFile,
              << "\n Duration (sec): " << *totalSamples / (*wavIO)->GetSampleRate()
 	     << "\nOutput:\n Filename: " << outFile
 	     << "\n Codec: ATRAC1"
+	     << "\n Container: " << contName
              << endl;
     atracProcessor->reset(new TAtrac1Encoder(std::move(aeaIO), std::move(encoderSettings)));
 }
@@ -222,6 +235,9 @@ static void PrepareAtrac3Encoder(const string& inFile,
         omaIO = CreateAt3Output(outFile, 2, numFrames,
                 encoderSettings.ConteinerParams->FrameSz,
                 encoderSettings.ConteinerParams->Js);
+    } else if (ext == "raw" || ext == "dat") {
+        contName = "raw ATRAC3";
+        omaIO = CreateRawOutput(outFile, numChannels);
     } else if (ext == "rm") {
         contName = "RealMedia";
         omaIO = CreateRmOutput(outFile, "test", numChannels,
@@ -279,6 +295,9 @@ static void PrepareAtrac3PEncoder(const string& inFile,
     if (ext == "wav" || ext == "at3") {
         contName = "AT3 (RIFF)";
         omaIO = CreateAt3POutput(outFile, numChannels, numFrames, 2048);
+    } else if (ext == "raw" || ext == "dat") {
+        contName = "raw ATRAC3plus";
+        omaIO = CreateRawOutput(outFile, numChannels);
     } else if (ext == "rm") {
         throw std::runtime_error("RealMedia container is not supported for ATRAC3PLUS");
     } else {

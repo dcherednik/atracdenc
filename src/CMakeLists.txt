@@ -124,6 +124,7 @@ set(SOURCE_ATRACDENC_IMPL
     oma.cpp
     rm.cpp
     at3.cpp
+    raw.cpp
     atrac3denc.cpp
     atrac/at3/atrac3.cpp
     atrac/at3/atrac3_bitstream.cpp

@@ -18,6 +18,7 @@
 
 #include "at3.h"
 
+#include "file.h"
 #include "lib/endian_tools.h"
 #include "utf8_file.h"
 #include <cstring>
@@ -26,12 +27,6 @@
 #include <assert.h>
 #include <memory>
 #include <stdexcept>
-
-#ifdef PLATFORM_WINDOWS
-#include <io.h>
-#else
-#include <unistd.h>
-#endif
 
 /*
  * ATRAC3-in-WAV file format.
@@ -135,30 +130,6 @@ static_assert(At3ExtraSize == 14, "unexpected ATRAC3 WAV extradata size");
 static_assert(At3pExtraSize == 22, "unexpected ATRAC3plus WAV extension size");
 static_assert(At3HeaderSize == 76, "unexpected ATRAC3 WAV header size");
 static_assert(At3pHeaderSize == 80, "unexpected ATRAC3plus WAV header size");
-
-struct TFileCloser {
-    void operator()(FILE* Fp) const {
-#ifdef PLATFORM_WINDOWS
-        if (Fp) {
-            const int fd = _fileno(Fp);
-            if (fflush(Fp) == 0 && fd != -1) {
-                _commit(fd);
-            }
-            fclose(Fp);
-        }
-#else
-        if (Fp) {
-            const int fd = fileno(Fp);
-            if (fflush(Fp) == 0 && fd != -1) {
-                fsync(fd);
-            }
-            fclose(Fp);
-        }
-#endif
-    }
-};
-
-using TFilePtr = std::unique_ptr<FILE, TFileCloser>;
 
 static void BackfillWaveHeader(FILE* Fp, size_t headerSize, uint64_t framesWritten,
                                uint32_t frameSize, uint32_t samplesPerFrame,
