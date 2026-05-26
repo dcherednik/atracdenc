@@ -79,6 +79,7 @@ if (ATRACDENC_PYTHON_EXECUTABLE)
     add_input_file_test(output_utf8_aea_filename utf8-output-aea)
     add_input_file_test(decode_utf8_input_filename utf8-decode-input)
     add_input_file_test(decode_utf8_output_filename utf8-decode-output)
+    add_input_file_test(explicit_container explicit-container)
 endif()
 
 if (GTest_FOUND)

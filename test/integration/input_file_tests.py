@@ -42,14 +42,17 @@ def require_output_file(path, proc, message):
         fail(message, proc)
 
 
-def encode(exe, in_file, out_file, codec):
-    return run_command([
+def encode(exe, in_file, out_file, codec, container=None):
+    args = [
         str(exe),
         "-e", codec,
         "--nostdout",
         "-i", str(in_file),
         "-o", str(out_file),
-    ])
+    ]
+    if container is not None:
+        args.extend(["--container", container])
+    return run_command(args)
 
 
 def decode_atrac1(exe, in_file, out_file):
@@ -165,6 +168,40 @@ def check_utf8_decode_output(exe, work_dir):
     require_output_file(out_file, proc, "ATRAC1 decoding with a UTF-8 output filename did not create output")
 
 
+def check_explicit_container(exe, work_dir):
+    in_file = work_dir / "explicit-container-input.wav"
+    write_wav(in_file, samples=8192)
+
+    riff_out = work_dir / "explicit-riff-output.oma"
+    proc = encode(exe, in_file, riff_out, "atrac3", container="riff")
+    if proc.returncode != 0:
+        fail("ATRAC3 encoding failed with explicit RIFF container", proc)
+    require_output_file(riff_out, proc, "explicit RIFF container did not create output")
+    with riff_out.open("rb") as stream:
+        if stream.read(4) != b"RIFF":
+            fail("explicit RIFF container did not override the .oma extension", proc)
+
+    raw_out = work_dir / "explicit-raw-output.aea"
+    proc = encode(exe, in_file, raw_out, "atrac1", container="raw")
+    if proc.returncode != 0:
+        fail("ATRAC1 encoding failed with explicit RAW container", proc)
+    require_output_file(raw_out, proc, "explicit RAW container did not create output")
+
+    invalid_atrac1 = work_dir / "invalid-atrac1.oma"
+    proc = encode(exe, in_file, invalid_atrac1, "atrac1", container="oma")
+    if proc.returncode == 0:
+        fail("ATRAC1 encoding unexpectedly accepted OMA container", proc)
+    if "container oma is not supported for atrac1" not in (decode(proc.stdout) + decode(proc.stderr)).lower():
+        fail("ATRAC1 invalid container error did not explain the rejected combination", proc)
+
+    invalid_atrac3plus = work_dir / "invalid-atrac3plus.rm"
+    proc = encode(exe, in_file, invalid_atrac3plus, "atrac3plus", container="rm")
+    if proc.returncode == 0:
+        fail("ATRAC3PLUS encoding unexpectedly accepted RM container", proc)
+    if "container rm is not supported for atrac3plus" not in (decode(proc.stdout) + decode(proc.stderr)).lower():
+        fail("ATRAC3PLUS invalid container error did not explain the rejected combination", proc)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", required=True)
@@ -178,6 +215,7 @@ def main():
         "utf8-output-rm",
         "utf8-output-aea",
         "utf8-decode-input",
+        "explicit-container",
         "utf8-decode-output",
     ])
     args = parser.parse_args()
@@ -204,6 +242,8 @@ def main():
         check_utf8_decode_input(exe, work_dir)
     elif args.case == "utf8-decode-output":
         check_utf8_decode_output(exe, work_dir)
+    elif args.case == "explicit-container":
+        check_explicit_container(exe, work_dir)
 
 
 if __name__ == "__main__":

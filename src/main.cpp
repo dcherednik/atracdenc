@@ -16,6 +16,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -79,6 +82,158 @@ static string GetFileExt(const string& path) {
     return ext;
 }
 
+static string ToLowerAscii(string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return value;
+}
+
+enum class EContainer {
+    AUTO,
+    AEA,
+    OMA,
+    RIFF,
+    RM,
+    RAW,
+};
+
+enum class ECodec {
+    ATRAC1,
+    ATRAC3,
+    ATRAC3PLUS,
+};
+
+static EContainer ParseContainer(const char* value)
+{
+    const string container = ToLowerAscii(value ? string(value) : string());
+    if (container == "aea")
+        return EContainer::AEA;
+    if (container == "oma")
+        return EContainer::OMA;
+    if (container == "riff")
+        return EContainer::RIFF;
+    if (container == "rm")
+        return EContainer::RM;
+    if (container == "raw")
+        return EContainer::RAW;
+    throw std::invalid_argument("unrecognized container: " + container);
+}
+
+static const char* ContainerName(EContainer container)
+{
+    switch (container) {
+        case EContainer::AEA:
+            return "AEA";
+        case EContainer::OMA:
+            return "OMA";
+        case EContainer::RIFF:
+            return "RIFF";
+        case EContainer::RM:
+            return "RM";
+        case EContainer::RAW:
+            return "RAW";
+        case EContainer::AUTO:
+            return "AUTO";
+    }
+    return "UNKNOWN";
+}
+
+static const char* CodecName(ECodec codec)
+{
+    switch (codec) {
+        case ECodec::ATRAC1:
+            return "ATRAC1";
+        case ECodec::ATRAC3:
+            return "ATRAC3";
+        case ECodec::ATRAC3PLUS:
+            return "ATRAC3PLUS";
+    }
+    return "UNKNOWN";
+}
+
+static const char* ValidContainerNames(ECodec codec)
+{
+    switch (codec) {
+        case ECodec::ATRAC1:
+            return "AEA, RAW";
+        case ECodec::ATRAC3:
+            return "OMA, RIFF, RM, RAW";
+        case ECodec::ATRAC3PLUS:
+            return "OMA, RIFF, RAW";
+    }
+    return "";
+}
+
+static bool IsValidContainer(ECodec codec, EContainer container)
+{
+    switch (codec) {
+        case ECodec::ATRAC1:
+            return container == EContainer::AEA || container == EContainer::RAW;
+        case ECodec::ATRAC3:
+            return container == EContainer::OMA || container == EContainer::RIFF ||
+                container == EContainer::RM || container == EContainer::RAW;
+        case ECodec::ATRAC3PLUS:
+            return container == EContainer::OMA || container == EContainer::RIFF ||
+                container == EContainer::RAW;
+    }
+    return false;
+}
+
+static void CheckContainer(ECodec codec, EContainer container)
+{
+    if (!IsValidContainer(codec, container)) {
+        string err = "Container ";
+        err += ContainerName(container);
+        err += " is not supported for ";
+        err += CodecName(codec);
+        err += "; valid containers are: ";
+        err += ValidContainerNames(codec);
+        throw std::runtime_error(err);
+    }
+}
+
+static EContainer SelectAtrac1Container(const string& outFile, EContainer requestedContainer)
+{
+    if (requestedContainer != EContainer::AUTO)
+        return requestedContainer;
+
+    const string ext = ToLowerAscii(GetFileExt(outFile));
+    if (ext == "raw" || ext == "dat")
+        return EContainer::RAW;
+    return EContainer::AEA;
+}
+
+static EContainer SelectAtrac3Container(const string& outFile, EContainer requestedContainer)
+{
+    if (requestedContainer != EContainer::AUTO)
+        return requestedContainer;
+
+    const string ext = ToLowerAscii(GetFileExt(outFile));
+    if (ext == "wav" || ext == "at3")
+        return EContainer::RIFF;
+    if (ext == "raw" || ext == "dat")
+        return EContainer::RAW;
+    if (ext == "rm")
+        return EContainer::RM;
+    return EContainer::OMA;
+}
+
+static EContainer SelectAtrac3PlusContainer(const string& outFile, EContainer requestedContainer)
+{
+    if (requestedContainer != EContainer::AUTO)
+        return requestedContainer;
+
+    const string ext = ToLowerAscii(GetFileExt(outFile));
+    if (ext == "wav" || ext == "at3")
+        return EContainer::RIFF;
+    if (ext == "raw" || ext == "dat")
+        return EContainer::RAW;
+    if (ext == "rm")
+        return EContainer::RM;
+    return EContainer::OMA;
+}
+
 static int checkedStoi(const char* data, int min, int max, int def)
 {
     int tmp = 0;
@@ -115,6 +270,7 @@ enum EOptions
     O_NOGAINCONTROL = 6,
     O_ADVANCED_OPT = 7,
     O_YAML_LOG = 8,
+    O_CONTAINER = 9,
 };
 
 static void CheckInputFormat(const TWav* p)
@@ -134,8 +290,9 @@ static TWavPtr OpenWavFile(const string& inFile)
 }
 
 static void PrepareAtrac1Encoder(const string& inFile,
-                                 const string& outFile, 
-                                 const bool noStdOut, 
+                                 const string& outFile,
+                                 const bool noStdOut,
+                                 EContainer requestedContainer,
                                  NAtrac1::TAtrac1EncodeSettings&& encoderSettings,
                                  uint64_t* totalSamples,
                                  TWavPtr* wavIO,
@@ -157,15 +314,14 @@ static void PrepareAtrac1Encoder(const string& inFile,
         std::cerr << "Number of input samples exceeds output format limitation,"
             "the result will be incorrect" << std::endl;
     }
-    const string ext = GetFileExt(outFile);
+    const EContainer container = SelectAtrac1Container(outFile, requestedContainer);
+    CheckContainer(ECodec::ATRAC1, container);
 
     TCompressedOutputPtr aeaIO;
-    string contName;
-    if (ext == "raw" || ext == "dat") {
-        contName = "raw ATRAC1";
+    const string contName = ContainerName(container);
+    if (container == EContainer::RAW) {
         aeaIO = CreateRawOutput(outFile, numChannels, TAtrac1Data::SoundUnitSize);
     } else {
-        contName = "AEA";
         aeaIO = CreateAeaOutput(outFile, "test", numChannels, (uint32_t)numFrames);
     }
 
@@ -211,6 +367,7 @@ static void PrepareAtrac1Decoder(const string& inFile,
 static void PrepareAtrac3Encoder(const string& inFile,
                                  const string& outFile,
                                  const bool noStdOut,
+                                 EContainer requestedContainer,
                                  NAtrac3::TAtrac3EncoderSettings&& encoderSettings,
                                  uint64_t* totalSamples,
                                  const TWavPtr& wavIO,
@@ -225,26 +382,23 @@ static void PrepareAtrac3Encoder(const string& inFile,
             "the result will be incorrect" << std::endl;
     }
 
-    const string ext = GetFileExt(outFile);
+    const EContainer container = SelectAtrac3Container(outFile, requestedContainer);
+    CheckContainer(ECodec::ATRAC3, container);
 
     TCompressedOutputPtr omaIO;
 
-    string contName;
-    if (ext == "wav" || ext == "at3") {
-        contName = "AT3 (RIFF)";
+    const string contName = ContainerName(container);
+    if (container == EContainer::RIFF) {
         omaIO = CreateAt3Output(outFile, 2, numFrames,
                 encoderSettings.ConteinerParams->FrameSz,
                 encoderSettings.ConteinerParams->Js);
-    } else if (ext == "raw" || ext == "dat") {
-        contName = "raw ATRAC3";
+    } else if (container == EContainer::RAW) {
         omaIO = CreateRawOutput(outFile, numChannels);
-    } else if (ext == "rm") {
-        contName = "RealMedia";
+    } else if (container == EContainer::RM) {
         omaIO = CreateRmOutput(outFile, "test", numChannels,
             numFrames, encoderSettings.ConteinerParams->FrameSz,
             encoderSettings.ConteinerParams->Js);
     } else {
-        contName = "OMA";
         omaIO.reset(new TOma(outFile,
             "test",
             numChannels,
@@ -273,6 +427,7 @@ static void PrepareAtrac3Encoder(const string& inFile,
 static void PrepareAtrac3PEncoder(const string& inFile,
                                   const string& outFile,
                                   const bool noStdOut,
+                                  EContainer requestedContainer,
                                   int numChannels,
                                   uint64_t* totalSamples,
                                   const TWavPtr& wavIO,
@@ -287,21 +442,17 @@ static void PrepareAtrac3PEncoder(const string& inFile,
             "the result will be incorrect" << std::endl;
     }
 
-    const string ext = GetFileExt(outFile);
+    const EContainer container = SelectAtrac3PlusContainer(outFile, requestedContainer);
+    CheckContainer(ECodec::ATRAC3PLUS, container);
 
     TCompressedOutputPtr omaIO;
 
-    string contName;
-    if (ext == "wav" || ext == "at3") {
-        contName = "AT3 (RIFF)";
+    const string contName = ContainerName(container);
+    if (container == EContainer::RIFF) {
         omaIO = CreateAt3POutput(outFile, numChannels, numFrames, 2048);
-    } else if (ext == "raw" || ext == "dat") {
-        contName = "raw ATRAC3plus";
+    } else if (container == EContainer::RAW) {
         omaIO = CreateRawOutput(outFile, numChannels);
-    } else if (ext == "rm") {
-        throw std::runtime_error("RealMedia container is not supported for ATRAC3PLUS");
     } else {
-        contName = "OMA";
         omaIO.reset(new TOma(outFile,
             "test",
             numChannels,
@@ -349,6 +500,7 @@ int main_(int argc, char* const* argv)
         { "nogaincontrol", no_argument, NULL, O_NOGAINCONTROL},
         { "advanced", required_argument, NULL, O_ADVANCED_OPT},
         { "yaml-log", required_argument, NULL, O_YAML_LOG},
+        { "container", required_argument, NULL, O_CONTAINER},
         { NULL, 0, NULL, 0}
     };
 
@@ -361,6 +513,7 @@ int main_(int argc, char* const* argv)
     bool noGainControl = false;
     bool noTonalComponents = false;
     string yamlLogFile;
+    EContainer requestedContainer = EContainer::AUTO;
     NAtrac1::TAtrac1EncodeSettings::EWindowMode windowMode = NAtrac1::TAtrac1EncodeSettings::EWindowMode::EWM_AUTO;
     uint32_t winMask = 0; //0 - all is long
     uint32_t bitrate = 0; //0 - use default for codec
@@ -437,6 +590,14 @@ int main_(int argc, char* const* argv)
             case O_YAML_LOG:
                 yamlLogFile = optarg;
                 break;
+            case O_CONTAINER:
+                try {
+                    requestedContainer = ParseContainer(optarg);
+                } catch (const std::invalid_argument& ex) {
+                    printUsage(myName, ex.what());
+                    return 1;
+                }
+                break;
             default:
                 printUsage(myName);
                 return 1;
@@ -459,6 +620,10 @@ int main_(int argc, char* const* argv)
         cerr << "No out file" << endl;
         return 1;
     }
+    if (mode == E_DECODE && requestedContainer != EContainer::AUTO) {
+        cerr << "--container can only be used when encoding" << endl;
+        return 1;
+    }
 
     TPcmEnginePtr pcmEngine;
     TAtracProcessorPtr atracProcessor;
@@ -476,7 +641,7 @@ int main_(int argc, char* const* argv)
                 }
                 using NAtrac1::TAtrac1Data;
                 NAtrac1::TAtrac1EncodeSettings encoderSettings(bfuIdxConst, windowMode, winMask);
-                PrepareAtrac1Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
+                PrepareAtrac1Encoder(inFile, outFile, noStdOut, requestedContainer, std::move(encoderSettings),
                 &totalSamples, &wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac1Data::NumSamples;
             }
@@ -506,7 +671,7 @@ int main_(int argc, char* const* argv)
                 NAtrac3::TAtrac3EncoderSettings encoderSettings(bitrate * 1024, noGainControl,
                                                                 noTonalComponents, wavIO->GetChannelNum(), bfuIdxConst,
                                                                 yamlOut);
-                PrepareAtrac3Encoder(inFile, outFile, noStdOut, std::move(encoderSettings),
+                PrepareAtrac3Encoder(inFile, outFile, noStdOut, requestedContainer, std::move(encoderSettings),
                 &totalSamples, wavIO, &pcmEngine, &atracProcessor);
                 pcmFrameSz = TAtrac3Data::NumSamples;;
             }
@@ -514,7 +679,7 @@ int main_(int argc, char* const* argv)
             case (E_ENCODE | E_ATRAC3PLUS):
             {
                 wavIO = OpenWavFile(inFile);
-                PrepareAtrac3PEncoder(inFile, outFile, noStdOut, wavIO->GetChannelNum(),
+                PrepareAtrac3PEncoder(inFile, outFile, noStdOut, requestedContainer, wavIO->GetChannelNum(),
                     &totalSamples, wavIO, &pcmEngine, &atracProcessor, advancedOpt);
                 pcmFrameSz = 2048;
             }

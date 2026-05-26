@@ -15,6 +15,12 @@ atracdenc {-e <codec> | --encode=<codec> | -d | --decode} -i <in> -o <out>
 -o			path to output file
 -h			print help and exit
 
+--container		explicitly select output container: aea, oma, riff, rm, raw
+			valid combinations:
+			ATRAC1: aea, raw
+			ATRAC3: oma, riff, rm, raw
+			ATRAC3PLUS: oma, riff, raw
+
 --bitrate		allow to specify bitrate (for ATRAC3 + RealMedia container only)
 
 Advanced options:

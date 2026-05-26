@@ -81,6 +81,11 @@ The binary is created at `build-msvc/src/Release/atracdenc.exe`.
 
 Usage:
 
+By default the output container is selected from the output file extension.
+Use `--container {aea|oma|riff|rm|raw}` to select it explicitly.
+Valid combinations are ATRAC1: AEA/RAW, ATRAC3: OMA/RIFF/RM/RAW,
+and ATRAC3PLUS: OMA/RIFF/RAW.
+
 ATRAC1:
 ```
 ./atracdenc -e atrac1 -i ~/01.wav -o /tmp/01.aea
