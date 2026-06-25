@@ -19,6 +19,7 @@
 #include "atrac3_bitstream.h"
 #include "qmf/qmf.h"
 #include <atrac/atrac_psy_common.h>
+#include <atrac/atrac_enc_cache.h>
 #include <bitstream/bitstream.h>
 #include <util.h>
 #include <env.h>
@@ -147,40 +148,82 @@ uint32_t VLCEnc(const uint32_t selector, const int mantissas[TAtrac3Data::MaxSpe
     return bitsUsed;
 }
 
+// Cached per-BFU quantization result reused across the bit-allocation binary
+// search. For a fixed (channel, bfu, wordlen) within one frame the quantized
+// mantissas and their CLC/VLC costs are deterministic, so we compute them once.
+class TAt3SpecUnit : public TUnit {
+public:
+    // TEncCache::TProvideUnit factory: build the unit and quantize `values`.
+    static TUnit* Provide(size_t /*ch*/, size_t bfu, size_t wordlen, const float* values, void*) {
+        auto* u = new TAt3SpecUnit();
+        const uint32_t first = TAtrac3Data::BlockSizeTab[bfu];
+        const uint32_t last = TAtrac3Data::BlockSizeTab[bfu + 1];
+        const uint32_t blockSize = last - first;
+        const float mul = TAtrac3Data::MaxQuant[std::min((uint32_t)wordlen, (uint32_t)7)];
+
+        u->Wordlen = wordlen;
+        u->Multiplier = mul;
+        u->Mantisas.resize(blockSize);
+        // `ea` (extended/adaptive rounding) depends only on bfu, so it is
+        // constant for a given cache key.
+        u->EnergyErr = QuantMantisas(values, 0, blockSize, mul, bfu > LOSY_NAQ_START, u->Mantisas.data());
+        u->ClcBits = CLCEnc(wordlen, u->Mantisas.data(), blockSize, nullptr);
+        u->VlcBits = VLCEnc(wordlen, u->Mantisas.data(), blockSize, nullptr);
+        return u;
+    }
+
+    float EnergyErr = 0.0f;
+    uint32_t ClcBits = 0; // CLC spectrum cost (no per-block header bits)
+    uint32_t VlcBits = 0; // VLC spectrum cost (no per-block header bits)
+};
+
+// atrac3 has only MS stereo and BFUs carry no channel identity, so the cache
+// (reset per channel) is keyed purely on <bfu, wordlen>; `ch` is unused.
+static size_t MakeAt3SpecKey(size_t /*ch*/, size_t bfu, size_t wordlen) {
+    ASSERT(bfu < 32);
+    ASSERT(wordlen < 8);
+    return (bfu << 3) | wordlen;
+}
+// Upper bound on MakeAt3SpecKey(): bfu < 32, wordlen < 8.
+static constexpr size_t kAt3SpecCacheKeys = 1u << 8;
+
 std::pair<uint8_t, uint32_t> CalcSpecsBitsConsumption(const TAtrac3BitStreamWriter::TSingleChannelElement& sce,
                                                       const vector<uint32_t>& precisionPerEachBlocks,
                                                       int* mantisas,
-                                                      vector<float>& energyErr)
+                                                      vector<float>& energyErr,
+                                                      TEncCache& cache)
 {
     const vector<TScaledBlock>& scaledBlocks = sce.ScaledBlocks;
     const uint32_t numBlocks = precisionPerEachBlocks.size();
     uint32_t bitsUsed = numBlocks * 3;
 
-    auto lambda = [numBlocks, mantisas, &precisionPerEachBlocks, &scaledBlocks, &energyErr](bool clcMode, bool calcMant) {
-        uint32_t bits = 0;
-        for (uint32_t i = 0; i < numBlocks; ++i) {
-            if (precisionPerEachBlocks[i] == 0) {
-                continue;
-            }
-            bits += 6; // sfi
-            const uint32_t first = TAtrac3Data::BlockSizeTab[i];
-            const uint32_t last = TAtrac3Data::BlockSizeTab[i + 1];
-            const uint32_t blockSize = last - first;
-            const float mul = TAtrac3Data::MaxQuant[std::min(precisionPerEachBlocks[i], (uint32_t)7)];
-            if (calcMant) {
-                const float* values = scaledBlocks[i].Values.data();
-                energyErr[i] = QuantMantisas(values, first, last, mul, i > LOSY_NAQ_START, mantisas);
-            }
-            bits += clcMode ? CLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr)
-                            : VLCEnc(precisionPerEachBlocks[i], mantisas + first, blockSize, nullptr);
+    // Per-block header (sfi) bits are common to both coding modes; only the
+    // spectrum cost differs. We accumulate the CLC and VLC spectrum costs from
+    // the cached units and pick the cheaper mode once at the end.
+    uint32_t clcSpecBits = 0;
+    uint32_t vlcSpecBits = 0;
+    for (uint32_t i = 0; i < numBlocks; ++i) {
+        if (precisionPerEachBlocks[i] == 0) {
+            continue;
         }
-        return bits;
-    };
+        bitsUsed += 6; // sfi
+        const uint32_t first = TAtrac3Data::BlockSizeTab[i];
+        const uint32_t last = TAtrac3Data::BlockSizeTab[i + 1];
+        const uint32_t blockSize = last - first;
 
-    const uint32_t clcBits = lambda(true, true);
-    const uint32_t vlcBits = lambda(false, false);
-    const bool mode = clcBits <= vlcBits;
-    return std::make_pair(mode, bitsUsed + (mode ? clcBits : vlcBits));
+        auto* unit = static_cast<TAt3SpecUnit*>(
+            cache.GetOrCompute(0, i, precisionPerEachBlocks[i], scaledBlocks[i].Values.data()));
+
+        // Mirror the cached block-local mantissas into the frame-global array
+        // for the eventual EncodeSpecs() dump.
+        std::copy_n(unit->GetMantisas().data(), blockSize, mantisas + first);
+        energyErr[i] = unit->EnergyErr;
+        clcSpecBits += unit->ClcBits;
+        vlcSpecBits += unit->VlcBits;
+    }
+
+    const bool mode = clcSpecBits <= vlcSpecBits;
+    return std::make_pair(mode, bitsUsed + (mode ? clcSpecBits : vlcSpecBits));
 }
 
 static inline bool CheckBfus(uint16_t* numBfu, const vector<uint32_t>& precisionPerEachBlocks)
@@ -593,7 +636,8 @@ public:
         ctx->EnergyErr.assign(ctx->NumBfu, 0.0f);
         std::pair<uint8_t, uint32_t> consumption;
         do {
-            consumption = CalcSpecsBitsConsumption(*ctx->Sce, tmpAlloc, ctx->Mantissas.data(), ctx->EnergyErr);
+            consumption = CalcSpecsBitsConsumption(*ctx->Sce, tmpAlloc, ctx->Mantissas.data(),
+                                                   ctx->EnergyErr, SpecCache);
         } while (ConsiderEnergyErr(ctx->EnergyErr, tmpAlloc));
 
         uint32_t totalBits = consumption.second + EncodeTonalComponents(*ctx->Sce, tmpAlloc, nullptr);
@@ -615,11 +659,13 @@ public:
     }
 
     void Dump(NBitStream::TBitStream& bs) override {
-        if (!Ctx) {
-            return;
+        if (Ctx) {
+            EncodeSpecs(*Ctx->Sce, &bs, Ctx->PrecisionPerBlock, Ctx->CodingMode, Ctx->Mantissas.data());
+            Ctx = nullptr;
         }
-        EncodeSpecs(*Ctx->Sce, &bs, Ctx->PrecisionPerBlock, Ctx->CodingMode, Ctx->Mantissas.data());
-        Ctx = nullptr;
+        // The cached quantization results are only valid for the channel/frame
+        // just finished; drop them before the next channel reuses this part.
+        SpecCache.Reset();
     }
 
     void Reset() noexcept override {
@@ -632,6 +678,7 @@ public:
 
 private:
     TEncodeCtx* Ctx = nullptr;
+    TEncCache SpecCache{kAt3SpecCacheKeys, &TAt3SpecUnit::Provide, &MakeAt3SpecKey};
 };
 
 std::vector<IBitStreamPartEncoder::TPtr> CreateEncParts()
