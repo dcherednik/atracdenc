@@ -120,6 +120,7 @@ set(SOURCE_ATRACDENC_IMPL
     atrac/at1/atrac1_bitalloc.cpp
     atrac/at1/atrac1_dequantiser.cpp
     atrac/atrac_scale.cpp
+    atrac/atrac_enc_cache.cpp
     atrac/atrac_psy_common.cpp
     oma.cpp
     rm.cpp
