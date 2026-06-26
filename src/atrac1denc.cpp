@@ -145,11 +145,21 @@ TPCMEngine::TProcessLambda TAtrac1Decoder::GetLambda() {
 
             TBitStream bitstream(frame->Get(), frame->Size());
 
-            TAtrac1Data::TBlockSizeMod mode(&bitstream);
-            TAtrac1Dequantiser dequantiser;
-            vector<float> specs;
-            specs.resize(512);;
-            dequantiser.Dequant(&bitstream, mode, &specs[0]);
+            vector<float> specs(512, 0.0f);
+            TAtrac1Data::TBlockSizeMod mode;
+
+            try {
+                mode = TAtrac1Data::TBlockSizeMod(&bitstream);
+                TAtrac1Dequantiser dequantiser;
+                dequantiser.Dequant(&bitstream, mode, &specs[0]);
+            } catch (const std::exception& e) {
+                // Malformed frame: decode it as a silent frame (zero spectrum,
+                // neutral block size) so the per-channel overlap/QMF state stays
+                // consistent for the frames that follow.
+                std::cerr << "Skipping invalid ATRAC1 frame: " << e.what() << std::endl;
+                specs.assign(512, 0.0f);
+                mode = TAtrac1Data::TBlockSizeMod();
+            }
 
             IMdct(&specs[0], mode, &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);
             SynthesisFilterBank[channel].Synthesis(&sum[0], &PcmBufLow[channel][0], &PcmBufMid[channel][0], &PcmBufHi[channel][0]);

@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include <cstdint>
+#include <stdexcept>
 #include "bitstream.h"
 
 #ifndef BIGENDIAN_ORDER
@@ -67,8 +68,16 @@ uint32_t TBitStream::Read(int n) {
     const int bytesPos = ReadPos / 8;
     const int overlap = ReadPos % 8;
 
+    // A malformed frame can request more bits than it actually contains.
+    // Reading past the end of the buffer would be out-of-bounds access.
+    if (ReadPos + n > (int)Buf.size() * 8)
+        throw std::runtime_error("read past the end of the bitstream");
+
+    // Number of bytes the requested value actually spans, starting at bytesPos.
+    const int bytesToRead = (overlap + n + 7) / 8;
+
     UBytes t;
-    for (int i = 0; i < n/8 + (overlap ? 2 : 1); ++i) {
+    for (int i = 0; i < bytesToRead; ++i) {
 #ifdef NBITSTREAM__LITTLE_ENDIAN_CPU
         t.bytes[3-i] = (uint8_t)Buf[bytesPos+i];
 #else
