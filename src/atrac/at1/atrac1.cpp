@@ -19,6 +19,8 @@
 #include "atrac1.h"
 #include "bitstream/bitstream.h"
 
+#include <stdexcept>
+
 namespace NAtracDEnc {
 namespace NAtrac1 {
 
@@ -38,6 +40,15 @@ std::array<int, 3> TAtrac1Data::TBlockSizeMod::Parse(NBitStream::TBitStream* str
     tmp[1] = 2 - stream->Read(2);
     tmp[2] = 3 - stream->Read(2);
     stream->Read(2); //skip unused 2 bits
+
+    // LogCount is used as the shift count for the number of MDCT blocks
+    // (1 << LogCount). A malformed frame can encode a value that makes this
+    // negative, which is undefined behaviour and leads to out-of-bounds
+    // access during the (I)MDCT. Reject such frames.
+    for (int i = 0; i < 3; i++) {
+        if (tmp[i] < 0)
+            throw std::runtime_error("invalid ATRAC1 block size mode");
+    }
     return tmp;
 }
 
