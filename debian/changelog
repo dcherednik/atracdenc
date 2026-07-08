@@ -1,3 +1,9 @@
+atracdenc (0.2.3) UNRELEASED; urgency=low
+
+  * Validate ATRAC1 decoder input and skip malformed frames.
+
+ -- Daniil Cherednik <pkgsup@mastervirt.ru>  Wed, 8 Jul 2026 19:29:06 +0200
+
 atracdenc (0.2.2) UNRELEASED; urgency=low
 
   * Disable FMA for libgha.
