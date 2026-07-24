@@ -70,10 +70,17 @@ class IGhaProcessor {
 public:
     using TBufPtr = std::array<const float*, 2>;
     virtual ~IGhaProcessor() {}
-    virtual const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2, float* w1, float* w2) = 0;
+    // raw1Cur/raw2Cur: the same logical frame as b1[0]/b2[0] (Cur), but
+    // pre-PQF. Only used by the wideband detection path; the legacy
+    // per-subband path ignores them.
+    virtual const TAt3PGhaData* DoAnalize(TBufPtr b1, TBufPtr b2, float* w1, float* w2,
+        const float* raw1Cur, const float* raw2Cur) = 0;
 };
 
-std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo);
+// refineMode selects the wideband tone-refinement strategy (no effect unless
+// wideband is enabled): 0 = subband-domain Newton refit (default), 1 =
+// raw-2048-domain joint refit then re-project. See TAt3PEnc::TSettings.
+std::unique_ptr<IGhaProcessor> MakeGhaProcessor0(bool stereo, bool wideband, int refineMode = 0);
 
 } // namespace NAtracDEnc
 

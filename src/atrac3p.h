@@ -31,13 +31,29 @@ public:
             GHA_PASS_INPUT =     1,
             GHA_WRITE_TONAL =    1 << 1,
             GHA_WRITE_RESIUDAL = 1 << 2,
+            // Opt-in: extract tones from the wideband (pre-PQF) signal and
+            // analytically project them into the PQF subband domain,
+            // instead of detecting them independently per subband. Fixes
+            // amplitude dropouts for tones near PQF subband boundaries; see
+            // the "wideband GHA + PQF-domain projection" experiment. Off by
+            // default: v1 has no onset/offset (envelope) detection of its
+            // own (always-present tones) and is unproven on real content.
+            GHA_WIDEBAND =       1 << 3,
 
             GHA_ENABLED = GHA_PASS_INPUT | GHA_WRITE_TONAL | GHA_WRITE_RESIUDAL
         };
         uint8_t UseGha;
 
+        // Wideband (GHA_WIDEBAND) tone-refinement strategy, selected via the
+        // "ghawbrefine" advanced option. 0 = subband-domain Newton refit
+        // (default, proven to beat legacy on real audio); 1 = raw-2048-domain
+        // joint refit then re-project (experimental). No effect unless
+        // GHA_WIDEBAND is set.
+        uint8_t WidebandRefineMode;
+
         TSettings()
             : UseGha(GHA_ENABLED)
+            , WidebandRefineMode(0)
         {}
     };
     TAt3PEnc(TCompressedOutputPtr&& out, int channels, TSettings settings);

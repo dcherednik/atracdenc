@@ -39,7 +39,7 @@ public:
     TImpl(ICompressedOutput* out, int channels, TSettings settings)
         : BitStream(out, 2048)
         , ChannelCtx(channels)
-        , GhaProcessor(MakeGhaProcessor0(channels == 2))
+        , GhaProcessor(MakeGhaProcessor0(channels == 2, settings.UseGha & TSettings::GHA_WIDEBAND, settings.WidebandRefineMode))
         , Settings(settings)
     {
         delay.NumToneBands = 0;
@@ -64,6 +64,15 @@ private:
         float Buf1[TAt3PEnc::NumSamples] = {0};
         float Buf2[TAt3PEnc::NumSamples] = {0};
         float PrevBuf[TAt3PEnc::NumSamples] = {0};
+
+        // Raw (pre-PQF) PCM, mirroring the Buf1/Buf2/CurBuf/NextBuf look-ahead
+        // scheme exactly so RawCurBuf always holds the same logical frame as
+        // CurBuf (PQF domain) at DoAnalize-call time. Needed by the wideband
+        // GHA path, which analyzes the original signal directly.
+        float* RawNextBuf = RawBuf1;
+        float* RawCurBuf = nullptr;
+        float RawBuf1[TAt3PEnc::NumSamples] = {0};
+        float RawBuf2[TAt3PEnc::NumSamples] = {0};
         TAt3pMDCT::THistBuf MdctBuf = {{{0}}};
         std::vector<float> Specs;
     };
@@ -82,7 +91,7 @@ EncodeFrame(const float* data, int channels)
 {
     int needMore = 0;
     for (int ch = 0; ch < channels; ch++) {
-        float src[TAt3PEnc::NumSamples];
+        float* src = ChannelCtx[ch].RawNextBuf;
         for (size_t i = 0; i < NumSamples; ++i) {
             src[i] = data[i * channels  + ch];
         }
@@ -92,6 +101,10 @@ EncodeFrame(const float* data, int channels)
             assert(ChannelCtx[ch].NextBuf == ChannelCtx[ch].Buf1);
             ChannelCtx[ch].CurBuf = ChannelCtx[ch].Buf2;
             std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
+
+            assert(ChannelCtx[ch].RawNextBuf == ChannelCtx[ch].RawBuf1);
+            ChannelCtx[ch].RawCurBuf = ChannelCtx[ch].RawBuf2;
+            std::swap(ChannelCtx[ch].RawNextBuf, ChannelCtx[ch].RawCurBuf);
             needMore++;
         }
     }
@@ -109,13 +122,15 @@ EncodeFrame(const float* data, int channels)
     const float* b2Cur = (channels == 2) ? ChannelCtx[1].CurBuf : nullptr;
     const float* b2Next = (channels == 2) ? ChannelCtx[1].NextBuf : nullptr;
 
+    const float* raw1Cur = ChannelCtx[0].RawCurBuf;
+    const float* raw2Cur = (channels == 2) ? ChannelCtx[1].RawCurBuf : nullptr;
 
     const TAt3PGhaData* p = nullptr;
     if (delay.NumToneBands) {
         p = &delay;
     }
 
-    const TAt3PGhaData* tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next}, b1Prev, b2Prev);
+    const TAt3PGhaData* tonalBlock = GhaProcessor->DoAnalize({b1Cur, b1Next}, {b2Cur, b2Next}, b1Prev, b2Prev, raw1Cur, raw2Cur);
 
     std::vector<TAt3PBitStream::TSingleChannelElement> sces;
     sces.resize(channels);
@@ -153,6 +168,7 @@ EncodeFrame(const float* data, int channels)
             memset(ChannelCtx[ch].PrevBuf, 0, sizeof(float) * TAt3PEnc::NumSamples);
         }
         std::swap(ChannelCtx[ch].NextBuf, ChannelCtx[ch].CurBuf);
+        std::swap(ChannelCtx[ch].RawNextBuf, ChannelCtx[ch].RawCurBuf);
     }
     if (tonalBlock && (Settings.UseGha & TSettings::GHA_WRITE_TONAL)) {
         delay = *tonalBlock;
@@ -178,7 +194,7 @@ TPCMEngine::TProcessLambda TAt3PEnc::GetLambda() {
 
 static void SetGha(const std::string& str, TAt3PEnc::TSettings& settings) {
     int mask = std::stoi(str);
-    if (mask > 7 || mask < 0) {
+    if (mask > 15 || mask < 0) {
         throw std::runtime_error("invalud value of GHA processing mask");
     }
 
@@ -188,8 +204,19 @@ static void SetGha(const std::string& str, TAt3PEnc::TSettings& settings) {
         std::cerr << "GHA_WRITE_RESIUDAL" << std::endl;
     if (mask & TAt3PEnc::TSettings::GHA_WRITE_TONAL)
         std::cerr << "GHA_WRITE_TONAL" << std::endl;
+    if (mask & TAt3PEnc::TSettings::GHA_WIDEBAND)
+        std::cerr << "GHA_WIDEBAND" << std::endl;
 
     settings.UseGha = mask;
+}
+
+static void SetWidebandRefine(const std::string& str, TAt3PEnc::TSettings& settings) {
+    int mode = std::stoi(str);
+    if (mode < 0 || mode > 1) {
+        throw std::runtime_error("invalid ghawbrefine value (expected 0=subband or 1=raw)");
+    }
+    settings.WidebandRefineMode = (uint8_t)mode;
+    std::cerr << "GHA_WIDEBAND_REFINE=" << (mode == 1 ? "raw" : "subband") << std::endl;
 }
 
 
@@ -197,7 +224,8 @@ static void SetGha(const std::string& str, TAt3PEnc::TSettings& settings) {
 void TAt3PEnc::ParseAdvancedOpt(const char* opt, TSettings& settings) {
     typedef void (*processFn)(const std::string& str, TSettings& settings);
     static std::unordered_map<std::string, processFn> keys {
-        {"ghadbg", &SetGha}
+        {"ghadbg", &SetGha},
+        {"ghawbrefine", &SetWidebandRefine}
     };
 
     if (opt == nullptr)
