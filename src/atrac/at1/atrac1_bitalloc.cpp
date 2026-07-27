@@ -45,6 +45,20 @@ static const float FixedBitAllocTableShort[TAtrac1Data::MaxBfus] = {
     4, 4, 4, 4, 4, 4, 4, 4,   0, 0, 0, 0, 0, 0, 0, 0
 };
 
+// Blend between signal-adaptive and fixed-table bit allocation (see
+// CalcBitsAllocation). AnalizeScaleFactorSpread() derives this from the standard
+// deviation of the scale factor indices, but on ATRAC1 that measures worse than a
+// constant across the EBU SQAM corpus: the heuristic drives spread towards 1 on
+// sparse/tonal material, making allocation nearly proportional to band energy and
+// starving quiet bands that have no loud neighbour to mask them.
+//
+// Mean noise-to-mask ratio over the 70-track corpus (lower is better):
+//   heuristic -13.09 dB | 0.30 -13.72 | 0.35 -13.75 | 0.40 -13.76 | 0.45 -13.73
+// and clamping the heuristic rather than replacing it is worse the wider the
+// clamp, so the optimum is broad and the statistic itself is not carrying signal.
+// ATRAC3 still uses AnalizeScaleFactorSpread(); it was not evaluated here.
+static constexpr float BitAllocSpread = 0.4f;
+
 static const uint32_t BitBoostMask[TAtrac1Data::MaxBfus] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
@@ -336,7 +350,7 @@ uint32_t TAt1BitAlloc::Write(const std::vector<TScaledBlock>& scaledBlocks, cons
         blockSize,
         loudness,
         bfuIdx,
-        AnalizeScaleFactorSpread(scaledBlocks),
+        BitAllocSpread,
         bitsPerEachBlock,
     };
 
