@@ -21,6 +21,7 @@
 #include <atrac/atrac_psy_common.h>
 #include <atrac/atrac_scale.h>
 #include <math.h>
+#include <algorithm>
 #include <cassert>
 #include <bitstream/bitstream.h>
 #include <env.h>
@@ -133,6 +134,32 @@ void CalcAt1ATH() noexcept {
     }
 }
 
+// Bias applied to the middle and high QMF bands, scaled by how low-heavy the
+// spectrum is. Tuned on the EBU SQAM corpus; see the comment in
+// CalcBitsAllocation() and the commit message.
+static constexpr float BandBiasGain = 0.3f;       // per unit of tilt
+static constexpr float BandBiasTiltFloor = 7.0f;  // no bias below this tilt
+static constexpr float BandBiasMax = 1.5f;        // cap, see gong regression
+static constexpr float BandBiasHighRatio = 0.5f;  // high band gets half of it
+
+// Mean scale factor index of the low band minus that of the middle band: a cheap
+// measure of how much of the energy sits below 5.5 kHz.
+static float CalcLowToMidTilt(const std::vector<TScaledBlock>& scaledBlocks,
+                              const uint32_t bfuNum) noexcept {
+    float sumLow = 0.0f, sumMid = 0.0f;
+    uint32_t nLow = 0, nMid = 0;
+    for (size_t i = 0; i < bfuNum; ++i) {
+        switch (TAtrac1Data::BfuToBand(i)) {
+            case 0: sumLow += scaledBlocks[i].ScaleFactorIndex; nLow++; break;
+            case 1: sumMid += scaledBlocks[i].ScaleFactorIndex; nMid++; break;
+            default: break;
+        }
+    }
+    if (!nLow || !nMid)
+        return 0.0f;
+    return sumLow / nLow - sumMid / nMid;
+}
+
 static vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
                                            const uint32_t bfuNum,
                                            const float spread,
@@ -140,6 +167,21 @@ static vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scal
                                            const TAtrac1Data::TBlockSizeMod& blockSize,
                                            const float loudness) noexcept {
     vector<uint32_t> bitsPerEachBlock(bfuNum);
+
+    // Sustained tonal material (woodwinds, bowed strings) leaves the low band far
+    // below the masking threshold while 8-11 kHz is audibly starved: those BFUs
+    // end up with a word length near zero in 40-49% of frames. Shift a little of
+    // the allocation upwards when the spectrum is low-heavy.
+    //
+    // A constant bias does not work -- it helps tonal material and costs
+    // spectrally flat material about as much, because percussion has no spare
+    // margin in the low band to give away. Scaling it by how low-heavy the
+    // spectrum is avoids that; the tilt is derived from data already to hand.
+    const float tilt = CalcLowToMidTilt(scaledBlocks, bfuNum);
+    const float midBias = std::min(BandBiasMax,
+                                   BandBiasGain * std::max(0.0f, tilt - BandBiasTiltFloor));
+    const float bandBias[TAtrac1Data::NumQMF] = {0.0f, midBias, midBias * BandBiasHighRatio};
+
     for (size_t i = 0; i < bitsPerEachBlock.size(); ++i) {
         bool shortBlock = blockSize.LogCount[TAtrac1Data::BfuToBand(i)];
         const float fix = shortBlock ? FixedBitAllocTableShort[i] : FixedBitAllocTableLong[i];
@@ -148,7 +190,8 @@ static vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scal
         if (!shortBlock && scaledBlocks[i].Energy < ath) {
             bitsPerEachBlock[i] = 0;
         } else {
-            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2f) + (1.0f - spread) * fix - shift;
+            int tmp = spread * ( (float)scaledBlocks[i].ScaleFactorIndex/3.2f) + (1.0f - spread) * fix - shift
+                    + bandBias[TAtrac1Data::BfuToBand(i)];
             if (tmp > 16) {
                 bitsPerEachBlock[i] = 16;
             } else if (tmp < 2) {
