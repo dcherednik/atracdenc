@@ -22,6 +22,7 @@
 #include <atrac/atrac_scale.h>
 #include <math.h>
 #include <algorithm>
+#include <map>
 #include <cassert>
 #include <bitstream/bitstream.h>
 #include <env.h>
@@ -158,6 +159,231 @@ static float CalcLowToMidTilt(const std::vector<TScaledBlock>& scaledBlocks,
     if (!nLow || !nMid)
         return 0.0f;
     return sumLow / nLow - sumMid / nMid;
+}
+
+
+// --- rate-distortion allocation -------------------------------------------
+//
+// CalcBitsAllocation above decides how many bits the frame spends and how many
+// BFUs it transmits. It also decides each word length, from a formula, and
+// nothing checks what that costs in distortion. Choosing the word lengths by
+// search instead -- spending the same bits over the same BFUs, but putting each
+// where it removes the most audible noise -- measures better on every statistic
+// below.
+//
+// The distortion is exact, not modelled. ATRAC1 reconstructs a coefficient as
+// q/(2^(w-1)-1), so the error a candidate word length leaves follows directly
+// from the scaled coefficients the encoder already holds.
+
+static const uint32_t MaxWordLen = 16;
+static const float BarkStep = 0.5f;
+static const uint32_t ShortMdctBins = 32;
+
+static std::vector<float> At1BandZc;                    // band centre, Bark
+static std::vector<float> At1BandAth;                   // band ATH, linear power
+static std::vector<std::vector<float>> At1BandSpread;   // masker -> maskee
+static std::vector<uint32_t> At1LineBand[2];            // [shortWin][spectral line]
+static std::vector<std::vector<pair<uint32_t, float>>> At1BfuShare[2];
+
+static float ToBark(float f) noexcept {
+    return 13.0f * atanf(0.00076f * f) + 3.5f * atanf((f / 7500.0f) * (f / 7500.0f));
+}
+
+// Frequency of spectral line s. Under a short window each QMF band is
+// transformed in 32-bin sub-blocks, so the frequency follows the line's position
+// inside its sub-block, not its position in the buffer.
+static float LineHz(uint32_t s, bool shortWin) noexcept {
+    const float lo = s < 128 ? 0.0f : (s < 256 ? 5512.5f : 11025.0f);
+    const float width = s < 256 ? 5512.5f : 11025.0f;
+    const uint32_t base = s < 128 ? 0 : (s < 256 ? 128 : 256);
+    const float pos = shortWin ? (s - base) % ShortMdctBins + 0.5f
+                               : (s - base) + 0.5f;
+    const float bins = shortWin ? ShortMdctBins : (s < 256 ? 128 : 256);
+    return lo + pos / bins * width;
+}
+
+// A 0.5 Bark grid over the spectral lines, and for each BFU the share of its
+// lines falling in each band. Quantisation noise is uniform per line, so that
+// share is how much of the BFU's noise lands in each band.
+static void CalcAt1BarkGrid() noexcept {
+    if (At1BandZc.size())
+        return;
+    const uint32_t nBands = (uint32_t)(ToBark(22050.0f) / BarkStep) + 1;
+    At1BandZc.resize(nBands);
+    for (uint32_t b = 0; b < nBands; ++b)
+        At1BandZc[b] = (b + 0.5f) * BarkStep;
+
+    At1BandSpread.assign(nBands, std::vector<float>(nBands, 0.0f));
+    for (uint32_t b = 0; b < nBands; ++b) {
+        for (uint32_t c = 0; c < nBands; ++c) {
+            const float dz = At1BandZc[b] - At1BandZc[c] + 0.474f;
+            const float sf = 15.81f + 7.5f * dz - 17.5f * sqrtf(1.0f + dz * dz);
+            At1BandSpread[b][c] = powf(10.0f, 0.1f * sf);
+        }
+    }
+
+    for (uint32_t m = 0; m < 2; ++m) {
+        At1LineBand[m].resize(TAtrac1Data::NumSamples);
+        for (uint32_t s = 0; s < TAtrac1Data::NumSamples; ++s) {
+            const uint32_t b = (uint32_t)(ToBark(LineHz(s, m != 0)) / BarkStep);
+            At1LineBand[m][s] = std::min(b, nBands - 1);
+        }
+        At1BfuShare[m].assign(TAtrac1Data::MaxBfus, {});
+        for (uint32_t i = 0; i < TAtrac1Data::MaxBfus; ++i) {
+            const uint32_t start = m ? TAtrac1Data::SpecsStartShort[i]
+                                     : TAtrac1Data::SpecsStartLong[i];
+            const uint32_t n = TAtrac1Data::SpecsPerBlock[i];
+            std::map<uint32_t, uint32_t> hist;
+            for (uint32_t k = 0; k < n; ++k)
+                hist[At1LineBand[m][start + k]]++;
+            for (const auto& kv : hist)
+                At1BfuShare[m][i].emplace_back(kv.first, (float)kv.second / n);
+        }
+    }
+
+    // Band ATH: the quietest line in the band. Bands with no line of their own
+    // inherit the one below.
+    const auto athSpec = CalcATH(TAtrac1Data::NumSamples, 44100);
+    std::vector<float> athDb(nBands, 1e9f);
+    for (uint32_t s = 0; s < TAtrac1Data::NumSamples; ++s) {
+        const uint32_t b = At1LineBand[0][s];
+        athDb[b] = fmin(athDb[b], athSpec[s]);
+    }
+    float last = 0.0f;
+    for (uint32_t b = 0; b < nBands; ++b)
+        if (athDb[b] < 1e8f) { last = athDb[b]; break; }
+    At1BandAth.resize(nBands);
+    for (uint32_t b = 0; b < nBands; ++b) {
+        if (athDb[b] < 1e8f)
+            last = athDb[b];
+        At1BandAth[b] = powf(10.0f, 0.1f * last);
+    }
+}
+
+// 1 / masking threshold per BFU, resolved on the Bark grid rather than per BFU.
+// A threshold per BFU credits each BFU with masking itself, which is wrong for a
+// loud narrow tone: block floating point spreads its quantisation noise over
+// every line of the BFU, including where the tone masks nothing.
+static vector<float> CalcBarkWeights(const std::vector<TScaledBlock>& scaledBlocks,
+                                     const uint32_t bfuNum,
+                                     const TAtrac1Data::TBlockSizeMod& blockSize,
+                                     const float loudness) noexcept {
+    CalcAt1BarkGrid();
+    const uint32_t nBands = (uint32_t)At1BandZc.size();
+
+    vector<float> power(nBands, 0.0f);
+    for (uint32_t i = 0; i < bfuNum; ++i) {
+        const bool sw = blockSize.LogCount[TAtrac1Data::BfuToBand(i)] != 0;
+        const float scale = TAtrac1Data::ScaleTable[scaledBlocks[i].ScaleFactorIndex];
+        const uint32_t start = sw ? TAtrac1Data::SpecsStartShort[i]
+                                  : TAtrac1Data::SpecsStartLong[i];
+        for (uint32_t k = 0; k < scaledBlocks[i].Values.size(); ++k) {
+            const float v = scaledBlocks[i].Values[k] * scale;
+            power[At1LineBand[sw][start + k]] += v * v;
+        }
+    }
+
+    // Tonality from the flatness of the whole frame: tonal maskers mask less.
+    double logSum = 0.0, arith = 0.0;
+    for (uint32_t b = 0; b < nBands; ++b) {
+        const double e = std::max((double)power[b], 1e-30);
+        logSum += log(e);
+        arith += e;
+    }
+    const double geo = exp(logSum / nBands);
+    const float sfmDb = 10.0f * log10f((float)std::max(geo / std::max(arith / nBands, 1e-30), 1e-30));
+    const float tonal = std::min(1.0f, std::max(0.0f, sfmDb / -60.0f));
+
+    vector<float> thr(nBands);
+    for (uint32_t b = 0; b < nBands; ++b) {
+        float mask = 0.0f;
+        for (uint32_t c = 0; c < nBands; ++c)
+            mask += At1BandSpread[b][c] * power[c];
+        const float offsetDb = tonal * (14.5f + At1BandZc[b]) + (1.0f - tonal) * 5.5f;
+        thr[b] = std::max(mask / powf(10.0f, 0.1f * offsetDb), At1BandAth[b] * loudness);
+    }
+
+    vector<float> weight(bfuNum, 0.0f);
+    for (uint32_t i = 0; i < bfuNum; ++i) {
+        const bool sw = blockSize.LogCount[TAtrac1Data::BfuToBand(i)] != 0;
+        float w = 0.0f;
+        for (const auto& bs : At1BfuShare[sw][i])
+            w += bs.second / std::max(thr[bs.first], 1e-30f);
+        weight[i] = w;
+    }
+    return weight;
+}
+
+// noise[w] = squared quantisation error in this BFU at word length w, in the
+// absolute (pre-scaling) domain. w = 0 and 1 both mean the BFU is dropped.
+static void CalcNoiseTable(const TScaledBlock& block, float* noise) noexcept {
+    const double scale = TAtrac1Data::ScaleTable[block.ScaleFactorIndex];
+    const double s2 = scale * scale;
+    double dropped = 0.0;
+    for (const float v : block.Values)
+        dropped += (double)v * v;
+    noise[0] = noise[1] = (float)(dropped * s2);
+    for (uint32_t w = 2; w <= MaxWordLen; ++w) {
+        const double lim = (1 << (w - 1)) - 1;
+        double err = 0.0;
+        for (const float v : block.Values) {
+            const double d = (double)v - lrint(v * lim) / lim;
+            err += d * d;
+        }
+        noise[w] = (float)(err * s2);
+    }
+}
+
+// Word lengths spending `budget` bits over `bfuNum` BFUs, chosen by search.
+static vector<uint32_t> CalcGreedyAllocation(const std::vector<TScaledBlock>& scaledBlocks,
+                                             const uint32_t bfuNum,
+                                             const TAtrac1Data::TBlockSizeMod& blockSize,
+                                             const float loudness,
+                                             const uint32_t budget) noexcept {
+    vector<float> noise(bfuNum * (MaxWordLen + 1));
+    for (uint32_t i = 0; i < bfuNum; ++i)
+        CalcNoiseTable(scaledBlocks[i], &noise[i * (MaxWordLen + 1)]);
+
+    const vector<float> weight = CalcBarkWeights(scaledBlocks, bfuNum, blockSize, loudness);
+
+    // Spend each bit where it removes the most threshold-weighted noise.
+    //
+    // Each step considers every reachable word length, not just the next one up.
+    // A block-floating-point rate-distortion curve has PLATEAUS: a coefficient of
+    // 0.841 quantises to 1/1 at word length 2 and to 3/3 at 3, the same
+    // reconstructed value, so that step buys nothing, while 4 drops the noise
+    // 9 dB. A search taking only strictly positive single steps is trapped behind
+    // the plateau and starves the band holding a loud tone down to two bits.
+    vector<uint32_t> wordLen(bfuNum, 0);
+    uint32_t spent = 0;
+    for (;;) {
+        uint32_t bestBfu = bfuNum, bestNext = 0;
+        float bestGain = 0.0f, bestCost = 1.0f;
+        for (uint32_t i = 0; i < bfuNum; ++i) {
+            const float* n = &noise[i * (MaxWordLen + 1)];
+            const uint32_t nLines = TAtrac1Data::SpecsPerBlock[i];
+            // 1 is not a legal ATRAC1 word length, so an unused BFU starts at 2.
+            const uint32_t from = wordLen[i] ? wordLen[i] : 1;
+            for (uint32_t next = from + 1; next <= MaxWordLen; ++next) {
+                const uint32_t cost = nLines * (next - wordLen[i]);
+                if (spent + cost > budget)
+                    break;
+                const float gain = (n[wordLen[i]] - n[next]) * weight[i];
+                // gain/cost > bestGain/bestCost, without the divisions
+                if (gain > 0.0f && gain * bestCost > bestGain * cost) {
+                    bestBfu = i;
+                    bestNext = next;
+                    bestGain = gain;
+                    bestCost = (float)cost;
+                }
+            }
+        }
+        if (bestBfu == bfuNum)
+            break;
+        spent += TAtrac1Data::SpecsPerBlock[bestBfu] * (bestNext - wordLen[bestBfu]);
+        wordLen[bestBfu] = bestNext;
+    }
+    return wordLen;
 }
 
 static vector<uint32_t> CalcBitsAllocation(const std::vector<TScaledBlock>& scaledBlocks,
@@ -354,6 +580,15 @@ public:
             BitsPerEachBlock = std::move(tmpAlloc);
 
             ctx->Booster->ApplyBoost(&BitsPerEachBlock, bitsUsed, TConfigure::CalcAvaliableBitsForBfus(BitsPerEachBlock.size()));
+
+            // How many bits this frame spends and how many BFUs it transmits are
+            // now fixed. Spend exactly those bits over exactly those BFUs, but
+            // choose the word lengths by search rather than by formula.
+            uint32_t budget = 0;
+            for (size_t i = 0; i < BitsPerEachBlock.size(); ++i)
+                budget += TAtrac1Data::SpecsPerBlock[i] * BitsPerEachBlock[i];
+            BitsPerEachBlock = CalcGreedyAllocation(ctx->ScaledBlocks, BitsPerEachBlock.size(),
+                                                    ctx->BlockSize, ctx->Loudness, budget);
 
             Ctx = ctx;
         }
