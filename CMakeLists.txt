@@ -78,6 +78,16 @@ if (ATRACDENC_PYTHON_EXECUTABLE)
     add_input_file_test(output_utf8_rm_filename utf8-output-rm)
     add_input_file_test(output_utf8_aea_filename utf8-output-aea)
     add_input_file_test(decode_utf8_input_filename utf8-decode-input)
+
+    # Validates the perceptual metric used by the quality harness on synthetic
+    # signals; needs no audio corpus. Skips if numpy is unavailable.
+    add_test(NAME quality_metric_self_check
+        COMMAND ${ATRACDENC_PYTHON_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/test/quality/atrac_quality.py
+            --atracdenc $<TARGET_FILE:atracdenc>
+            --self-check
+    )
+    set_tests_properties(quality_metric_self_check PROPERTIES SKIP_RETURN_CODE 77)
     add_input_file_test(decode_utf8_output_filename utf8-decode-output)
     add_input_file_test(explicit_container explicit-container)
 endif()
