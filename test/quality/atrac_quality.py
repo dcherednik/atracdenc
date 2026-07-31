@@ -118,21 +118,38 @@ def _frames(x, lo, hi):
 
 
 def nmr(ref, test, bands=None):
-    """Noise-to-mask ratio in dB, and the fraction of band-frames above threshold."""
+    """Noise-to-mask ratio in dB, and the fraction of band-frames above threshold.
+
+    Each channel is measured against its own masking threshold and the linear
+    ratios are pooled. Downmixing first would measure only (eL + eR) / 2 and lose
+    (eL - eR) / 2 entirely: for an anti-phase signal L = S, R = -S, independent
+    encoding gives roughly Q(S), -Q(S), so both the reference and the decoded
+    downmix are silence and the metric reports near -inf however much
+    quantisation noise is present.
+    """
     bands = bands or Bands()
     ref, test = np.asarray(ref, float), np.asarray(test, float)
     n = min(len(ref), len(test))
     ref, test = ref[:n], test[:n]
-    if ref.ndim > 1:
-        ref, test = ref.mean(1), test.mean(1)
-    ref, test = ref / 32768.0, test / 32768.0
-    err = ref - test
+    if ref.ndim == 1:
+        ref, test = ref[:, None], test[:, None]
 
     total = 1 + max(0, (len(ref) - FFT) // HOP)
     if total <= 0:
         return float("nan"), float("nan")
 
     acc, above, cells = 0.0, 0, 0
+    for ch in range(ref.shape[1]):
+        acc, above, cells = _nmr_channel(ref[:, ch] / 32768.0, test[:, ch] / 32768.0,
+                                         bands, total, acc, above, cells)
+    # mean of per-band-frame ratios; a ratio of sums lets the wide high-frequency
+    # hearing-threshold floors swamp the numerator
+    return 10 * math.log10(max(acc / max(cells, 1), 1e-30)), above / max(cells, 1)
+
+
+def _nmr_channel(ref, test, bands, total, acc, above, cells):
+    """Accumulate one channel's noise-to-mask ratios."""
+    err = ref - test
     for lo in range(0, total, BLOCK):
         pr = bands.power(_frames(ref, lo, lo + BLOCK))
         pe = bands.power(_frames(err, lo, lo + BLOCK))
@@ -149,9 +166,7 @@ def nmr(ref, test, bands=None):
         acc += float(ratio.sum())
         above += int((ratio > 1).sum())
         cells += ratio.size
-    # mean of per-band-frame ratios; a ratio of sums lets the wide high-frequency
-    # hearing-threshold floors swamp the numerator
-    return 10 * math.log10(max(acc / max(cells, 1), 1e-30)), above / max(cells, 1)
+    return acc, above, cells
 
 
 # ------------------------------------------------------------------ alignment
@@ -200,24 +215,45 @@ def self_check(atracdenc, tmp, bands):
     """
     rng = np.random.default_rng(0)
     t = np.arange(8 * SR) / SR
+    tone = np.sin(2 * np.pi * 440 * t) * 12000
+    # The anti-phase case guards the channel handling. A codec encoding L and R
+    # independently turns L = S, R = -S into roughly Q(S), -Q(S), so the error is
+    # anti-phase too. Measured after a downmix, both reference and error cancel to
+    # silence and the metric reports near -inf however loud the noise is; measured
+    # per channel it must agree with the in-phase case.
     cases = {
-        "broadband": (rng.standard_normal((len(t), 2)) * 6000),
-        "pure tone": (np.sin(2 * np.pi * 440 * t)[:, None] * np.ones(2) * 12000),
+        "broadband": (rng.standard_normal((len(t), 2)) * 6000, False),
+        "pure tone": (tone[:, None] * np.ones(2), False),
+        "anti-phase stereo": (tone[:, None] * np.array([1.0, -1.0]), True),
     }
     ok = True
-    for name, sig in cases.items():
+    seen = {}
+    for name, (sig, anti) in cases.items():
         print(f"  {name}:")
         prev = None
         for snr in (75, 60, 45, 30, 15):
             power = (sig ** 2).mean()
-            noise = rng.normal(0, math.sqrt(power / 10 ** (snr / 10)), sig.shape)
+            sigma = math.sqrt(power / 10 ** (snr / 10))
+            if anti:
+                one = rng.normal(0, sigma, len(sig))
+                noise = one[:, None] * np.array([1.0, -1.0])
+            else:
+                noise = rng.normal(0, sigma, sig.shape)
             value, above = nmr(sig, sig + noise, bands)
             flag = ""
             if prev is not None and value < prev - 1e-9:
                 flag, ok = "   NOT MONOTONIC", False
             prev = value
+            seen[(name, snr)] = value
             print(f"    SNR {snr:3d} dB -> NMR {value:+7.2f} dB  "
                   f"({100 * above:5.1f}% of band-frames audible){flag}")
+    # Same noise per channel, same verdict: a downmix would report -inf here.
+    for snr in (75, 60, 45, 30, 15):
+        drift = abs(seen[("anti-phase stereo", snr)] - seen[("pure tone", snr)])
+        if drift > 3.0:
+            print(f"    anti-phase at {snr} dB differs from in-phase by {drift:.1f} dB"
+                  f"   CHANNELS MISMEASURED")
+            ok = False
     print(f"  metric self-check: {'pass' if ok else 'FAIL'}")
     return ok
 
@@ -233,6 +269,8 @@ def main():
     ap.add_argument("--save-baseline", help="write results as a baseline JSON")
     ap.add_argument("--tolerance", type=float, default=0.2,
                     help="dB a track may worsen before it counts as a regression")
+    ap.add_argument("--allow-missing", action="store_true",
+                    help="do not fail when a baseline track is absent from this run")
     ap.add_argument("--self-check", action="store_true",
                     help="validate the metric on synthetic signals and exit")
     args = ap.parse_args()
@@ -278,21 +316,40 @@ def main():
     if args.baseline:
         base = json.loads(Path(args.baseline).read_text())
         worse = []
-        for name, r in results.items():
-            old = base["tracks"].get(name)
-            if old is None:
+        for name in results:
+            if name not in base["tracks"]:
                 print(f"  {name}: not in baseline, skipped")
+        # Iterate the BASELINE, not this run: a track that now fails to encode,
+        # decode or measure drops out of `results`, and comparing only what was
+        # measured would let that pass silently as "no regressions".
+        missing = [n for n in base["tracks"] if n not in results]
+        for name, old in base["tracks"].items():
+            r = results.get(name)
+            if r is None:
                 continue
             delta = r["nmr_db"] - old["nmr_db"]          # positive = noisier = worse
             if delta > args.tolerance:
                 worse.append((name, old["nmr_db"], r["nmr_db"], delta))
         print(f"baseline mean {base['mean_nmr_db']:+.3f} dB -> {mean:+.3f} dB "
               f"({mean - base['mean_nmr_db']:+.3f})")
+        failed = False
+        if missing and not args.allow_missing:
+            print(f"\nMISSING: {len(missing)} baseline track(s) were not measured "
+                  f"in this run")
+            for name in sorted(missing):
+                print(f"  {name}")
+            print("  (they failed to encode, decode or measure, or are no longer in "
+                  "the corpus; pass --allow-missing to permit this)")
+            failed = True
+        elif missing:
+            print(f"{len(missing)} baseline track(s) missing, allowed")
         if worse:
             print(f"\nREGRESSION: {len(worse)} track(s) worse by more than "
                   f"{args.tolerance} dB")
             for name, old, new, delta in sorted(worse, key=lambda w: -w[3]):
                 print(f"  {name}: {old:+.2f} -> {new:+.2f} ({delta:+.2f})")
+            failed = True
+        if failed:
             sys.exit(1)
         print("no regressions")
 
