@@ -323,6 +323,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                          << result.highFreqRatio << " < threshold\n";
             }
             CurveCtx[channel][band].LastLevel = 0.0f;
+            CurveCtx[channel][band].CarrierRippleHold = 0;
             continue;
         }
 
@@ -454,10 +455,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // HPF gain[] domain) against the mean HPF level of the pre-ramp zone of
         // bufNext after applying the current curve's attenuation.  Both quantities
         // are in the same filtered domain, avoiding LF-content distortion.
-        // Do not let point0 recreate a curve that the low-HFR reliability guard
-        // just removed: its boundary estimate is derived from the same
-        // unreliable HPF envelope.
-        if (band < 3 && result.highFreqRatio >= kMinHfrForAmplify) {
+        if (band < 3) {
             const auto curveBeforePoint0 = curvePoints;
             bool point0Changed = false;
 

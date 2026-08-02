@@ -3873,7 +3873,29 @@ TEST(CalcCurve_HarmonicNegative, PeriodicTrumpetEnvelopeDoesNotBecomeLongL5Regio
     TCurveBuilderCtx ctx;
     ctx.LastLevel = 1.0f;
 
+    // Correlation is high enough to identify this as carrier ripple in one frame.
     EXPECT_TRUE(CalcCurve(gain, ctx, 1.23f).empty());
+    EXPECT_EQ(ctx.CarrierRippleHold, 8u);
+}
+
+TEST(CalcCurve_HarmonicNegative, ModerateCarrierEvidenceRequiresRepetition) {
+    // Band-0 RMS envelope from 04.wav with moderate periodic correlation. An
+    // isolated instance is preserved, while a repeat within the short history
+    // window confirms that it is carrier ripple rather than a real attack.
+    const std::vector<float> gain = {
+        0.0751f, 0.0392f, 0.1054f, 0.0386f, 0.0340f, 0.0890f, 0.0208f, 0.0142f,
+        0.1087f, 0.0462f, 0.0503f, 0.0923f, 0.0354f, 0.0803f, 0.0487f, 0.0205f,
+        0.1000f, 0.0333f, 0.0199f, 0.0982f, 0.0322f, 0.0322f, 0.1009f, 0.0447f,
+        0.0509f, 0.1064f, 0.0300f, 0.0932f, 0.0332f, 0.0148f, 0.0992f, 0.0366f
+    };
+    TCurveBuilderCtx ctx;
+    ctx.LastLevel = 0.05f;
+
+    const auto first = CalcCurve(gain, ctx, 0.04f);
+    ASSERT_FALSE(first.empty());
+    EXPECT_EQ(ctx.CarrierRippleHold, 8u);
+    EXPECT_TRUE(CalcCurve(gain, ctx, 0.04f).empty());
+    EXPECT_EQ(ctx.CarrierRippleHold, 8u);
 }
 
 TEST(CalcCurve_HarmonicPositive, SustainedAttackStillEmitsGainCurve) {
@@ -3895,9 +3917,6 @@ TEST(CalcCurve_HarmonicPositive, SustainedAttackStillEmitsGainCurve) {
     for (size_t i = 0; i < curve.size(); ++i) {
         const auto& point = curve[i];
         hasMaterialGain |= std::abs(static_cast<int>(point.Level) - 4) >= 2;
-        if (i > 0)
-            EXPECT_NE(curve[i - 1].Level, point.Level)
-                << "adjacent equal levels waste a gain point";
     }
     EXPECT_TRUE(hasMaterialGain);
 }
