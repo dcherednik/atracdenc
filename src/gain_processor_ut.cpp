@@ -3813,6 +3813,95 @@ INSTANTIATE_TEST_SUITE_P(
         SineNegativeParam{ 5512.0f, "5512Hz" }   // sr/2:  4    cycles/subframe (Nyquist)
     ));
 
+// A stationary pitched instrument is not a transient. Unlike a single sine,
+// several phase-coherent harmonics can make an 8-sample RMS estimator pulse at
+// the fundamental frequency and repeatedly cross the L4/L5 threshold. Gain
+// control must follow the musical amplitude envelope, not those carrier-rate
+// oscillations.
+static std::vector<float> MakeHarmonicStack(size_t n, float fundamental,
+                                            float sampleRate) {
+    static constexpr float kPhase[] = { 0.13f, 1.07f, 2.31f, 0.71f, 2.83f, 1.61f };
+    std::vector<float> signal(n, 0.0f);
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / sampleRate;
+        for (size_t h = 1; h <= 6; ++h) {
+            const float amplitude = 1.0f / std::sqrt(static_cast<float>(h));
+            signal[i] += amplitude * std::sin(2.0 * M_PI * fundamental * h * t
+                                             + kPhase[h - 1]);
+        }
+    }
+    return signal;
+}
+
+TEST(CalcCurve_HarmonicNegative, StationaryStackDoesNotEmitGainCurves) {
+    static constexpr float kSampleRate = 11024.0f;
+    static constexpr size_t kFrameSize = 256;
+    static constexpr size_t kNumFrames = 48;
+    static constexpr float kFundamentals[] = { 441.0f, 495.0f, 554.0f };
+
+    for (float fundamental : kFundamentals) {
+        const auto signal = MakeHarmonicStack(kFrameSize * kNumFrames,
+                                              fundamental, kSampleRate);
+        TCurveBuilderCtx ctx;
+        ctx.LastLevel = AnalyzeGain(signal.data(), 8, 1, true)[0];
+
+        for (size_t frame = 0; frame < kNumFrames; ++frame) {
+            const float* in = signal.data() + frame * kFrameSize;
+            const auto gain = AnalyzeGain(in, kFrameSize, 32, true);
+            const auto next = frame + 1 < kNumFrames
+                ? std::optional<float>(AnalyzeGain(in + kFrameSize, 8, 1, true)[0])
+                : std::optional<float>();
+            const auto curve = CalcCurve(gain, ctx, next);
+
+            EXPECT_TRUE(curve.empty())
+                << "stationary harmonic stack emitted gain at f0=" << fundamental
+                << " frame=" << frame;
+        }
+    }
+}
+
+TEST(CalcCurve_HarmonicNegative, PeriodicTrumpetEnvelopeDoesNotBecomeLongL5Region) {
+    // Normalised band-1 RMS envelope from 04.wav after the trumpet onset.
+    // It is periodic carrier beating around a stable upper envelope, not an
+    // amplitude transient. The old right-anchor rule emitted {L4@0,L5@25}.
+    const std::vector<float> gain = {
+        0.79f, 0.38f, 1.44f, 0.26f, 1.04f, 0.92f, 0.37f, 1.56f,
+        0.32f, 1.10f, 1.00f, 0.32f, 1.38f, 0.35f, 1.12f, 0.68f,
+        0.28f, 1.20f, 0.35f, 0.98f, 0.44f, 0.41f, 1.15f, 0.29f,
+        1.10f, 0.54f, 0.41f, 1.32f, 0.21f, 1.23f, 0.54f, 0.37f
+    };
+    TCurveBuilderCtx ctx;
+    ctx.LastLevel = 1.0f;
+
+    EXPECT_TRUE(CalcCurve(gain, ctx, 1.23f).empty());
+}
+
+TEST(CalcCurve_HarmonicPositive, SustainedAttackStillEmitsGainCurve) {
+    // Normalised band-1 RMS envelope from the actual trumpet attack in 04.wav.
+    // Its upper envelope rises by roughly 20 dB across the frame even though
+    // carrier beating remains visible between successive subframes.
+    const std::vector<float> gain = {
+        0.08f, 0.10f, 0.08f, 0.08f, 0.17f, 0.09f, 0.24f, 0.11f,
+        0.12f, 0.33f, 0.08f, 0.52f, 0.26f, 0.19f, 0.69f, 0.19f,
+        0.69f, 0.26f, 0.15f, 0.71f, 0.22f, 0.75f, 0.22f, 0.29f,
+        0.88f, 0.21f, 0.97f, 0.29f, 0.36f, 0.99f, 0.14f, 1.00f
+    };
+    TCurveBuilderCtx ctx;
+    ctx.LastLevel = 0.08f;
+    const auto curve = CalcCurve(gain, ctx, 0.30f);
+    ASSERT_FALSE(curve.empty());
+
+    bool hasMaterialGain = false;
+    for (size_t i = 0; i < curve.size(); ++i) {
+        const auto& point = curve[i];
+        hasMaterialGain |= std::abs(static_cast<int>(point.Level) - 4) >= 2;
+        if (i > 0)
+            EXPECT_NE(curve[i - 1].Level, point.Level)
+                << "adjacent equal levels waste a gain point";
+    }
+    EXPECT_TRUE(hasMaterialGain);
+}
+
 // ============================================================================
 // Issue #1 investigation: false boundary transient from FFT-window context
 // mismatch (see gain_control_issues.md, Issue 1).

@@ -362,6 +362,32 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
     for (int i = 0; i < n; ++i) {
         const float ratioCenter = filtered[i] / target;
         uint16_t level = RelationToIdx(ratioCenter);
+
+        // A pitched signal can cross a quantisation threshold solely because
+        // an 8-sample RMS window lands on a carrier peak or trough. Confirm
+        // weak +/-1 levels with the immediate temporal neighbourhood. A real
+        // step persists there, while a harmonic oscillation normally has the
+        // opposite side of the carrier cycle in an adjacent subframe. Strong
+        // levels are deliberately untouched so short, high-contrast transients
+        // keep their full gain-control resolution.
+        float neighbourhoodLow = in[i];
+        float neighbourhoodHigh = in[i];
+        for (int j = i - 1; j <= i + 1; ++j) {
+            float v;
+            if (j < 0)
+                v = savedLastLevel;
+            else if (j >= n)
+                v = nextLevel.value_or(in.back());
+            else
+                v = in[j];
+            neighbourhoodLow = std::min(neighbourhoodLow, v);
+            neighbourhoodHigh = std::max(neighbourhoodHigh, v);
+        }
+        if (level == 5u && neighbourhoodHigh > target * 0.5f)
+            level = 4u;
+        else if (level == 3u && neighbourhoodLow < target * 2.0f)
+            level = 4u;
+
         if (i > 0 && stickyFrameEligible) {
             float ratioLo = (*subframeLow)[i] / target;
             float ratioHi = (*subframeHigh)[i] / target;
@@ -421,6 +447,7 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
         int      Delta;  // |level change| here, used for priority trimming
     };
     std::vector<TTransition> trans;
+    bool hasTransientEvidence = false;
     {
         uint16_t prev = 4u;  // neutral anchor at targetSf
         for (int sf = targetSf - 1; sf >= 0; --sf) {
@@ -434,9 +461,11 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                 // For +/-1 toggles, require transient evidence around the boundary.
                 // Always keep the rightmost transition (loc==targetSf) so non-neutral
                 // regions remain anchored to neutral at the frame tail.
-                const bool keep = (loc == targetSf) || (delta >= 2) || (score >= minScore);
+                const bool transientEvidence = (delta >= 2) || (score >= minScore);
+                const bool keep = (loc == targetSf) || transientEvidence;
                 if (keep) {
                     trans.push_back({loc, lev, delta});
+                    hasTransientEvidence |= transientEvidence;
                     prev = lev;
                 } else if (yamlLog) {
                     *yamlLog << std::fixed << std::setprecision(4)
@@ -447,6 +476,15 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
             }
         }
         std::reverse(trans.begin(), trans.end());
+    }
+
+    // The rightmost point is a syntactic anchor, not transient evidence. Do
+    // not let a lone carrier-rate L4/L5 oscillation create a frame-wide gain
+    // region merely because its return-to-neutral point must be represented.
+    if (!hasTransientEvidence) {
+        if (yamlLog)
+            *yamlLog << "        skip: no_transient_evidence\n";
+        return curve;
     }
 
     if (trans.empty())
@@ -473,6 +511,19 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                 return a.Loc < b.Loc;
             });
     }
+
+    // Priority trimming can remove the transition between two equal-level
+    // points. In that case the earlier point is redundant; keeping it costs
+    // nine bits without changing the modulation curve.
+    std::vector<TTransition> compact;
+    compact.reserve(trans.size());
+    for (const auto& t : trans) {
+        if (!compact.empty() && compact.back().Level == t.Level)
+            compact.back() = t;  // keep the rightmost departure location
+        else
+            compact.push_back(t);
+    }
+    trans.swap(compact);
 
     curve.reserve(trans.size());
     for (const auto& t : trans)
