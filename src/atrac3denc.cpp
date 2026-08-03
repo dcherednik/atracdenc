@@ -24,6 +24,7 @@
 #include <iostream>
 #include <iomanip>
 #include <cmath>
+#include <limits>
 namespace NAtracDEnc {
 
 using namespace NMDCT;
@@ -324,29 +325,102 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             }
             CurveCtx[channel][band].LastLevel = 0.0f;
             CurveCtx[channel][band].CarrierRippleHold = 0;
+            PitchCurveCtx[channel][band].LastLevel = 0.0f;
+            PitchCurveCtx[channel][band].CarrierRippleHold = 0;
+            auto& harmonicCtx = HarmonicGainCtx[channel][band];
+            harmonicCtx.PrevFilteredMagnitude.clear();
+            harmonicCtx.LastPitchPeriod = 0.0f;
+            harmonicCtx.PreviousPitchPeriod = 0.0f;
+            harmonicCtx.PitchHistorySize = 0;
             continue;
         }
 
-        // Analysis region [1024..3072) = current frame upsampled (8x)
+        // Short RMS retains the original transient resolution. Pitch RMS uses
+        // an overlapping one-period window to remove carrier/beat phase from
+        // a demonstrably stationary harmonic signal.
         std::vector<float> gainLow;
         std::vector<float> gainHigh;
-        const auto gain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true,
-                                      &gainLow, &gainHigh);
+        const auto shortGain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true,
+                                           &gainLow, &gainHigh);
+        const float shortNextLevel =
+            AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
 
-        // nextLevel from first 64-sample subframe of upsampled lookahead [3072..3072+64)
-        const float nextLevel = AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
+        auto& harmonicCtx = HarmonicGainCtx[channel][band];
+        const float magnitudeChangeDb = CalcMagnitudeChangeDb(
+            result.filteredMagnitude, harmonicCtx.PrevFilteredMagnitude);
+        float pitchJitterCents = std::numeric_limits<float>::infinity();
+        if (harmonicCtx.PitchHistorySize >= 2
+            && result.pitchPeriod > 0.0f
+            && harmonicCtx.LastPitchPeriod > 0.0f
+            && harmonicCtx.PreviousPitchPeriod > 0.0f) {
+            const auto octaveFoldedCents = [](float a, float b) {
+                const float raw = 1200.0f * std::log2(a / b);
+                return std::abs(raw - 1200.0f * std::round(raw / 1200.0f));
+            };
+            pitchJitterCents = 0.5f * (
+                octaveFoldedCents(result.pitchPeriod, harmonicCtx.LastPitchPeriod)
+                + octaveFoldedCents(harmonicCtx.LastPitchPeriod,
+                                    harmonicCtx.PreviousPitchPeriod));
+        }
 
-        // HPF-domain overlap ratio: mean HPF RMS of previous frame vs current frame.
-        // This is domain-matched with gain[] (both HPF-upsampled), unlike full-band
-        // overlapRatio which is inflated by bass energy that has nothing to do with
-        // whether an HPF-domain transient should be protected.
-        float curHpfEnergy = 0.0f;
-        for (float v : gain) curHpfEnergy += v;
-        curHpfEnergy /= static_cast<float>(gain.size());
-        const float prevHpfEnergy = CurveCtx[channel][band].LastHpfEnergy;
-        CurveCtx[channel][band].LastHpfEnergy = curHpfEnergy;
-        const float hpfOverlapRatio = (curHpfEnergy > 1e-9f && prevHpfEnergy > 1e-9f)
-            ? (prevHpfEnergy / curHpfEnergy) : 1.0f;
+        // Conservative operating point from the 04/spine offline study. It
+        // selected about 35% of the conflicting 04 events and no spine event.
+        // Keep the original short analysis whenever any evidence is uncertain.
+        static constexpr float kMinCepstralProminenceDb = 1.53f;
+        static constexpr float kMaxPitchJitterCents = 75.0f;
+        static constexpr float kMaxMagnitudeChangeDb = 7.31f;
+        // At very low HFR the cepstrum can be dominated by sub-cutoff tonal
+        // content while the envelope being smoothed contains only HPF leakage.
+        // The spine regression candidates all occupied HFR 0.06..0.15.
+        static constexpr float kMinHfrForPitchRms = 0.20f;
+        const bool usePitchRms = band < 3
+            && result.highFreqRatio >= kMinHfrForPitchRms
+            && result.cepstralProminenceDb >= kMinCepstralProminenceDb
+            && pitchJitterCents <= kMaxPitchJitterCents
+            && magnitudeChangeDb <= kMaxMagnitudeChangeDb;
+
+        const uint32_t pitchWindow = static_cast<uint32_t>(std::max<long>(
+            64, std::lround(result.pitchPeriod * TSpectralUpsampler::kUpsample)));
+        const auto pitchGain = AnalyzeGainOverlappingRms(
+            result.signal.data(), static_cast<uint32_t>(result.signal.size()),
+            1024, 2048, 32, pitchWindow);
+        const float pitchNextLevel = AnalyzeGainOverlappingRms(
+            result.signal.data(), static_cast<uint32_t>(result.signal.size()),
+            3072, 64, 1, pitchWindow)[0];
+
+        harmonicCtx.PreviousPitchPeriod = harmonicCtx.LastPitchPeriod;
+        harmonicCtx.LastPitchPeriod = result.pitchPeriod;
+        harmonicCtx.PitchHistorySize = std::min<uint8_t>(
+            2, static_cast<uint8_t>(harmonicCtx.PitchHistorySize + 1));
+        harmonicCtx.PrevFilteredMagnitude = std::move(result.filteredMagnitude);
+
+        auto updateHpfOverlap = [](const std::vector<float>& envelope,
+                                   TCurveBuilderCtx& ctx) {
+            float current = 0.0f;
+            for (float value : envelope)
+                current += value;
+            current /= static_cast<float>(envelope.size());
+            const float previous = ctx.LastHpfEnergy;
+            ctx.LastHpfEnergy = current;
+            return (current > 1e-9f && previous > 1e-9f)
+                ? previous / current : 1.0f;
+        };
+        const float shortHpfOverlapRatio =
+            updateHpfOverlap(shortGain, CurveCtx[channel][band]);
+        const float pitchHpfOverlapRatio =
+            updateHpfOverlap(pitchGain, PitchCurveCtx[channel][band]);
+
+        const float hpfOverlapRatio = usePitchRms
+            ? pitchHpfOverlapRatio : shortHpfOverlapRatio;
+        const float overlapFactor = std::min(1.5f, std::max(1.0f, hpfOverlapRatio));
+        const float dynamicMinScore = kMinScore * overlapFactor;
+        const float shortDynamicMinScore = kMinScore
+            * std::min(1.5f, std::max(1.0f, shortHpfOverlapRatio));
+        const float pitchDynamicMinScore = kMinScore
+            * std::min(1.5f, std::max(1.0f, pitchHpfOverlapRatio));
+
+        const std::vector<float>& gain = usePitchRms ? pitchGain : shortGain;
+        const float nextLevel = usePitchRms ? pitchNextLevel : shortNextLevel;
 
         const float* bufCur  = PcmBuffer.GetFirst(channel + band * 2);
         const float* bufNext = PcmBuffer.GetSecond(channel + band * 2);
@@ -370,12 +444,17 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         // Dynamic min-score: raise threshold when prev HPF frame was louder.
         // Uses HPF-domain ratio so bass-heavy prev frames don't suppress real HPF transients.
-        const float overlapFactor = std::min(1.5f, std::max(1.0f, hpfOverlapRatio));
-        const float dynamicMinScore = kMinScore * overlapFactor;
-
         if (YamlLog) {
             *YamlLog << std::fixed << std::setprecision(4)
                      << "        high_freq_ratio: " << result.highFreqRatio << "\n"
+                     << "        cepstral_prominence_db: " << result.cepstralProminenceDb << "\n"
+                     << "        pitch_period_qmf: " << result.pitchPeriod << "\n"
+                     << "        pitch_jitter_cents: "
+                     << (std::isfinite(pitchJitterCents) ? pitchJitterCents : -1.0f) << "\n"
+                     << "        magnitude_change_db: "
+                     << (std::isfinite(magnitudeChangeDb) ? magnitudeChangeDb : -1.0f) << "\n"
+                     << "        pitch_rms_window: " << pitchWindow << "\n"
+                     << "        gain_analysis: " << (usePitchRms ? "pitch_period" : "short") << "\n"
                      << "        overlap_ratio: " << overlapRatio
                      << "  # prev_E/cur_E full-band; >1 means prev frame louder\n"
                      << "        hpf_overlap_ratio: " << hpfOverlapRatio
@@ -387,11 +466,28 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "  # 32 subframe RMS values\n";
         }
 
-        const float prevTarget = CurveCtx[channel][band].LastTarget;
-        auto curvePoints = CalcCurve(gain, CurveCtx[channel][band], nextLevel,
-                                     dynamicMinScore, YamlLog,
-                                     &gainLow, &gainHigh);
-        const float curTarget = CurveCtx[channel][band].LastTarget;
+        const float prevShortTarget = CurveCtx[channel][band].LastTarget;
+        const float prevPitchTarget = PitchCurveCtx[channel][band].LastTarget;
+        std::vector<TGainCurvePoint> curvePoints;
+        if (usePitchRms) {
+            // Keep the inactive short-domain history current for an immediate,
+            // phase-consistent return when a real attack arrives.
+            CalcCurve(shortGain, CurveCtx[channel][band], shortNextLevel,
+                      shortDynamicMinScore, nullptr, &gainLow, &gainHigh);
+            curvePoints = CalcCurve(pitchGain, PitchCurveCtx[channel][band],
+                                    pitchNextLevel, pitchDynamicMinScore,
+                                    YamlLog, nullptr, nullptr);
+        } else {
+            CalcCurve(pitchGain, PitchCurveCtx[channel][band], pitchNextLevel,
+                      pitchDynamicMinScore, nullptr, nullptr, nullptr);
+            curvePoints = CalcCurve(shortGain, CurveCtx[channel][band],
+                                    shortNextLevel, shortDynamicMinScore,
+                                    YamlLog, &gainLow, &gainHigh);
+        }
+        const float prevTarget = usePitchRms ? prevPitchTarget : prevShortTarget;
+        const float curTarget = usePitchRms
+            ? PitchCurveCtx[channel][band].LastTarget
+            : CurveCtx[channel][band].LastTarget;
 
         if (curvePoints.empty()) {
             if (YamlLog) {

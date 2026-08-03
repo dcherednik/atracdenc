@@ -33,7 +33,25 @@ struct TProcessResult {
     //   ≈ 0 : frame is dominated by sub-cutoff content (stopband leakage only)
     //   ≈ 1 : frame is dominated by supra-cutoff content (full passband)
     float highFreqRatio;
+
+    // Magnitudes after applying the same HPF response used by the spectral
+    // upsampler. Kept in the result so per-channel/per-band encoder state can
+    // compare consecutive spectra without making this class stateful.
+    std::vector<float> filteredMagnitude;
+
+    // Period of the strongest cepstral peak, in input-QMF samples, and its
+    // prominence above a linear cepstral baseline. The search range is
+    // limited to 70..1200 Hz. A high prominence means that regularly-spaced
+    // harmonics are present even when the fundamental was removed by the HPF.
+    float pitchPeriod;
+    float cepstralProminenceDb;
 };
+
+// Energy-weighted frame-to-frame log-magnitude change. Both inputs must
+// already include the upsampler's HPF response. Returns +inf when no usable
+// previous spectrum is available, conservatively disabling harmonic RMS.
+float CalcMagnitudeChangeDb(const std::vector<float>& current,
+                            const std::vector<float>& previous);
 
 // Preprocesses a 512-sample context window for improved spectral analysis.
 //
@@ -84,9 +102,14 @@ public:
 
 private:
     const int          LowCutBin;  // first kept bin (inclusive); bins [0,LowCutBin) are zeroed
+    const int          MinPitchLag;
+    const int          MaxPitchLag;
     std::vector<float> Win;
     void*              FwdCfg;     // kiss_fftr_cfg: kInN-point  forward real FFT plan
+    void*              CepInvCfg;  // kiss_fftr_cfg: kInN-point inverse real cepstrum plan
     void*              InvCfg;     // kiss_fftr_cfg: kOutN-point inverse real FFT plan
+
+    float FilterWeight(int bin) const;
 };
 
 } // namespace NAtracDEnc

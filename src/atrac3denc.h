@@ -110,7 +110,18 @@ private:
     // [channel][band][prev_128 | current_256 | lookahead_256]
     // &LookAheadBuf[ch][b][0] is the 512-sample input for TSpectralUpsampler
     float LookAheadBuf[2][4][640] = {};
+    // The short and pitch-period envelopes keep independent inter-frame
+    // targets. Both are updated every frame, so switching the selected
+    // analysis domain cannot manufacture a point-0 level step.
     TCurveBuilderCtx CurveCtx[2][4] = {};
+    TCurveBuilderCtx PitchCurveCtx[2][4] = {};
+    struct THarmonicGainCtx {
+        std::vector<float> PrevFilteredMagnitude;
+        float LastPitchPeriod = 0.0f;
+        float PreviousPitchPeriod = 0.0f;
+        uint8_t PitchHistorySize = 0;
+    };
+    THarmonicGainCtx HarmonicGainCtx[2][4];
     TSpectralUpsampler Upsampler;
     static constexpr float LoudFactor = 0.006;
     float Loudness = LoudFactor;

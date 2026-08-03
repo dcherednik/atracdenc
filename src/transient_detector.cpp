@@ -135,6 +135,50 @@ std::vector<float> AnalyzeGain(const float* in, const uint32_t len, const uint32
     return res;
 }
 
+std::vector<float> AnalyzeGainOverlappingRms(const float* in, const uint32_t totalLen,
+                                             const uint32_t regionOffset,
+                                             const uint32_t regionLen,
+                                             const uint32_t maxPoints,
+                                             const uint32_t windowLen) {
+    std::vector<float> result;
+    if (!in || totalLen == 0 || regionLen == 0 || maxPoints == 0
+        || regionOffset >= totalLen)
+        return result;
+
+    const uint32_t step = regionLen / maxPoints;
+    if (step == 0)
+        return result;
+
+    const uint32_t effectiveWindow = std::max(1u, windowLen);
+    std::vector<double> accumulatedEnergy(static_cast<size_t>(totalLen) + 1, 0.0);
+    for (uint32_t i = 0; i < totalLen; ++i)
+        accumulatedEnergy[i + 1] = accumulatedEnergy[i]
+            + static_cast<double>(in[i]) * in[i];
+    result.reserve(maxPoints);
+    for (uint32_t point = 0; point < maxPoints; ++point) {
+        const uint64_t centre64 = static_cast<uint64_t>(regionOffset)
+                                + static_cast<uint64_t>(point) * step
+                                + step / 2;
+        const uint32_t centre = static_cast<uint32_t>(
+            std::min<uint64_t>(centre64, totalLen));
+        int64_t start = static_cast<int64_t>(centre)
+                      - static_cast<int64_t>(effectiveWindow / 2);
+        int64_t end = start + effectiveWindow;
+        start = std::max<int64_t>(0, start);
+        end = std::min<int64_t>(totalLen, end);
+        if (end <= start) {
+            result.push_back(0.0f);
+            continue;
+        }
+
+        const double energy = accumulatedEnergy[static_cast<size_t>(end)]
+                            - accumulatedEnergy[static_cast<size_t>(start)];
+        result.push_back(static_cast<float>(
+            std::sqrt(energy / static_cast<double>(end - start))));
+    }
+    return result;
+}
+
 // Maps amplitude ratio x = region_rms / target to ATRAC3 gain Level index L such
 // that GainLevel[L] = 2^(4-L) ≈ x.  Dividing the signal by GainLevel[L] normalises
 // it to the target amplitude.

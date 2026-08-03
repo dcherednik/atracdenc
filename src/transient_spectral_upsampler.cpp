@@ -20,7 +20,9 @@
 
 #include "lib/fft/kissfft_impl/tools/kiss_fftr.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -31,8 +33,12 @@ namespace NAtracDEnc {
 TSpectralUpsampler::TSpectralUpsampler(float sampleRate, float lowCutHz, float epsilon)
     // Round up so that lowCutHz itself is passed through.
     : LowCutBin(static_cast<int>(std::ceil(lowCutHz * kInN / sampleRate)))
+    , MinPitchLag(std::max(2, static_cast<int>(std::floor(sampleRate / 1200.0f))))
+    , MaxPitchLag(std::min(kInN / 2 - 1,
+                           static_cast<int>(std::ceil(sampleRate / 70.0f))))
     , Win(kInN)
     , FwdCfg(static_cast<void*>(kiss_fftr_alloc(kInN,  0, nullptr, nullptr)))
+    , CepInvCfg(static_cast<void*>(kiss_fftr_alloc(kInN, 1, nullptr, nullptr)))
     , InvCfg(static_cast<void*>(kiss_fftr_alloc(kOutN, 1, nullptr, nullptr)))
 {
     // Planck-taper window: smooth logistic taper; flat top = 1 in the middle.
@@ -71,7 +77,57 @@ TSpectralUpsampler::TSpectralUpsampler(float sampleRate, float lowCutHz, float e
 TSpectralUpsampler::~TSpectralUpsampler()
 {
     kiss_fftr_free(static_cast<kiss_fftr_cfg>(FwdCfg));
+    kiss_fftr_free(static_cast<kiss_fftr_cfg>(CepInvCfg));
     kiss_fftr_free(static_cast<kiss_fftr_cfg>(InvCfg));
+}
+
+float TSpectralUpsampler::FilterWeight(int k) const
+{
+    if (LowCutBin == 0)
+        return 1.0f;
+    if (k >= LowCutBin + 2)
+        return 1.0f;
+    if (k >= LowCutBin) {
+        const int i = k - LowCutBin + 1;
+        return 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * i / 2.0f));
+    }
+    return 0.0f;
+}
+
+float CalcMagnitudeChangeDb(const std::vector<float>& current,
+                            const std::vector<float>& previous)
+{
+    if (current.empty() || current.size() != previous.size())
+        return std::numeric_limits<float>::infinity();
+
+    float peak = 0.0f;
+    float maxEnergy = 0.0f;
+    for (size_t i = 0; i < current.size(); ++i) {
+        peak = std::max(peak, std::max(current[i], previous[i]));
+        maxEnergy = std::max(maxEnergy,
+            0.5f * (current[i] * current[i] + previous[i] * previous[i]));
+    }
+    if (peak <= 1e-15f || maxEnergy <= 1e-30f)
+        return std::numeric_limits<float>::infinity();
+
+    const float floor = peak * 1e-5f;
+    const float energyThreshold = maxEnergy * 1e-5f;
+    double weightedChange = 0.0;
+    double weightSum = 0.0;
+    for (size_t i = 0; i < current.size(); ++i) {
+        const double energy = 0.5 * (static_cast<double>(current[i]) * current[i]
+                                   + static_cast<double>(previous[i]) * previous[i]);
+        if (energy < energyThreshold)
+            continue;
+        const double change = std::abs(20.0 * std::log10(
+            (static_cast<double>(current[i]) + floor)
+            / (static_cast<double>(previous[i]) + floor)));
+        weightedChange += energy * change;
+        weightSum += energy;
+    }
+    return weightSum > 0.0
+        ? static_cast<float>(weightedChange / weightSum)
+        : std::numeric_limits<float>::infinity();
 }
 
 TProcessResult TSpectralUpsampler::Process(const float* in) const
@@ -86,7 +142,67 @@ TProcessResult TSpectralUpsampler::Process(const float* in) const
     std::vector<kiss_fft_cpx> fwdOut(kInBins);
     kiss_fftr(static_cast<kiss_fftr_cfg>(FwdCfg), windowed.data(), fwdOut.data());
 
-    // 2a. Filtered high-frequency energy ratio.
+    // 2a. Real cepstrum of log magnitude. Regularly spaced harmonics create
+    // a peak at their common period even when the HPF removes the fundamental.
+    float maxMagnitude = 0.0f;
+    for (const auto& v : fwdOut)
+        maxMagnitude = std::max(maxMagnitude, std::hypot(v.r, v.i));
+    const float magnitudeFloor = std::max(maxMagnitude * 1e-6f, 1e-15f);
+    std::vector<kiss_fft_cpx> cepIn(kInBins);
+    for (int k = 0; k < kInBins; ++k) {
+        const float magnitude = std::hypot(fwdOut[k].r, fwdOut[k].i);
+        cepIn[k] = {std::log(std::max(magnitude, magnitudeFloor)), 0.0f};
+    }
+    std::vector<float> cepstrum(kInN);
+    kiss_fftri(static_cast<kiss_fftr_cfg>(CepInvCfg), cepIn.data(), cepstrum.data());
+    const float cepNorm = 1.0f / static_cast<float>(kInN);
+    for (float& v : cepstrum)
+        v *= cepNorm;
+
+    float meanQ = 0.0f;
+    float meanCep = 0.0f;
+    const int pitchCount = MaxPitchLag - MinPitchLag + 1;
+    for (int q = MinPitchLag; q <= MaxPitchLag; ++q) {
+        meanQ += q;
+        meanCep += cepstrum[q];
+    }
+    meanQ /= pitchCount;
+    meanCep /= pitchCount;
+    float slopeNumerator = 0.0f;
+    float slopeDenominator = 0.0f;
+    for (int q = MinPitchLag; q <= MaxPitchLag; ++q) {
+        const float dq = q - meanQ;
+        slopeNumerator += dq * (cepstrum[q] - meanCep);
+        slopeDenominator += dq * dq;
+    }
+    const float cepSlope = slopeNumerator / std::max(slopeDenominator, 1e-20f);
+    const auto cepResidual = [&](int q) {
+        return cepstrum[q] - (meanCep + cepSlope * (q - meanQ));
+    };
+
+    int peakLag = MinPitchLag;
+    float peakResidual = cepResidual(peakLag);
+    for (int q = MinPitchLag + 1; q <= MaxPitchLag; ++q) {
+        const float residual = cepResidual(q);
+        if (residual > peakResidual) {
+            peakResidual = residual;
+            peakLag = q;
+        }
+    }
+    float pitchPeriod = static_cast<float>(peakLag);
+    if (peakLag > MinPitchLag && peakLag < MaxPitchLag) {
+        const float ym = cepResidual(peakLag - 1);
+        const float y0 = peakResidual;
+        const float yp = cepResidual(peakLag + 1);
+        const float denominator = ym - 2.0f * y0 + yp;
+        if (std::abs(denominator) > 1e-15f)
+            pitchPeriod += 0.5f * (ym - yp) / denominator;
+    }
+    static constexpr float kNaturalToDb = 20.0f / 2.302585092994046f;
+    const float cepstralProminenceDb = peakResidual * kNaturalToDb;
+
+    // 2b. Filtered high-frequency energy ratio and filtered magnitudes used
+    // for frame-to-frame spectral-change analysis.
     //
     //     highFreqRatio = sum(|X[k] * H[k]|²) / sum(|X[k]|²)
     //
@@ -97,21 +213,13 @@ TProcessResult TSpectralUpsampler::Process(const float* in) const
     //     frame is sub-cutoff dominated; near 1 in the passband.
     //     Callers should skip CalcCurve when this is below kHighFreqThreshold.
     double totalE = 0.0, filtHighE = 0.0;
+    std::vector<float> filteredMagnitude(kInBins);
     for (int k = 0; k <= kInN / 2; ++k) {
         const double e = static_cast<double>(fwdOut[k].r) * fwdOut[k].r
                        + static_cast<double>(fwdOut[k].i) * fwdOut[k].i;
         totalE += e;
-        // Compute H[k] (same formula as step 3).
-        float H = 0.0f;
-        if (LowCutBin == 0) {
-            H = 1.0f;
-        } else if (k >= LowCutBin + 2) {
-            H = 1.0f;
-        } else if (k >= LowCutBin) {
-            const int i = k - LowCutBin + 1;  // i in [1..2]
-            H = 0.5f * (1.0f - std::cos(static_cast<float>(M_PI) * i / 2.0f));
-        }
-        // else k < LowCutBin: H = 0 (stopband)
+        const float H = FilterWeight(k);
+        filteredMagnitude[k] = std::sqrt(static_cast<float>(e)) * H;
         filtHighE += e * H * H;
     }
     const float highFreqRatio = (totalE > 0.0)
@@ -176,7 +284,9 @@ TProcessResult TSpectralUpsampler::Process(const float* in) const
     for (float& v : output)
         v *= norm;
 
-    return TProcessResult{std::move(output), highFreqRatio};
+    return TProcessResult{std::move(output), highFreqRatio,
+                          std::move(filteredMagnitude), pitchPeriod,
+                          cepstralProminenceDb};
 }
 
 } // namespace NAtracDEnc
