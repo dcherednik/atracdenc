@@ -315,7 +315,10 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "      - band: " << band << "\n";
         }
 
-        auto result = Upsampler.Process(upInput[band]);
+        const auto spectrumOrientation = (band == 1 || band == 3)
+            ? ESpectrumOrientation::Inverted
+            : ESpectrumOrientation::Direct;
+        auto result = Upsampler.Process(upInput[band], spectrumOrientation);
 
         if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
             if (YamlLog) {

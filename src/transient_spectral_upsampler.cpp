@@ -130,7 +130,8 @@ float CalcMagnitudeChangeDb(const std::vector<float>& current,
         : std::numeric_limits<float>::infinity();
 }
 
-TProcessResult TSpectralUpsampler::Process(const float* in) const
+TProcessResult TSpectralUpsampler::Process(
+    const float* in, ESpectrumOrientation spectrumOrientation) const
 {
     // 1. Apply Planck-taper window.
     std::vector<float> windowed(kInN);
@@ -150,7 +151,10 @@ TProcessResult TSpectralUpsampler::Process(const float* in) const
     const float magnitudeFloor = std::max(maxMagnitude * 1e-6f, 1e-15f);
     std::vector<kiss_fft_cpx> cepIn(kInBins);
     for (int k = 0; k < kInBins; ++k) {
-        const float magnitude = std::hypot(fwdOut[k].r, fwdOut[k].i);
+        const int sourceBin =
+            spectrumOrientation == ESpectrumOrientation::Inverted
+                ? kInN / 2 - k : k;
+        const float magnitude = std::hypot(fwdOut[sourceBin].r, fwdOut[sourceBin].i);
         cepIn[k] = {std::log(std::max(magnitude, magnitudeFloor)), 0.0f};
     }
     std::vector<float> cepstrum(kInN);

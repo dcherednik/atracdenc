@@ -124,6 +124,27 @@ TEST(TSpectralUpsampler, CepstrumFindsMissingFundamentalPeriod)
     EXPECT_EQ(result.filteredMagnitude.size(), 257u);
 }
 
+TEST(TSpectralUpsampler, CepstrumCompensatesInvertedQmfSpectrum)
+{
+    TSpectralUpsampler proc(kSampleRate, 800.0f);
+    std::vector<float> direct(TSpectralUpsampler::kInN);
+    FillHarmonicStack(direct.data(), direct.size(), 1.0f, 1.0f, direct.size());
+    std::vector<float> inverted = direct;
+    for (size_t i = 1; i < inverted.size(); i += 2)
+        inverted[i] = -inverted[i];
+
+    const auto directResult = proc.Process(direct.data());
+    const auto correctedResult = proc.Process(
+        inverted.data(), ESpectrumOrientation::Inverted);
+    const float expectedPeriod = kSampleRate / 200.0f;
+
+    EXPECT_NEAR(correctedResult.pitchPeriod, expectedPeriod, 3.0f);
+    EXPECT_NEAR(correctedResult.pitchPeriod, directResult.pitchPeriod, 0.1f);
+    EXPECT_NEAR(correctedResult.cepstralProminenceDb,
+                directResult.cepstralProminenceDb, 0.05f);
+    EXPECT_GT(correctedResult.cepstralProminenceDb, 1.0f);
+}
+
 TEST(TSpectralUpsampler, PitchPeriodRmsRemovesCarrierRipple)
 {
     TSpectralUpsampler proc(kSampleRate, 800.0f);

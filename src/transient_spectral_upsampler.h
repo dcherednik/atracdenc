@@ -53,6 +53,14 @@ struct TProcessResult {
 float CalcMagnitudeChangeDb(const std::vector<float>& current,
                             const std::vector<float>& previous);
 
+// Upper branches of the ATRAC3 QMF tree are spectrally inverted. Restore
+// ascending frequency order only for cepstral pitch analysis; the upsampled
+// signal and its gain envelope remain in their native QMF representation.
+enum class ESpectrumOrientation {
+    Direct,
+    Inverted
+};
+
 // Preprocesses a 512-sample context window for improved spectral analysis.
 //
 // Input layout (512 samples total):
@@ -96,9 +104,11 @@ public:
     TSpectralUpsampler(float sampleRate, float lowCutHz, float epsilon = kDefaultEps);
     ~TSpectralUpsampler();
 
-    // Process a kInN-sample input window.
+    // Process a kInN-sample input window. spectrumOrientation describes the
+    // QMF frequency ordering used only by the real-cepstrum pitch estimator.
     // Returns the upsampled signal and its high-frequency energy ratio.
-    TProcessResult Process(const float* in) const;
+    TProcessResult Process(const float* in,
+        ESpectrumOrientation spectrumOrientation = ESpectrumOrientation::Direct) const;
 
 private:
     const int          LowCutBin;  // first kept bin (inclusive); bins [0,LowCutBin) are zeroed
