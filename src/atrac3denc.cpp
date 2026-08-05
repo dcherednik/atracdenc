@@ -334,6 +334,8 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             harmonicCtx.PrevFilteredMagnitude.clear();
             harmonicCtx.LastPitchPeriod = 0.0f;
             harmonicCtx.PreviousPitchPeriod = 0.0f;
+            harmonicCtx.LastCepstralProminenceDb = 0.0f;
+            harmonicCtx.LastHighFreqRatio = 0.0f;
             harmonicCtx.PitchHistorySize = 0;
             continue;
         }
@@ -349,17 +351,21 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
 
         auto& harmonicCtx = HarmonicGainCtx[channel][band];
+        const float previousFramePitchPeriod = harmonicCtx.LastPitchPeriod;
+        const float previousFrameCepstralProminenceDb =
+            harmonicCtx.LastCepstralProminenceDb;
+        const float previousFrameHighFreqRatio = harmonicCtx.LastHighFreqRatio;
         const float magnitudeChangeDb = CalcMagnitudeChangeDb(
             result.filteredMagnitude, harmonicCtx.PrevFilteredMagnitude);
+        const auto octaveFoldedCents = [](float a, float b) {
+            const float raw = 1200.0f * std::log2(a / b);
+            return std::abs(raw - 1200.0f * std::round(raw / 1200.0f));
+        };
         float pitchJitterCents = std::numeric_limits<float>::infinity();
         if (harmonicCtx.PitchHistorySize >= 2
             && result.pitchPeriod > 0.0f
             && harmonicCtx.LastPitchPeriod > 0.0f
             && harmonicCtx.PreviousPitchPeriod > 0.0f) {
-            const auto octaveFoldedCents = [](float a, float b) {
-                const float raw = 1200.0f * std::log2(a / b);
-                return std::abs(raw - 1200.0f * std::round(raw / 1200.0f));
-            };
             pitchJitterCents = 0.5f * (
                 octaveFoldedCents(result.pitchPeriod, harmonicCtx.LastPitchPeriod)
                 + octaveFoldedCents(harmonicCtx.LastPitchPeriod,
@@ -382,6 +388,25 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             && pitchJitterCents <= kMaxPitchJitterCents
             && magnitudeChangeDb <= kMaxMagnitudeChangeDb;
 
+        // point0 controls the scale of an entire overlapping MDCT half. Do not
+        // derive that scale from one phase-sensitive 8-sample subframe when the
+        // cepstrum shows the same periodic carrier on both sides of the frame
+        // boundary. This test is intentionally separate from usePitchRms: it
+        // only makes the boundary estimate robust and does not suppress the
+        // transient-resolution short envelope for the rest of the frame.
+        float boundaryPitchDeltaCents = std::numeric_limits<float>::infinity();
+        if (result.pitchPeriod > 0.0f && previousFramePitchPeriod > 0.0f) {
+            boundaryPitchDeltaCents = octaveFoldedCents(
+                result.pitchPeriod, previousFramePitchPeriod);
+        }
+        static constexpr float kMaxBoundaryPitchDeltaCents = 100.0f;
+        const bool usePitchBoundaryRms = band < 3
+            && result.highFreqRatio >= kMinHfrForPitchRms
+            && previousFrameHighFreqRatio >= kMinHfrForPitchRms
+            && result.cepstralProminenceDb >= kMinCepstralProminenceDb
+            && previousFrameCepstralProminenceDb >= kMinCepstralProminenceDb
+            && boundaryPitchDeltaCents <= kMaxBoundaryPitchDeltaCents;
+
         const uint32_t pitchWindow = static_cast<uint32_t>(std::max<long>(
             64, std::lround(result.pitchPeriod * TSpectralUpsampler::kUpsample)));
         const auto pitchGain = AnalyzeGainOverlappingRms(
@@ -391,8 +416,36 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             result.signal.data(), static_cast<uint32_t>(result.signal.size()),
             3072, 64, 1, pitchWindow)[0];
 
+        // Current analysis begins at QMF input sample 128, upsampled sample 1024.
+        // Keep both windows inside the flat part of the Planck window so its
+        // left taper cannot bias the previous-side RMS downwards.
+        static constexpr uint32_t kBoundarySample =
+            128 * TSpectralUpsampler::kUpsample;
+        static constexpr uint32_t kPlanckFlatStartQmf = static_cast<uint32_t>(
+            TSpectralUpsampler::kDefaultEps * TSpectralUpsampler::kInN + 0.999f);
+        static constexpr uint32_t kMaxBoundaryWindow =
+            (128 - kPlanckFlatStartQmf) * TSpectralUpsampler::kUpsample;
+        const uint32_t boundaryWindow = std::min(pitchWindow, kMaxBoundaryWindow);
+        float previousBoundaryRms = 0.0f;
+        float currentBoundaryRms = 0.0f;
+        if (usePitchBoundaryRms && boundaryWindow > 0) {
+            const auto rms = [](const float* samples, uint32_t count) {
+                double energy = 0.0;
+                for (uint32_t i = 0; i < count; ++i)
+                    energy += static_cast<double>(samples[i]) * samples[i];
+                return static_cast<float>(std::sqrt(energy / count));
+            };
+            previousBoundaryRms = rms(
+                result.signal.data() + kBoundarySample - boundaryWindow,
+                boundaryWindow);
+            currentBoundaryRms = rms(
+                result.signal.data() + kBoundarySample, boundaryWindow);
+        }
+
         harmonicCtx.PreviousPitchPeriod = harmonicCtx.LastPitchPeriod;
         harmonicCtx.LastPitchPeriod = result.pitchPeriod;
+        harmonicCtx.LastCepstralProminenceDb = result.cepstralProminenceDb;
+        harmonicCtx.LastHighFreqRatio = result.highFreqRatio;
         harmonicCtx.PitchHistorySize = std::min<uint8_t>(
             2, static_cast<uint8_t>(harmonicCtx.PitchHistorySize + 1));
         harmonicCtx.PrevFilteredMagnitude = std::move(result.filteredMagnitude);
@@ -458,6 +511,15 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                      << (std::isfinite(magnitudeChangeDb) ? magnitudeChangeDb : -1.0f) << "\n"
                      << "        pitch_rms_window: " << pitchWindow << "\n"
                      << "        gain_analysis: " << (usePitchRms ? "pitch_period" : "short") << "\n"
+                     << "        boundary_pitch_delta_cents: "
+                     << (std::isfinite(boundaryPitchDeltaCents)
+                            ? boundaryPitchDeltaCents : -1.0f) << "\n"
+                     << "        boundary_rms_analysis: "
+                     << (usePitchBoundaryRms ? "pitch_period" : "short") << "\n"
+                     << "        boundary_rms_window: "
+                     << (usePitchBoundaryRms ? boundaryWindow : 0) << "\n"
+                     << "        boundary_prev_rms: " << previousBoundaryRms << "\n"
+                     << "        boundary_cur_rms: " << currentBoundaryRms << "\n"
                      << "        overlap_ratio: " << overlapRatio
                      << "  # prev_E/cur_E full-band; >1 means prev frame louder\n"
                      << "        hpf_overlap_ratio: " << hpfOverlapRatio
@@ -549,21 +611,29 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             curvePoints.clear();
         }
 
-        // Explicit point 0: correct cross-frame energy step in the HPF domain.
-        // Compare prevTarget (what the previous frame's curve was targeting, in the
-        // HPF gain[] domain) against the mean HPF level of the pre-ramp zone of
-        // bufNext after applying the current curve's attenuation.  Both quantities
-        // are in the same filtered domain, avoiding LF-content distortion.
+        // Explicit point 0: correct cross-frame energy steps in the HPF domain.
+        // Periodic carriers use equal pitch-sized RMS windows immediately before
+        // and after the boundary. Other signals retain the short-envelope estimate.
+        // Both paths account for the current curve first divisor.
         if (band < 3) {
             const auto curveBeforePoint0 = curvePoints;
             bool point0Changed = false;
+            float point0PrevReference = prevTarget;
 
             // hpfRmsNextMod: mean of gain[sf] / GainLevel[pts[0].Level]
             // for the subframes strictly before the first curve point's ramp start.
             // These are the only samples the curve actually attenuates at constant level.
             float hpfRmsNextMod = 0.0f;
             bool hpfRmsNextModValid = false;
-            if (!curvePoints.empty() && curvePoints[0].Location > 0) {
+            const bool pitchBoundaryValid = usePitchBoundaryRms
+                && previousBoundaryRms > 1e-6f && currentBoundaryRms > 1e-6f;
+            if (pitchBoundaryValid) {
+                const float divisor = curvePoints.empty()
+                    ? 1.0f : TAtrac3Data::GainLevel[curvePoints[0].Level];
+                point0PrevReference = previousBoundaryRms;
+                hpfRmsNextMod = currentBoundaryRms / divisor;
+                hpfRmsNextModValid = true;
+            } else if (!curvePoints.empty() && curvePoints[0].Location > 0) {
                 const uint32_t nBefore = curvePoints[0].Location;  // subSz==8 == LocScale shift
                 const float divisor = TAtrac3Data::GainLevel[curvePoints[0].Level];
                 float sum = 0.0f;
@@ -581,14 +651,19 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             if (YamlLog) {
                 *YamlLog << std::fixed << std::setprecision(6)
                          << "        prev_target: " << prevTarget << "\n"
+                         << "        point0_reference: "
+                         << (pitchBoundaryValid ? "pitch_boundary" : "short_target") << "\n"
+                         << "        point0_prev_reference: " << point0PrevReference << "\n"
                          << "        hpf_rms_next_mod: " << hpfRmsNextMod << "\n";
             }
 
-            if (hpfRmsNextModValid && prevTarget > 1e-6f && hpfRmsNextMod > 1e-6f) {
-                const uint16_t point0Level = RelationToIdx(prevTarget / hpfRmsNextMod);
+            if (hpfRmsNextModValid && point0PrevReference > 1e-6f
+                && hpfRmsNextMod > 1e-6f) {
+                const uint16_t point0Level = RelationToIdx(
+                    point0PrevReference / hpfRmsNextMod);
                 if (YamlLog) {
                     *YamlLog << "        point0_level: " << point0Level
-                             << "  # RelationToIdx(prev_target/hpf_rms_next_mod)\n";
+                             << "  # RelationToIdx(point0_prev_reference/hpf_rms_next_mod)\n";
                 }
                 auto it = std::find_if(curvePoints.begin(), curvePoints.end(),
                                        [](const TGainCurvePoint& p) { return p.Location == 0; });
@@ -605,7 +680,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
             // Guard: keep point0 only if it does not worsen local envelope fit.
             // Additional boundary protection: keep point0 if it materially
-            // improves frame-boundary scale match to prevTarget/hpfRmsNextMod.
+            // improves frame-boundary scale match to the selected boundary reference.
             if (point0Changed) {
                 const float scoreBefore = CalcCurveEarlyMismatchScore(gain, curTarget, curveBeforePoint0);
                 const float scoreAfter = CalcCurveEarlyMismatchScore(gain, curTarget, curvePoints);
@@ -615,11 +690,13 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                 bool keepByBoundary = false;
                 float boundaryErrBefore = 0.0f;
                 float boundaryErrAfter = 0.0f;
-                if (hpfRmsNextModValid && prevTarget > 1e-6f && hpfRmsNextMod > 1e-6f) {
+                if (hpfRmsNextModValid && point0PrevReference > 1e-6f
+                    && hpfRmsNextMod > 1e-6f) {
                     const auto firstLevel = [](const std::vector<TGainCurvePoint>& pts) -> uint16_t {
                         return pts.empty() ? static_cast<uint16_t>(TAtrac3Data::ExponentOffset) : pts[0].Level;
                     };
-                    const float desiredScale = LimitRel(prevTarget / hpfRmsNextMod);
+                    const float desiredScale = LimitRel(
+                        point0PrevReference / hpfRmsNextMod);
                     const float scaleBefore = TAtrac3Data::GainLevel[firstLevel(curveBeforePoint0)];
                     const float scaleAfter = TAtrac3Data::GainLevel[firstLevel(curvePoints)];
                     static constexpr float kEps = 1e-9f;

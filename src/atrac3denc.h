@@ -119,6 +119,8 @@ private:
         std::vector<float> PrevFilteredMagnitude;
         float LastPitchPeriod = 0.0f;
         float PreviousPitchPeriod = 0.0f;
+        float LastCepstralProminenceDb = 0.0f;
+        float LastHighFreqRatio = 0.0f;
         uint8_t PitchHistorySize = 0;
     };
     THarmonicGainCtx HarmonicGainCtx[2][4];
