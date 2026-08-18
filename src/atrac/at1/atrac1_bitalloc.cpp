@@ -570,8 +570,30 @@ public:
         if (ba.Submit(bitsUsed)) {
 
             if (autoBfu) {
+                // Do not let the transmitted BFU count collapse past the point
+                // where the spectrum above the low QMF band stops being sent at
+                // all. BfuAmountTab[0] is 20 BFUs, which is exactly the low band,
+                // so a count driven down to it abandons everything above 5.5 kHz;
+                // on tonal material the allocator does drive it there, because it
+                // zeroes those BFUs and they are then dropped.
+                //
+                // A Sony MDS-JE780 deck transmits 40.6 BFUs on this corpus where
+                // we transmit 34.5, and is 4-5 dB better in the mid and high bands
+                // for it. Its bitstreams were read back off disc to check.
+                //
+                // The exception matters: on a signal with nothing above the low
+                // band there is nothing to protect, and forcing 36 BFUs spends ten
+                // bits of side info each on empty ones. That costs 4.87 dB on a
+                // 100 Hz test tone, so the floor is skipped when the energy above
+                // the low band is more than 80 dB down.
+                double lowEnergy = 0.0, restEnergy = 0.0;
+                for (size_t i = 0; i < ctx->ScaledBlocks.size(); ++i)
+                    (i < TAtrac1Data::BfuAmountTab[0] ? lowEnergy : restEnergy)
+                        += ctx->ScaledBlocks[i].Energy;
+                const uint32_t minBfuIdx = (restEnergy > lowEnergy * 1e-8) ? 3 : 0;
+
                 uint32_t usedBfuId = GetMaxUsedBfuId(tmpAlloc);
-                if (usedBfuId < ctx->BfuIdx) {
+                if (usedBfuId < ctx->BfuIdx && ctx->BfuIdx > minBfuIdx) {
                     ctx->BfuIdx--;
                     return EStatus::Repeat;
                 }
