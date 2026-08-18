@@ -172,11 +172,22 @@ def _nmr_channel(ref, test, bands, total, acc, above, cells):
 # ------------------------------------------------------------------ alignment
 
 def find_lag(ref, test, max_lag=8192, seconds=10):
-    """Samples by which `test` lags `ref`, via FFT cross-correlation."""
-    a = test[:seconds * SR].mean(1) if test.ndim > 1 else test[:seconds * SR]
-    b = ref[:seconds * SR].mean(1) if ref.ndim > 1 else ref[:seconds * SR]
+    """Samples by which `test` lags `ref`, via FFT cross-correlation.
+
+    The correlation is summed over channels rather than taken on a downmix. A
+    downmix of an anti-phase signal L = S, R = -S is silence, so the correlation
+    is flat, the lag comes back 0, and the misalignment is then charged to the
+    codec: about 21 dB of it. Summing per-channel correlations costs one extra
+    transform per channel and cannot cancel that way.
+    """
+    a = test[:seconds * SR]
+    b = ref[:seconds * SR]
+    if a.ndim == 1:
+        a, b = a[:, None], b[:, None]
     n = 1 << (len(a) + len(b) - 1).bit_length()
-    c = np.fft.irfft(np.fft.rfft(a, n) * np.conj(np.fft.rfft(b, n)), n)
+    c = np.zeros(n)
+    for ch in range(min(a.shape[1], b.shape[1])):
+        c += np.fft.irfft(np.fft.rfft(a[:, ch], n) * np.conj(np.fft.rfft(b[:, ch], n)), n)
     return int(np.argmax(c[:max_lag]))
 
 
@@ -254,6 +265,20 @@ def self_check(atracdenc, tmp, bands):
             print(f"    anti-phase at {snr} dB differs from in-phase by {drift:.1f} dB"
                   f"   CHANNELS MISMEASURED")
             ok = False
+
+    # The cases above call nmr() directly and so never exercise alignment. Delay a
+    # copy by a known amount and check find_lag recovers it: on a downmixed
+    # correlation the anti-phase lag comes back 0 and the misalignment is then
+    # charged to the codec, worth about 21 dB.
+    print("  alignment:")
+    for name, (sig, _anti) in cases.items():
+        delayed = np.vstack([np.zeros((266, sig.shape[1])), sig])
+        lag = find_lag(sig, delayed)
+        bad = abs(lag - 266) > 1
+        if bad:
+            ok = False
+        print(f"    {name:18s} delayed 266 samples -> find_lag {lag:5d}"
+              f"{'   LAG NOT RECOVERED' if bad else ''}")
     print(f"  metric self-check: {'pass' if ok else 'FAIL'}")
     return ok
 
