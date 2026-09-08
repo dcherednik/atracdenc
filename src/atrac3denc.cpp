@@ -302,11 +302,29 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                                          TAtrac3Data::SubbandInfo* subbandInfo)
 {
     static constexpr float kMinScore = 1.9f;
+    static constexpr float kMinHfrForPitchRms = 0.20f;
+    static constexpr float kStrongCepstralProminenceDb = 2.0f;
 
     // YAML: channel header (one channel per CreateSubbandInfo call)
     if (YamlLog) {
         *YamlLog << "  - channel: " << channel << "\n"
                  << "    bands:\n";
+    }
+
+    std::array<TProcessResult, 4> analysis;
+    for (int band = 0; band < 4; ++band) {
+        const auto spectrumOrientation = (band == 1 || band == 3)
+            ? ESpectrumOrientation::Inverted
+            : ESpectrumOrientation::Direct;
+        analysis[band] = Upsampler.Process(upInput[band], spectrumOrientation);
+    }
+
+    bool strongHarmonicFrame = false;
+    for (int band = 0; band < 3; ++band) {
+        strongHarmonicFrame = strongHarmonicFrame
+            || (analysis[band].highFreqRatio >= kMinHfrForPitchRms
+                && analysis[band].cepstralProminenceDb
+                    >= kStrongCepstralProminenceDb);
     }
 
     for (int band = 0; band < 4; ++band) {
@@ -315,10 +333,7 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             *YamlLog << "      - band: " << band << "\n";
         }
 
-        const auto spectrumOrientation = (band == 1 || band == 3)
-            ? ESpectrumOrientation::Inverted
-            : ESpectrumOrientation::Direct;
-        auto result = Upsampler.Process(upInput[band], spectrumOrientation);
+        auto& result = analysis[band];
 
         if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
             if (YamlLog) {
@@ -335,7 +350,9 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             harmonicCtx.LastPitchPeriod = 0.0f;
             harmonicCtx.PreviousPitchPeriod = 0.0f;
             harmonicCtx.LastCepstralProminenceDb = 0.0f;
+            harmonicCtx.PreviousCepstralProminenceDb = 0.0f;
             harmonicCtx.LastHighFreqRatio = 0.0f;
+            harmonicCtx.PreviousHighFreqRatio = 0.0f;
             harmonicCtx.PitchHistorySize = 0;
             continue;
         }
@@ -351,7 +368,6 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             AnalyzeGain(result.signal.data() + 3072, 64, 1, true)[0];
 
         auto& harmonicCtx = HarmonicGainCtx[channel][band];
-        const float previousFramePitchPeriod = harmonicCtx.LastPitchPeriod;
         const float previousFrameCepstralProminenceDb =
             harmonicCtx.LastCepstralProminenceDb;
         const float previousFrameHighFreqRatio = harmonicCtx.LastHighFreqRatio;
@@ -381,31 +397,42 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         // At very low HFR the cepstrum can be dominated by sub-cutoff tonal
         // content while the envelope being smoothed contains only HPF leakage.
         // The spine regression candidates all occupied HFR 0.06..0.15.
-        static constexpr float kMinHfrForPitchRms = 0.20f;
-        const bool usePitchRms = band < 3
+        const bool useStationaryPitchRms = band < 3
             && result.highFreqRatio >= kMinHfrForPitchRms
             && result.cepstralProminenceDb >= kMinCepstralProminenceDb
             && pitchJitterCents <= kMaxPitchJitterCents
             && magnitudeChangeDb <= kMaxMagnitudeChangeDb;
 
-        // point0 controls the scale of an entire overlapping MDCT half. Do not
-        // derive that scale from one phase-sensitive 8-sample subframe when the
-        // cepstrum shows the same periodic carrier on both sides of the frame
-        // boundary. This test is intentionally separate from usePitchRms: it
-        // only makes the boundary estimate robust and does not suppress the
-        // transient-resolution short envelope for the rest of the frame.
+        // Adjacent frames retain the existing pitch-RMS choice for envelope
+        // continuity. They overlap by 50%, however, so only a matching pitch
+        // from frame n-2 is independent evidence for suppressing a curve.
         float boundaryPitchDeltaCents = std::numeric_limits<float>::infinity();
-        if (result.pitchPeriod > 0.0f && previousFramePitchPeriod > 0.0f) {
+        if (result.pitchPeriod > 0.0f && harmonicCtx.LastPitchPeriod > 0.0f) {
             boundaryPitchDeltaCents = octaveFoldedCents(
-                result.pitchPeriod, previousFramePitchPeriod);
+                result.pitchPeriod, harmonicCtx.LastPitchPeriod);
         }
+        float confirmedPitchDeltaCents = std::numeric_limits<float>::infinity();
+        if (result.pitchPeriod > 0.0f
+            && harmonicCtx.PreviousPitchPeriod > 0.0f) {
+            confirmedPitchDeltaCents = octaveFoldedCents(
+                result.pitchPeriod, harmonicCtx.PreviousPitchPeriod);
+        }
+        static constexpr float kMinContinuousCepstralProminenceDb = 1.25f;
         static constexpr float kMaxBoundaryPitchDeltaCents = 100.0f;
-        const bool usePitchBoundaryRms = band < 3
+        const bool hasContinuousPitch = band < 3
             && result.highFreqRatio >= kMinHfrForPitchRms
             && previousFrameHighFreqRatio >= kMinHfrForPitchRms
-            && result.cepstralProminenceDb >= kMinCepstralProminenceDb
-            && previousFrameCepstralProminenceDb >= kMinCepstralProminenceDb
+            && result.cepstralProminenceDb >= kMinContinuousCepstralProminenceDb
+            && previousFrameCepstralProminenceDb >= kMinContinuousCepstralProminenceDb
             && boundaryPitchDeltaCents <= kMaxBoundaryPitchDeltaCents;
+        const bool hasConfirmedPitch = hasContinuousPitch
+            && harmonicCtx.PitchHistorySize >= 2
+            && harmonicCtx.PreviousHighFreqRatio >= kMinHfrForPitchRms
+            && harmonicCtx.PreviousCepstralProminenceDb
+                >= kMinContinuousCepstralProminenceDb
+            && confirmedPitchDeltaCents <= kMaxBoundaryPitchDeltaCents;
+        const bool usePitchRms = useStationaryPitchRms || hasContinuousPitch;
+        const bool usePitchBoundaryRms = hasContinuousPitch;
 
         const uint32_t pitchWindow = static_cast<uint32_t>(std::max<long>(
             64, std::lround(result.pitchPeriod * TSpectralUpsampler::kUpsample)));
@@ -444,7 +471,10 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
 
         harmonicCtx.PreviousPitchPeriod = harmonicCtx.LastPitchPeriod;
         harmonicCtx.LastPitchPeriod = result.pitchPeriod;
+        harmonicCtx.PreviousCepstralProminenceDb =
+            harmonicCtx.LastCepstralProminenceDb;
         harmonicCtx.LastCepstralProminenceDb = result.cepstralProminenceDb;
+        harmonicCtx.PreviousHighFreqRatio = harmonicCtx.LastHighFreqRatio;
         harmonicCtx.LastHighFreqRatio = result.highFreqRatio;
         harmonicCtx.PitchHistorySize = std::min<uint8_t>(
             2, static_cast<uint8_t>(harmonicCtx.PitchHistorySize + 1));
@@ -511,9 +541,15 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
                      << (std::isfinite(magnitudeChangeDb) ? magnitudeChangeDb : -1.0f) << "\n"
                      << "        pitch_rms_window: " << pitchWindow << "\n"
                      << "        gain_analysis: " << (usePitchRms ? "pitch_period" : "short") << "\n"
+                     << "        gain_analysis_reason: "
+                     << (hasContinuousPitch ? "continuous_pitch"
+                         : useStationaryPitchRms ? "stationary_pitch" : "short") << "\n"
                      << "        boundary_pitch_delta_cents: "
                      << (std::isfinite(boundaryPitchDeltaCents)
                             ? boundaryPitchDeltaCents : -1.0f) << "\n"
+                     << "        confirmed_pitch_delta_cents: "
+                     << (std::isfinite(confirmedPitchDeltaCents)
+                            ? confirmedPitchDeltaCents : -1.0f) << "\n"
                      << "        boundary_rms_analysis: "
                      << (usePitchBoundaryRms ? "pitch_period" : "short") << "\n"
                      << "        boundary_rms_window: "
@@ -553,6 +589,23 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         const float curTarget = usePitchRms
             ? PitchCurveCtx[channel][band].LastTarget
             : CurveCtx[channel][band].LastTarget;
+
+        // A pitch confirmed by non-overlapping analysis windows is carrier
+        // structure rather than an isolated transient. Strong cepstral evidence
+        // is also sufficient on its own: the pitch estimate may jump between
+        // harmonics at a note boundary while the signal remains tonal.
+        const bool strongHarmonicCurve = band < 3
+            && strongHarmonicFrame
+            && !curvePoints.empty();
+        if ((hasConfirmedPitch || strongHarmonicCurve)
+            && !curvePoints.empty()) {
+            if (YamlLog)
+                *YamlLog << "        skip: "
+                         << (hasConfirmedPitch
+                             ? "confirmed_pitch" : "strong_harmonic_curve")
+                         << "\n";
+            curvePoints.clear();
+        }
 
         if (curvePoints.empty()) {
             if (YamlLog) {
