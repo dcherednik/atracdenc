@@ -319,12 +319,49 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         analysis[band] = Upsampler.Process(upInput[band], spectrumOrientation);
     }
 
-    bool strongHarmonicFrame = false;
-    for (int band = 0; band < 3; ++band) {
-        strongHarmonicFrame = strongHarmonicFrame
-            || (analysis[band].highFreqRatio >= kMinHfrForPitchRms
-                && analysis[band].cepstralProminenceDb
-                    >= kStrongCepstralProminenceDb);
+    std::array<bool, 4> strongHarmonicBand{};
+    for (int band = 0; band < 4; ++band) {
+        strongHarmonicBand[band] =
+            analysis[band].highFreqRatio >= kMinHfrForPitchRms
+            && analysis[band].cepstralProminenceDb
+                >= kStrongCepstralProminenceDb;
+    }
+
+    // A critically sampled QMF represents a component in both branches of
+    // its transition band. Different gain curves then disturb the relative
+    // amplitude required for alias cancellation during synthesis. Propagate a
+    // tonal veto only across a directly adjacent boundary whose native-order
+    // FFTs contain the same pitch-spaced peaks.
+    std::array<std::array<THarmonicAliasEvidence, 2>, 3> aliasEvidence{};
+    std::array<bool, 4> harmonicVeto = strongHarmonicBand;
+    static constexpr float kMinAliasCoherence = 0.45f;
+    static constexpr float kMinAliasSharedPeakRatio = 0.35f;
+    static constexpr uint32_t kMinAliasMatchedPeaks = 2;
+    const auto isAliasLinked = [](const THarmonicAliasEvidence& evidence) {
+        return evidence.SpectralCoherence >= kMinAliasCoherence
+            && evidence.SharedPeakRatio >= kMinAliasSharedPeakRatio
+            && evidence.MatchedPeaks >= kMinAliasMatchedPeaks;
+    };
+    for (int boundary = 0; boundary < 3; ++boundary) {
+        const int lowerBand = boundary;
+        const int upperBand = boundary + 1;
+        const bool nearNyquist = (boundary & 1) == 0;
+        if (strongHarmonicBand[lowerBand]) {
+            aliasEvidence[boundary][0] = CalcHarmonicAliasEvidence(
+                analysis[lowerBand].rawMagnitude,
+                analysis[upperBand].rawMagnitude,
+                analysis[lowerBand].pitchPeriod, nearNyquist);
+            if (isAliasLinked(aliasEvidence[boundary][0]))
+                harmonicVeto[upperBand] = true;
+        }
+        if (strongHarmonicBand[upperBand]) {
+            aliasEvidence[boundary][1] = CalcHarmonicAliasEvidence(
+                analysis[upperBand].rawMagnitude,
+                analysis[lowerBand].rawMagnitude,
+                analysis[upperBand].pitchPeriod, nearNyquist);
+            if (isAliasLinked(aliasEvidence[boundary][1]))
+                harmonicVeto[lowerBand] = true;
+        }
     }
 
     for (int band = 0; band < 4; ++band) {
@@ -334,6 +371,39 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
         }
 
         auto& result = analysis[band];
+        if (YamlLog) {
+            *YamlLog << std::fixed << std::setprecision(4)
+                     << "        harmonic_band_strong: "
+                     << (strongHarmonicBand[band] ? "true" : "false") << "\n"
+                     << "        harmonic_alias_veto: "
+                     << (harmonicVeto[band] ? "true" : "false") << "\n";
+            const auto writeAliasEvidence =
+                [this, &isAliasLinked](const char* name,
+                                      const THarmonicAliasEvidence& evidence,
+                                      bool sourceStrong) {
+                    *YamlLog << "        " << name
+                             << ": {source_strong: "
+                             << (sourceStrong ? "true" : "false")
+                             << ", linked: "
+                             << (sourceStrong && isAliasLinked(evidence)
+                                     ? "true" : "false")
+                             << ", coherence: " << evidence.SpectralCoherence
+                             << ", shared_peak_ratio: " << evidence.SharedPeakRatio
+                             << ", harmonic_peaks: " << evidence.HarmonicPeaks
+                             << ", matched_peaks: " << evidence.MatchedPeaks
+                             << "}\n";
+                };
+            if (band > 0) {
+                writeAliasEvidence("alias_from_lower",
+                    aliasEvidence[band - 1][0],
+                    strongHarmonicBand[band - 1]);
+            }
+            if (band < 3) {
+                writeAliasEvidence("alias_from_upper",
+                    aliasEvidence[band][1],
+                    strongHarmonicBand[band + 1]);
+            }
+        }
 
         if (result.highFreqRatio < TSpectralUpsampler::kHighFreqThreshold) {
             if (YamlLog) {
@@ -590,20 +660,22 @@ void TAtrac3Encoder::CreateSubbandInfo(const float* upInput[4],
             ? PitchCurveCtx[channel][band].LastTarget
             : CurveCtx[channel][band].LastTarget;
 
-        // A pitch confirmed by non-overlapping analysis windows is carrier
-        // structure rather than an isolated transient. Strong cepstral evidence
-        // is also sufficient on its own: the pitch estimate may jump between
-        // harmonics at a note boundary while the signal remains tonal.
+        // Self-tonality or a directly linked tonal alias in a neighboring QMF
+        // band identifies carrier structure rather than an isolated transient.
         const bool strongHarmonicCurve = band < 3
-            && strongHarmonicFrame
+            && harmonicVeto[band]
             && !curvePoints.empty();
         if ((hasConfirmedPitch || strongHarmonicCurve)
             && !curvePoints.empty()) {
-            if (YamlLog)
+            if (YamlLog) {
                 *YamlLog << "        skip: "
                          << (hasConfirmedPitch
-                             ? "confirmed_pitch" : "strong_harmonic_curve")
+                             ? "confirmed_pitch"
+                             : strongHarmonicBand[band]
+                                 ? "strong_harmonic_band"
+                                 : "harmonic_alias_neighbor")
                          << "\n";
+            }
             curvePoints.clear();
         }
 

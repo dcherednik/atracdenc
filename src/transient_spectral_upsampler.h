@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 namespace NAtracDEnc {
@@ -34,6 +35,12 @@ struct TProcessResult {
     //   ≈ 1 : frame is dominated by supra-cutoff content (full passband)
     float highFreqRatio;
 
+    // Native-order magnitudes of the Planck-windowed QMF FFT before the
+    // upsampler HPF. Adjacent QMF alias images occupy the same native FFT bin;
+    // keeping the unfiltered spectrum is required for the band 1/2 boundary,
+    // whose overlap is around QMF DC and would otherwise be removed at 800 Hz.
+    std::vector<float> rawMagnitude;
+
     // Magnitudes after applying the same HPF response used by the spectral
     // upsampler. Kept in the result so per-channel/per-band encoder state can
     // compare consecutive spectra without making this class stateful.
@@ -46,6 +53,23 @@ struct TProcessResult {
     float pitchPeriod;
     float cepstralProminenceDb;
 };
+
+struct THarmonicAliasEvidence {
+    float SpectralCoherence = 0.0f;
+    float SharedPeakRatio = 0.0f;
+    uint32_t HarmonicPeaks = 0;
+    uint32_t MatchedPeaks = 0;
+};
+
+// Compare one confidently harmonic QMF spectrum with a neighboring band.
+// Spectra must be in native QMF order: alias partners then occupy equal FFT
+// bins. nearNyquist selects the 0/1 and 2/3 boundary layout; false selects the
+// 1/2 boundary around QMF DC. pitchPeriod is measured in QMF samples.
+THarmonicAliasEvidence CalcHarmonicAliasEvidence(
+    const std::vector<float>& harmonicMagnitude,
+    const std::vector<float>& neighborMagnitude,
+    float pitchPeriod,
+    bool nearNyquist);
 
 // Energy-weighted frame-to-frame log-magnitude change. Both inputs must
 // already include the upsampler's HPF response. Returns +inf when no usable

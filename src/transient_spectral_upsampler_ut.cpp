@@ -122,6 +122,7 @@ TEST(TSpectralUpsampler, CepstrumFindsMissingFundamentalPeriod)
     EXPECT_NEAR(result.pitchPeriod, expectedPeriod, 3.0f);
     EXPECT_GT(result.cepstralProminenceDb, 1.0f);
     EXPECT_EQ(result.filteredMagnitude.size(), 257u);
+    EXPECT_EQ(result.rawMagnitude.size(), 257u);
 }
 
 TEST(TSpectralUpsampler, CepstrumCompensatesInvertedQmfSpectrum)
@@ -143,6 +144,57 @@ TEST(TSpectralUpsampler, CepstrumCompensatesInvertedQmfSpectrum)
     EXPECT_NEAR(correctedResult.cepstralProminenceDb,
                 directResult.cepstralProminenceDb, 0.05f);
     EXPECT_GT(correctedResult.cepstralProminenceDb, 1.0f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceMatchesNativeQmfBins)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> matchingNeighbor(257, 1.0f);
+    for (int bin : {200, 210, 220, 230}) {
+        harmonic[bin] = 10.0f;
+        matchingNeighbor[bin] = 7.0f;
+    }
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, matchingNeighbor, 512.0f / 10.0f, true);
+
+    EXPECT_EQ(evidence.HarmonicPeaks, 4u);
+    EXPECT_EQ(evidence.MatchedPeaks, 4u);
+    EXPECT_GT(evidence.SharedPeakRatio, 0.99f);
+    EXPECT_GT(evidence.SpectralCoherence, 0.99f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceRejectsShiftedPeaks)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> shiftedNeighbor(257, 1.0f);
+    for (int bin : {200, 210, 220, 230})
+        harmonic[bin] = 10.0f;
+    for (int bin : {205, 215, 225, 235})
+        shiftedNeighbor[bin] = 7.0f;
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, shiftedNeighbor, 512.0f / 10.0f, true);
+
+    EXPECT_EQ(evidence.HarmonicPeaks, 4u);
+    EXPECT_EQ(evidence.MatchedPeaks, 0u);
+    EXPECT_LT(evidence.SpectralCoherence, 0.05f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceSupportsDcBoundary)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> matchingNeighbor(257, 1.0f);
+    for (int bin : {10, 20, 30, 40}) {
+        harmonic[bin] = 10.0f;
+        matchingNeighbor[bin] = 7.0f;
+    }
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, matchingNeighbor, 512.0f / 10.0f, false);
+
+    EXPECT_EQ(evidence.MatchedPeaks, 4u);
+    EXPECT_GT(evidence.SpectralCoherence, 0.99f);
 }
 
 TEST(TSpectralUpsampler, PitchPeriodRmsRemovesCarrierRipple)
