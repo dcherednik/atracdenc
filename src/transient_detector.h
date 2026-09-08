@@ -53,6 +53,14 @@ std::vector<float> AnalyzeGain(const float* in, uint32_t len, uint32_t maxPoints
                                std::vector<float>* subframeLow = nullptr,
                                std::vector<float>* subframeHigh = nullptr);
 
+// Measure maxPoints RMS values at the same centres as AnalyzeGain, but use an
+// overlapping window that can span a full estimated pitch period. Input is
+// the entire upsampled FFT output so windows near the current-frame boundaries
+// can use the existing previous-frame and lookahead context.
+std::vector<float> AnalyzeGainOverlappingRms(const float* in, uint32_t totalLen,
+                                             uint32_t regionOffset, uint32_t regionLen,
+                                             uint32_t maxPoints, uint32_t windowLen);
+
 struct TGainCurvePoint {
     uint32_t Level;
     uint32_t Location;
@@ -62,6 +70,7 @@ struct TCurveBuilderCtx {
     float LastLevel = 0.0f;
     float LastHpfEnergy = 0.0f;  // mean HPF RMS of previous frame's gain[] subframes
     float LastTarget = 0.0f;     // target amplitude from previous CalcCurve call (HPF domain)
+    uint8_t CarrierRippleHold = 0; // recent weak frame with periodic RMS ripple
 };
 
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,

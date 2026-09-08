@@ -49,6 +49,26 @@ static void FillSine(float* buf, size_t len, float freqHz, float sampleRate)
     }
 }
 
+// A harmonic stack whose fundamental spacing is 200 Hz. The fundamental and
+// lower partials are intentionally absent, matching an upper QMF band after
+// filtering while retaining the common 200 Hz periodicity.
+static void FillHarmonicStack(float* buf, size_t len, float amplitudeBefore,
+                              float amplitudeAfter, size_t stepSample)
+{
+    static constexpr float kF0 = 200.0f;
+    for (size_t i = 0; i < len; ++i) {
+        const float amplitude = i < stepSample ? amplitudeBefore : amplitudeAfter;
+        double value = 0.0;
+        for (int harmonic = 9; harmonic <= 13; ++harmonic) {
+            const double phase = 2.0 * M_PI * kF0 * harmonic
+                               * static_cast<double>(i) / kSampleRate
+                               + 0.17 * harmonic;
+            value += std::sin(phase);
+        }
+        buf[i] = amplitude * static_cast<float>(value / 5.0);
+    }
+}
+
 // Compute the Planck-taper-windowed RMS for the analysis region [128..384)
 // of a kInN-point window, using the same formula as the class.
 static float PlanckWindowedRms(const float* in, int inN, float eps)
@@ -89,6 +109,150 @@ TEST(TSpectralUpsampler, OutputSize)
     std::vector<float> input(TSpectralUpsampler::kInN, 1.0f);
     const auto result = proc.Process(input.data());
     EXPECT_EQ(static_cast<int>(result.signal.size()), TSpectralUpsampler::kOutN);
+}
+
+TEST(TSpectralUpsampler, CepstrumFindsMissingFundamentalPeriod)
+{
+    TSpectralUpsampler proc(kSampleRate, 800.0f);
+    std::vector<float> input(TSpectralUpsampler::kInN);
+    FillHarmonicStack(input.data(), input.size(), 1.0f, 1.0f, input.size());
+
+    const auto result = proc.Process(input.data());
+    const float expectedPeriod = kSampleRate / 200.0f;
+    EXPECT_NEAR(result.pitchPeriod, expectedPeriod, 3.0f);
+    EXPECT_GT(result.cepstralProminenceDb, 1.0f);
+    EXPECT_EQ(result.filteredMagnitude.size(), 257u);
+    EXPECT_EQ(result.rawMagnitude.size(), 257u);
+}
+
+TEST(TSpectralUpsampler, CepstrumCompensatesInvertedQmfSpectrum)
+{
+    TSpectralUpsampler proc(kSampleRate, 800.0f);
+    std::vector<float> direct(TSpectralUpsampler::kInN);
+    FillHarmonicStack(direct.data(), direct.size(), 1.0f, 1.0f, direct.size());
+    std::vector<float> inverted = direct;
+    for (size_t i = 1; i < inverted.size(); i += 2)
+        inverted[i] = -inverted[i];
+
+    const auto directResult = proc.Process(direct.data());
+    const auto correctedResult = proc.Process(
+        inverted.data(), ESpectrumOrientation::Inverted);
+    const float expectedPeriod = kSampleRate / 200.0f;
+
+    EXPECT_NEAR(correctedResult.pitchPeriod, expectedPeriod, 3.0f);
+    EXPECT_NEAR(correctedResult.pitchPeriod, directResult.pitchPeriod, 0.1f);
+    EXPECT_NEAR(correctedResult.cepstralProminenceDb,
+                directResult.cepstralProminenceDb, 0.05f);
+    EXPECT_GT(correctedResult.cepstralProminenceDb, 1.0f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceMatchesNativeQmfBins)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> matchingNeighbor(257, 1.0f);
+    for (int bin : {200, 210, 220, 230}) {
+        harmonic[bin] = 10.0f;
+        matchingNeighbor[bin] = 7.0f;
+    }
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, matchingNeighbor, 512.0f / 10.0f, true);
+
+    EXPECT_EQ(evidence.HarmonicPeaks, 4u);
+    EXPECT_EQ(evidence.MatchedPeaks, 4u);
+    EXPECT_GT(evidence.SharedPeakRatio, 0.99f);
+    EXPECT_GT(evidence.SpectralCoherence, 0.99f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceRejectsShiftedPeaks)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> shiftedNeighbor(257, 1.0f);
+    for (int bin : {200, 210, 220, 230})
+        harmonic[bin] = 10.0f;
+    for (int bin : {205, 215, 225, 235})
+        shiftedNeighbor[bin] = 7.0f;
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, shiftedNeighbor, 512.0f / 10.0f, true);
+
+    EXPECT_EQ(evidence.HarmonicPeaks, 4u);
+    EXPECT_EQ(evidence.MatchedPeaks, 0u);
+    EXPECT_LT(evidence.SpectralCoherence, 0.05f);
+}
+
+TEST(TSpectralUpsampler, HarmonicAliasEvidenceSupportsDcBoundary)
+{
+    std::vector<float> harmonic(257, 1.0f);
+    std::vector<float> matchingNeighbor(257, 1.0f);
+    for (int bin : {10, 20, 30, 40}) {
+        harmonic[bin] = 10.0f;
+        matchingNeighbor[bin] = 7.0f;
+    }
+
+    const auto evidence = CalcHarmonicAliasEvidence(
+        harmonic, matchingNeighbor, 512.0f / 10.0f, false);
+
+    EXPECT_EQ(evidence.MatchedPeaks, 4u);
+    EXPECT_GT(evidence.SpectralCoherence, 0.99f);
+}
+
+TEST(TSpectralUpsampler, PitchPeriodRmsRemovesCarrierRipple)
+{
+    TSpectralUpsampler proc(kSampleRate, 800.0f);
+    std::vector<float> input(TSpectralUpsampler::kInN);
+    FillHarmonicStack(input.data(), input.size(), 1.0f, 1.0f, input.size());
+    const auto result = proc.Process(input.data());
+
+    const auto shortGain = AnalyzeGain(result.signal.data() + 1024, 2048, 32, true);
+    const uint32_t window = static_cast<uint32_t>(
+        std::lround(result.pitchPeriod * TSpectralUpsampler::kUpsample));
+    const auto pitchGain = AnalyzeGainOverlappingRms(
+        result.signal.data(), result.signal.size(), 1024, 2048, 32, window);
+    ASSERT_EQ(shortGain.size(), 32u);
+    ASSERT_EQ(pitchGain.size(), 32u);
+
+    const auto relativeSpread = [](const std::vector<float>& values) {
+        double mean = 0.0;
+        for (float value : values)
+            mean += value;
+        mean /= values.size();
+        double variance = 0.0;
+        for (float value : values) {
+            const double d = value - mean;
+            variance += d * d;
+        }
+        return static_cast<float>(std::sqrt(variance / values.size()) / mean);
+    };
+    const float shortSpread = relativeSpread(shortGain);
+    const float pitchSpread = relativeSpread(pitchGain);
+    EXPECT_GT(shortSpread, 0.05f);
+    EXPECT_LT(pitchSpread, shortSpread * 0.35f)
+        << "short spread=" << shortSpread << ", pitch spread=" << pitchSpread;
+}
+
+TEST(TSpectralUpsampler, PitchPeriodRmsPreservesSustainedAmplitudeStep)
+{
+    TSpectralUpsampler proc(kSampleRate, 800.0f);
+    std::vector<float> input(TSpectralUpsampler::kInN);
+    FillHarmonicStack(input.data(), input.size(), 0.1f, 1.0f, 256);
+    const auto result = proc.Process(input.data());
+    const uint32_t window = static_cast<uint32_t>(
+        std::lround(result.pitchPeriod * TSpectralUpsampler::kUpsample));
+    const auto gain = AnalyzeGainOverlappingRms(
+        result.signal.data(), result.signal.size(), 1024, 2048, 32, window);
+    ASSERT_EQ(gain.size(), 32u);
+    EXPECT_GT(gain[27], gain[4] * 5.0f);
+}
+
+TEST(TSpectralUpsampler, MagnitudeChangeIsScaleSensitive)
+{
+    const std::vector<float> previous = {0.0f, 1.0f, 2.0f, 0.5f};
+    const std::vector<float> same = previous;
+    const std::vector<float> doubled = {0.0f, 2.0f, 4.0f, 1.0f};
+    EXPECT_NEAR(CalcMagnitudeChangeDb(same, previous), 0.0f, 1e-6f);
+    EXPECT_NEAR(CalcMagnitudeChangeDb(doubled, previous), 6.0206f, 0.001f);
+    EXPECT_TRUE(std::isinf(CalcMagnitudeChangeDb(previous, {})));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

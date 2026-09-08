@@ -135,6 +135,50 @@ std::vector<float> AnalyzeGain(const float* in, const uint32_t len, const uint32
     return res;
 }
 
+std::vector<float> AnalyzeGainOverlappingRms(const float* in, const uint32_t totalLen,
+                                             const uint32_t regionOffset,
+                                             const uint32_t regionLen,
+                                             const uint32_t maxPoints,
+                                             const uint32_t windowLen) {
+    std::vector<float> result;
+    if (!in || totalLen == 0 || regionLen == 0 || maxPoints == 0
+        || regionOffset >= totalLen)
+        return result;
+
+    const uint32_t step = regionLen / maxPoints;
+    if (step == 0)
+        return result;
+
+    const uint32_t effectiveWindow = std::max(1u, windowLen);
+    std::vector<double> accumulatedEnergy(static_cast<size_t>(totalLen) + 1, 0.0);
+    for (uint32_t i = 0; i < totalLen; ++i)
+        accumulatedEnergy[i + 1] = accumulatedEnergy[i]
+            + static_cast<double>(in[i]) * in[i];
+    result.reserve(maxPoints);
+    for (uint32_t point = 0; point < maxPoints; ++point) {
+        const uint64_t centre64 = static_cast<uint64_t>(regionOffset)
+                                + static_cast<uint64_t>(point) * step
+                                + step / 2;
+        const uint32_t centre = static_cast<uint32_t>(
+            std::min<uint64_t>(centre64, totalLen));
+        int64_t start = static_cast<int64_t>(centre)
+                      - static_cast<int64_t>(effectiveWindow / 2);
+        int64_t end = start + effectiveWindow;
+        start = std::max<int64_t>(0, start);
+        end = std::min<int64_t>(totalLen, end);
+        if (end <= start) {
+            result.push_back(0.0f);
+            continue;
+        }
+
+        const double energy = accumulatedEnergy[static_cast<size_t>(end)]
+                            - accumulatedEnergy[static_cast<size_t>(start)];
+        result.push_back(static_cast<float>(
+            std::sqrt(energy / static_cast<double>(end - start))));
+    }
+    return result;
+}
+
 // Maps amplitude ratio x = region_rms / target to ATRAC3 gain Level index L such
 // that GainLevel[L] = 2^(4-L) ≈ x.  Dividing the signal by GainLevel[L] normalises
 // it to the target amplitude.
@@ -273,6 +317,106 @@ static float BoundaryTransientScore(const std::vector<float>& env, int loc, int 
     return std::max(attack, release);
 }
 
+// Harmonic signals can produce a strongly periodic subframe-RMS ripple even
+// when their musical amplitude envelope is stationary. Removing a linear
+// trend before measuring autocorrelation keeps slow attacks/releases distinct
+// from this carrier-rate ripple.
+struct TCarrierPeriodicity {
+    float Score = 0.0f;
+    int Lag = 0;
+    float TrendOctaves = 0.0f;
+    float TurningFraction = 0.0f;
+};
+
+static TCarrierPeriodicity AnalyzeCarrierPeriodicity(const std::vector<float>& in) {
+    TCarrierPeriodicity result;
+    const int n = static_cast<int>(in.size());
+    if (n < 12)
+        return result;
+
+    std::vector<float> logEnv(static_cast<size_t>(n));
+    float meanX = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        logEnv[static_cast<size_t>(i)] = std::log2(std::max(in[i], 1e-9f));
+        meanX += logEnv[static_cast<size_t>(i)];
+    }
+    meanX /= n;
+
+    const float meanT = 0.5f * (n - 1);
+    float slopeNumerator = 0.0f;
+    float slopeDenominator = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        const float dt = i - meanT;
+        slopeNumerator += dt * (logEnv[static_cast<size_t>(i)] - meanX);
+        slopeDenominator += dt * dt;
+    }
+    const float slope = slopeNumerator / std::max(slopeDenominator, 1e-9f);
+    result.TrendOctaves = std::abs(slope) * (n - 1);
+
+    std::vector<float> residual(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i)
+        residual[static_cast<size_t>(i)] =
+            logEnv[static_cast<size_t>(i)] - (meanX + slope * (i - meanT));
+
+    const int maxLag = std::min(10, n / 3);
+    for (int lag = 2; lag <= maxLag; ++lag) {
+        const int count = n - lag;
+        float meanA = 0.0f;
+        float meanB = 0.0f;
+        for (int i = 0; i < count; ++i) {
+            meanA += residual[static_cast<size_t>(i)];
+            meanB += residual[static_cast<size_t>(i + lag)];
+        }
+        meanA /= count;
+        meanB /= count;
+
+        float covariance = 0.0f;
+        float energyA = 0.0f;
+        float energyB = 0.0f;
+        for (int i = 0; i < count; ++i) {
+            const float a = residual[static_cast<size_t>(i)] - meanA;
+            const float b = residual[static_cast<size_t>(i + lag)] - meanB;
+            covariance += a * b;
+            energyA += a * a;
+            energyB += b * b;
+        }
+        const float score = covariance /
+            std::sqrt(std::max(energyA * energyB, 1e-18f));
+        if (score > result.Score) {
+            result.Score = score;
+            result.Lag = lag;
+        }
+    }
+
+    int turns = 0;
+    for (int i = 1; i + 1 < n; ++i) {
+        const float left = logEnv[static_cast<size_t>(i)]
+                         - logEnv[static_cast<size_t>(i - 1)];
+        const float right = logEnv[static_cast<size_t>(i + 1)]
+                          - logEnv[static_cast<size_t>(i)];
+        if (left * right < 0.0f)
+            ++turns;
+    }
+    result.TurningFraction = static_cast<float>(turns) / (n - 2);
+    return result;
+}
+
+static bool IsCarrierRipple(const std::vector<float>& in,
+                            TCarrierPeriodicity* periodicity) {
+    const TCarrierPeriodicity p = AnalyzeCarrierPeriodicity(in);
+    if (periodicity)
+        *periodicity = p;
+
+    // Short carrier periods have more repeated cycles in a 32-point frame and
+    // therefore need less correlation than long periods. Slow envelopes and
+    // one-sided attacks are rejected by the trend and turning-point guards.
+    const float minScore = p.Lag <= 6 ? 0.45f : 0.70f;
+    return p.Lag >= 2
+        && p.Score >= minScore
+        && p.TrendOctaves < 1.0f
+        && p.TurningFraction >= 0.55f;
+}
+
 std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuilderCtx& ctx,
                                        std::optional<float> nextLevel,
                                        float minScore,
@@ -280,6 +424,10 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
                                        const std::vector<float>* subframeLow,
                                        const std::vector<float>* subframeHigh) {
     std::vector<TGainCurvePoint> curve;
+    static_cast<void>(nextLevel); // retained for lookahead-compatible callers
+
+    if (ctx.CarrierRippleHold > 0)
+        --ctx.CarrierRippleHold;
 
     if (in.empty())
         return curve;
@@ -451,6 +599,41 @@ std::vector<TGainCurvePoint> CalcCurve(const std::vector<float>& in, TCurveBuild
 
     if (trans.empty())
         return curve;
+
+    // Suppress only weak curves whose source envelope is demonstrably
+    // periodic. Unlike per-point smoothing, this cannot move a real attack's
+    // first point and therefore cannot perturb inter-frame point0 scaling.
+    const bool weakCurve = std::all_of(trans.begin(), trans.end(),
+        [](const TTransition& t) { return t.Level >= 3u && t.Level <= 5u; });
+    TCarrierPeriodicity periodicity;
+    if (!weakCurve)
+        ctx.CarrierRippleHold = 0;
+    const bool carrierRipple = weakCurve && IsCarrierRipple(in, &periodicity);
+    static constexpr float kStrongCarrierScore = 0.80f;
+    const bool strongCarrierEvidence = carrierRipple
+        && periodicity.Score >= kStrongCarrierScore;
+    const bool rejectCarrierRipple = carrierRipple
+        && (ctx.CarrierRippleHold > 0 || strongCarrierEvidence);
+    if (carrierRipple)
+        ctx.CarrierRippleHold = 8;
+    if (rejectCarrierRipple) {
+        if (yamlLog) {
+            *yamlLog << std::fixed << std::setprecision(4)
+                     << "        skip: carrier_ripple"
+                     << "  # corr " << periodicity.Score
+                     << ", lag " << periodicity.Lag
+                     << ", trend_oct " << periodicity.TrendOctaves
+                     << ", turns " << periodicity.TurningFraction
+                     << ", hold " << static_cast<int>(ctx.CarrierRippleHold) << "\n";
+        }
+        return curve;
+    } else if (carrierRipple && yamlLog) {
+        *yamlLog << std::fixed << std::setprecision(4)
+                 << "        carrier_ripple_candidate: {corr: " << periodicity.Score
+                 << ", lag: " << periodicity.Lag
+                 << ", trend_oct: " << periodicity.TrendOctaves
+                 << ", turns: " << periodicity.TurningFraction << "}\n";
+    }
 
     // Trim to point budget: keep transitions with the largest |DeltaLevel| first
     // (they correct the most severe MDCT energy mismatches).

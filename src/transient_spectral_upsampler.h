@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 namespace NAtracDEnc {
@@ -33,6 +34,55 @@ struct TProcessResult {
     //   ≈ 0 : frame is dominated by sub-cutoff content (stopband leakage only)
     //   ≈ 1 : frame is dominated by supra-cutoff content (full passband)
     float highFreqRatio;
+
+    // Native-order magnitudes of the Planck-windowed QMF FFT before the
+    // upsampler HPF. Adjacent QMF alias images occupy the same native FFT bin;
+    // keeping the unfiltered spectrum is required for the band 1/2 boundary,
+    // whose overlap is around QMF DC and would otherwise be removed at 800 Hz.
+    std::vector<float> rawMagnitude;
+
+    // Magnitudes after applying the same HPF response used by the spectral
+    // upsampler. Kept in the result so per-channel/per-band encoder state can
+    // compare consecutive spectra without making this class stateful.
+    std::vector<float> filteredMagnitude;
+
+    // Period of the strongest cepstral peak, in input-QMF samples, and its
+    // prominence above a linear cepstral baseline. The search range is
+    // limited to 70..1200 Hz. A high prominence means that regularly-spaced
+    // harmonics are present even when the fundamental was removed by the HPF.
+    float pitchPeriod;
+    float cepstralProminenceDb;
+};
+
+struct THarmonicAliasEvidence {
+    float SpectralCoherence = 0.0f;
+    float SharedPeakRatio = 0.0f;
+    uint32_t HarmonicPeaks = 0;
+    uint32_t MatchedPeaks = 0;
+};
+
+// Compare one confidently harmonic QMF spectrum with a neighboring band.
+// Spectra must be in native QMF order: alias partners then occupy equal FFT
+// bins. nearNyquist selects the 0/1 and 2/3 boundary layout; false selects the
+// 1/2 boundary around QMF DC. pitchPeriod is measured in QMF samples.
+THarmonicAliasEvidence CalcHarmonicAliasEvidence(
+    const std::vector<float>& harmonicMagnitude,
+    const std::vector<float>& neighborMagnitude,
+    float pitchPeriod,
+    bool nearNyquist);
+
+// Energy-weighted frame-to-frame log-magnitude change. Both inputs must
+// already include the upsampler's HPF response. Returns +inf when no usable
+// previous spectrum is available, conservatively disabling harmonic RMS.
+float CalcMagnitudeChangeDb(const std::vector<float>& current,
+                            const std::vector<float>& previous);
+
+// Upper branches of the ATRAC3 QMF tree are spectrally inverted. Restore
+// ascending frequency order only for cepstral pitch analysis; the upsampled
+// signal and its gain envelope remain in their native QMF representation.
+enum class ESpectrumOrientation {
+    Direct,
+    Inverted
 };
 
 // Preprocesses a 512-sample context window for improved spectral analysis.
@@ -78,15 +128,22 @@ public:
     TSpectralUpsampler(float sampleRate, float lowCutHz, float epsilon = kDefaultEps);
     ~TSpectralUpsampler();
 
-    // Process a kInN-sample input window.
+    // Process a kInN-sample input window. spectrumOrientation describes the
+    // QMF frequency ordering used only by the real-cepstrum pitch estimator.
     // Returns the upsampled signal and its high-frequency energy ratio.
-    TProcessResult Process(const float* in) const;
+    TProcessResult Process(const float* in,
+        ESpectrumOrientation spectrumOrientation = ESpectrumOrientation::Direct) const;
 
 private:
     const int          LowCutBin;  // first kept bin (inclusive); bins [0,LowCutBin) are zeroed
+    const int          MinPitchLag;
+    const int          MaxPitchLag;
     std::vector<float> Win;
     void*              FwdCfg;     // kiss_fftr_cfg: kInN-point  forward real FFT plan
+    void*              CepInvCfg;  // kiss_fftr_cfg: kInN-point inverse real cepstrum plan
     void*              InvCfg;     // kiss_fftr_cfg: kOutN-point inverse real FFT plan
+
+    float FilterWeight(int bin) const;
 };
 
 } // namespace NAtracDEnc
